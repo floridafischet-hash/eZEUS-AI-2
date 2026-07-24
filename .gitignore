@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+*.pyc
+*.db
+.coverage
+htmlcov/
+.gh-auth-output.txt
+.gh-auth-error.txt
