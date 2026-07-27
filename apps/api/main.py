@@ -7,6 +7,7 @@ from redis import Redis
 from sqlalchemy import text
 
 from apps.api.admin import router as admin_router
+from apps.api.dashboard import router as dashboard_router
 from connectors.base.errors import ConnectorError
 from connectors.paperless.connector import PaperlessConnector
 from core.config.settings import get_settings
@@ -22,6 +23,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(title="eZEUS-AI-2", version="0.2.0", lifespan=lifespan)
+app.include_router(dashboard_router)
 app.include_router(paperless_webhook_router)
 app.include_router(admin_router)
 
