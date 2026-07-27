@@ -2,7 +2,7 @@
 
 Alle wesentlichen Änderungen an eZEUS-AI-2 werden in dieser Datei dokumentiert.
 
-## Unreleased
+## 0.2.0 - 2026-07-27
 
 ### Hinzugefügt
 
