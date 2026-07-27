@@ -17,5 +17,12 @@ Alle Werte werden über Umgebungsvariablen gelesen.
 - `MAX_DOCUMENT_BYTES`: maximale Downloadgröße
 - `JOB_MAX_RETRIES`, `JOB_RETRY_DELAYS_SECONDS`: technische Retries
 - `LOCAL_ONLY`: verhindert Cloud-Verarbeitung
+- `OLLAMA_ENABLED`: aktiviert den lokalen LLM-Extraktionsprovider
+- `OLLAMA_BASE_URL`: interne Ollama-API, standardmäßig
+  `http://ollama:11434`
+- `OLLAMA_MODEL`: lokales Modell, produktiv `qwen3:4b`
+- `OLLAMA_TIMEOUT_SECONDS`: Zeitlimit pro Modellaufruf
+- `OLLAMA_MAX_INPUT_CHARS`: maximale OCR-Textmenge pro Feldextraktion
+- `OLLAMA_KEEP_ALIVE`: Vorhaltezeit des geladenen Modells
 
 Secrets dürfen nicht in Images, Versionsverwaltung oder Logs abgelegt werden.

@@ -25,6 +25,13 @@ class Settings(BaseSettings):
     local_only: bool = True
     cloud_ai_globally_allowed: bool = False
 
+    ollama_enabled: bool = False
+    ollama_base_url: str = "http://ollama:11434"
+    ollama_model: str = "qwen3:4b"
+    ollama_timeout_seconds: int = 300
+    ollama_max_input_chars: int = 24_000
+    ollama_keep_alive: str = "10m"
+
     ocr_provider: str = "paddleocr"
     ocr_language: str = "de"
     ocr_device: str = "cpu"
@@ -59,6 +66,10 @@ class Settings(BaseSettings):
                 raise ValueError(f"Missing secure configuration: {', '.join(missing)}")
         if self.cloud_ai_globally_allowed and self.local_only:
             raise ValueError("Cloud AI cannot be enabled while LOCAL_ONLY is true")
+        if self.ollama_timeout_seconds <= 0:
+            raise ValueError("OLLAMA_TIMEOUT_SECONDS must be positive")
+        if self.ollama_max_input_chars < 1000:
+            raise ValueError("OLLAMA_MAX_INPUT_CHARS must be at least 1000")
         if self.job_max_retries < 0:
             raise ValueError("JOB_MAX_RETRIES must not be negative")
         return self

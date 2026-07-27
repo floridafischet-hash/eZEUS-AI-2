@@ -31,3 +31,23 @@ def test_minimal_template_is_valid() -> None:
         }
     )
     assert template.fields["invoice"].target_field_id == 14
+
+
+def test_ollama_template_is_valid() -> None:
+    template = TemplateConfig.model_validate(
+        {
+            "fields": {
+                "invoice_number": {
+                    "target_field_id": 1,
+                    "providers": [
+                        {
+                            "type": "ollama",
+                            "field_name": "Rechnungsnummer",
+                            "value_hint": "Text",
+                        }
+                    ],
+                }
+            }
+        }
+    )
+    assert template.fields["invoice_number"].providers[0].type == "ollama"
