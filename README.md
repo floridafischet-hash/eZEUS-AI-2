@@ -68,6 +68,21 @@ Der Paperless-Webhook kann Templates mit dem Provider `ollama` auslösen.
 Produktiv wird `qwen3:4b` lokal im privaten Docker-Netz verwendet; Dokumenttext
 verlässt den Server dabei nicht.
 
+## Betriebsdashboard
+
+Der Startpfad `/` stellt ein kleines Betriebsdashboard bereit:
+
+- **Übersicht** zeigt die konfigurierte lokale KI, OCR und Dokumentenquelle.
+- **Logs** zeigt bereinigte Phasenereignisse der Dokumentenverarbeitung.
+- **API** öffnet die interaktive FastAPI-Dokumentation unter `/docs`.
+
+Der Log-Reiter aktualisiert sich alle zehn Sekunden. Er zeigt ausschließlich
+technische Metadaten wie Phase, Status und Laufzeit. Dokumentinhalte, OCR-Text,
+Tokens, Passwörter, Phase-Metadaten und vollständige Fehlermeldungen werden
+nicht an die Oberfläche ausgeliefert.
+
+Details stehen in [docs/dashboard.md](docs/dashboard.md).
+
 ## Minimales Template anlegen
 
 `POST /api/templates` akzeptiert mit dem Header
@@ -108,6 +123,10 @@ mypy apps connectors core plugins webhooks
 Siehe [.env.example](.env.example) und [docs/configuration.md](docs/configuration.md).
 TLS-Prüfung ist standardmäßig aktiv. In `production` sind Paperless-Token und
 Webhook-Secret Pflichtwerte.
+
+Die Datei `.env` ist absichtlich von Git ausgeschlossen. Das Repository enthält
+nur `.env.example` mit nicht funktionsfähigen Standard-Beispielwerten. Reale
+Secrets gehören in eine lokale Secret-Datei oder einen Secret Manager.
 
 ## Bekannte Einschränkungen
 

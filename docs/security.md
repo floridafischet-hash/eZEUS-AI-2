@@ -13,3 +13,16 @@ Vor einem Produktivbetrieb fehlen noch:
 - Malware-, PDF-Bomb- und Ressourcenlimits auf Betriebssystemebene
 - Dependency-, Container- und Secret-Scanning
 - strukturierte Log-Redaktion und eine Security-Abnahme
+
+## Repository- und Log-Hygiene
+
+- `.env` und `.env.*` werden ignoriert; ausschließlich `.env.example` darf
+  versioniert werden.
+- `.env.example` enthält nur eindeutig markierte, nicht funktionsfähige
+  Beispielwerte.
+- Produktive Tokens und Passwörter müssen über eine lokale Secret-Datei oder
+  einen Secret Manager injiziert werden.
+- Das Dashboard gibt keine Dokumentinhalte, OCR-Texte, Secrets,
+  Phase-Metadaten oder vollständigen Fehlertexte aus.
+- Konkrete Server-Adressen, Benutzernamen und installationsspezifische Pfade
+  gehören nicht in Repository-Dokumentationen.
