@@ -10,6 +10,10 @@ Provider:
 
 - `regex`: `patterns`, optional `group` und `timeout_ms`
 - `keyword`: `keywords`, `synonyms`, Kontextgrößen und `case_sensitive`
+- `ollama`: lokale strukturierte Extraktion mit `field_name`, optional
+  `value_hint` und `instructions`. Der Provider sendet ausschließlich OCR-Text
+  an die intern konfigurierte Ollama-API und erwartet ein validiertes
+  JSON-Ergebnis.
 
 Validatoren:
 

@@ -17,11 +17,13 @@ from core.validation.engine import ValidationEngine
 from plugins.base.interfaces import ExtractionCandidate
 from plugins.extraction.keyword import KeywordExtractionProvider
 from plugins.extraction.regex import RegexExtractionProvider
+from plugins.llm.ollama import OllamaExtractionProvider
 from plugins.ocr.factory import create_ocr_adapter
 
 PROVIDERS = {
     "regex": RegexExtractionProvider,
     "keyword": KeywordExtractionProvider,
+    "ollama": OllamaExtractionProvider,
 }
 
 

@@ -2,7 +2,8 @@
 
 eZEUS-AI-2 ist eine lokal bevorzugte, pluginfähige Dokumentenverarbeitung für
 Paperless-ngx. Das Projekt verbindet Webhooks, persistente Jobs, PaddleOCR,
-regelbasierte Extraktion, Validierung und konfliktarme Schreiboperationen.
+regelbasierte Extraktion, optionale lokale Ollama-Modelle, Validierung und
+konfliktarme Schreiboperationen.
 
 ## Reifegrad
 
@@ -16,6 +17,8 @@ Security-/Lasttest fehlen noch.
 - Docker Engine mit Docker Compose
 - eine erreichbare Paperless-ngx-Instanz
 - mindestens 8 GB RAM für den lokalen PaddleOCR-Worker empfohlen
+- bei lokaler LLM-Nutzung eine erreichbare Ollama-Instanz und ausreichend
+  Speicher für das gewählte Modell
 
 ## Schnellstart
 
@@ -60,6 +63,10 @@ Payload:
 ```
 
 Ein neuer Job liefert HTTP 202, ein bereits bekanntes Event HTTP 200.
+
+Der Paperless-Webhook kann Templates mit dem Provider `ollama` auslösen.
+Produktiv wird `qwen3:4b` lokal im privaten Docker-Netz verwendet; Dokumenttext
+verlässt den Server dabei nicht.
 
 ## Minimales Template anlegen
 
@@ -107,6 +114,8 @@ Webhook-Secret Pflichtwerte.
 - Version 1 unterstützt genau eine Paperless-Instanz.
 - PaddleOCR-Modelle werden beim ersten Worker-Start gegebenenfalls geladen.
 - PaddleOCR-Modelle werden im Volume `ocr_models` persistiert.
+- Ollama-Modelle werden in einer produktiven Compose-Konfiguration in einem
+  separaten Volume persistiert und nicht öffentlich veröffentlicht.
 - Die Administrationsendpunkte verwenden ein gemeinsames Secret, aber noch keine Rollen.
 - Paperless-Referenzdaten werden noch nicht lokal synchronisiert.
 - Keyword-Extraktion arbeitet aktuell textuell; räumliche Nachbarschaft ist vorbereitet,

@@ -1,6 +1,7 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
+import httpx
 from fastapi import FastAPI, HTTPException
 from redis import Redis
 from sqlalchemy import text
@@ -53,6 +54,23 @@ async def ready() -> dict[str, object]:
         checks["ocr"] = True
     except (RuntimeError, ValueError):
         checks["ocr"] = False
+    if settings.ollama_enabled:
+        try:
+            async with httpx.AsyncClient(
+                base_url=settings.ollama_base_url,
+                timeout=min(settings.ollama_timeout_seconds, 15),
+            ) as client:
+                response = await client.get("/api/tags")
+                response.raise_for_status()
+                models = response.json().get("models", [])
+                checks["ollama"] = any(
+                    item.get("name") == settings.ollama_model
+                    or item.get("model") == settings.ollama_model
+                    for item in models
+                    if isinstance(item, dict)
+                )
+        except (httpx.HTTPError, ValueError, TypeError):
+            checks["ollama"] = False
     if not all(checks.values()):
         raise HTTPException(status_code=503, detail={"status": "not_ready", "checks": checks})
     return {"status": "ready", "checks": checks}

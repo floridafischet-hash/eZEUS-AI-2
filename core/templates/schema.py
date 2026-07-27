@@ -1,6 +1,6 @@
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-KNOWN_PROVIDERS = {"regex", "keyword"}
+KNOWN_PROVIDERS = {"regex", "keyword", "ollama"}
 KNOWN_VALIDATORS = {
     "not_empty",
     "required_pattern",
