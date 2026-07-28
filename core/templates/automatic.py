@@ -23,6 +23,11 @@ FIELD_DEFINITIONS: dict[str, dict[str, object]] = {
         "validators": [{"type": "not_empty"}, {"type": "monetary_amount"}],
         "selection_strategy": "highest",
         "patterns": [
+            r"(?im)^\s*Gesamt\s+"
+            r"(?:[\d.]+,\d{2}\s*(?:EUR|€)?\s+)?"
+            r"([\d.]+,\d{2})\s*(?:EUR|€)?\s*$",
+            r"(?im)^\s*Übertrag\s*:\s*"
+            r"(?:EUR|€)?\s*([\d.]+,\d{2})\s*(?:EUR|€|Euro)?\s*$",
             r"(?i)(?:"
             r"Brutto[\s.-]*Rechnungsbetrag|"
             r"Bruttobetrag|"
@@ -33,7 +38,7 @@ FIELD_DEFINITIONS: dict[str, dict[str, object]] = {
             r"Endbetrag|"
             r"Zu\s+zahlen|"
             r"(?<!Netto[ -])(?<![\w-])Rechnungsbetrag"
-            r")\s*[:.]?\s*(?:EUR|€)?\s*([\d.]+,\d{2})\s*(?:EUR|€)?"
+            r")\s*[:.]?\s*(?:EUR|€)?\s*([\d.]+,\d{2})\s*(?:EUR|€)?",
         ],
     },
     "lieferscheinnummer": {
