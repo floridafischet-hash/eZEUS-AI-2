@@ -98,6 +98,39 @@ async def test_invoice_number_candidate_precedes_customer_number() -> None:
 
 
 @pytest.mark.asyncio
+async def test_invoice_number_is_extracted_from_collapsed_ocr_columns() -> None:
+    config = config_from_custom_fields([ConnectorCustomField("93", "Rechnungsnummer", "string")])
+    assert config is not None
+    provider = config.fields["invoice_number"].providers[0]
+    text = (
+        "Rechnung\n"
+        "Datum: Rechnungsnr.: Kunden-Nr.:\n"
+        "22.07.2026 5799588 2011452\n"
+        "\n"
+        "Zahlungsdatum: 21.08.2026"
+    )
+
+    candidates = await RegexExtractionProvider().extract(
+        text, provider.model_dump(exclude={"type"})
+    )
+
+    assert [candidate.value for candidate in candidates] == ["5799588"]
+
+
+@pytest.mark.asyncio
+async def test_invoice_label_does_not_consume_value_from_next_ocr_line() -> None:
+    config = config_from_custom_fields([ConnectorCustomField("93", "Rechnungsnummer", "string")])
+    assert config is not None
+    provider = config.fields["invoice_number"].providers[0]
+
+    candidates = await RegexExtractionProvider().extract(
+        "Rechnungsnr.:\n5799588", provider.model_dump(exclude={"type"})
+    )
+
+    assert candidates == []
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("text", "expected"),
     [
