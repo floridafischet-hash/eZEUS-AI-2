@@ -19,6 +19,10 @@ FIELD_DEFINITIONS: dict[str, dict[str, object]] = {
             "Nicht Kunden-, Bestell- oder Lieferscheinnummer verwenden."
         ),
         "validators": [{"type": "not_empty"}, {"type": "length", "min": 1, "max": 100}],
+        "patterns": [
+            r"(?i)(?:Rechnungsnummer|Rechnung(?:s)?[\s.-]*(?:Nr|Nummer)\.?)"
+            r"\s*[:.]?\s*([A-Z0-9][A-Z0-9./_-]*)"
+        ],
     },
     "rechnungsbetrag": {
         "key": "invoice_amount",
@@ -28,6 +32,10 @@ FIELD_DEFINITIONS: dict[str, dict[str, object]] = {
             "Extrahiere den zu zahlenden Brutto-Endbetrag, nicht Netto, Steuer oder Einzelposition."
         ),
         "validators": [{"type": "not_empty"}, {"type": "monetary_amount"}],
+        "patterns": [
+            r"(?i)(?:Bruttobetrag|Gesamtbetrag|Rechnungsbetrag)"
+            r"\s*[:.]?\s*([\d.]+,\d{2}\s*(?:EUR|€)?)"
+        ],
     },
     "lieferscheinnummer": {
         "key": "delivery_note_number",
@@ -38,6 +46,10 @@ FIELD_DEFINITIONS: dict[str, dict[str, object]] = {
             "Nicht Bestell- oder Rechnungsnummer verwenden."
         ),
         "validators": [{"type": "not_empty"}, {"type": "length", "min": 1, "max": 100}],
+        "patterns": [
+            r"(?i)(?:Lieferscheinnummer|Lieferschein[\s.-]*(?:Nr|Nummer)\.?)"
+            r"\s*[:.]?\s*([A-Z0-9][A-Z0-9./_-]*)"
+        ],
     },
 }
 
@@ -52,11 +64,15 @@ def config_from_custom_fields(fields: list[ConnectorCustomField]) -> TemplateCon
             "target_field_id": int(field.external_id),
             "providers": [
                 {
+                    "type": "regex",
+                    "patterns": definition["patterns"],
+                },
+                {
                     "type": "ollama",
                     "field_name": definition["field_name"],
                     "value_hint": definition["value_hint"],
                     "instructions": definition["instructions"],
-                }
+                },
             ],
             "validators": definition["validators"],
             "minimum_confidence": 0.55,

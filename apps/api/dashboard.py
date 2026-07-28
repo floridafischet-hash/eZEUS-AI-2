@@ -314,6 +314,7 @@ DASHBOARD_HTML = """<!doctype html>
   <script>
     const tabs = document.querySelectorAll("[data-tab]");
     const sections = document.querySelectorAll(".tab");
+    const expandedJobIds = new Set();
     let refreshTimer;
 
     function activateTab(id) {
@@ -428,9 +429,10 @@ DASHBOARD_HTML = """<!doctype html>
           row.className = "job-row";
           row.tabIndex = 0;
           row.setAttribute("role", "button");
-          row.setAttribute("aria-expanded", "false");
+          const isExpanded = expandedJobIds.has(entry.job_id);
+          row.setAttribute("aria-expanded", String(isExpanded));
           const values = [
-            "+",
+            isExpanded ? "-" : "+",
             formatTime(entry.started_at),
             `${entry.filename || "Unbekannt"} (Paperless ${entry.document_id})`,
             entry.status,
@@ -450,8 +452,14 @@ DASHBOARD_HTML = """<!doctype html>
             row.appendChild(cell);
           });
           const detailRow = buildDetails(entry);
+          detailRow.hidden = !isExpanded;
           const toggle = () => {
             detailRow.hidden = !detailRow.hidden;
+            if (detailRow.hidden) {
+              expandedJobIds.delete(entry.job_id);
+            } else {
+              expandedJobIds.add(entry.job_id);
+            }
             row.cells[0].textContent = detailRow.hidden ? "+" : "-";
             row.setAttribute("aria-expanded", String(!detailRow.hidden));
           };
@@ -502,11 +510,7 @@ def processing_logs(
     db: Annotated[Session, Depends(get_db)],
     limit: Annotated[int, Query(ge=1, le=250)] = 100,
 ) -> dict[str, object]:
-    jobs = db.scalars(
-        select(Job)
-        .order_by(Job.created_at.desc())
-        .limit(limit)
-    ).all()
+    jobs = db.scalars(select(Job).order_by(Job.created_at.desc()).limit(limit)).all()
     now = datetime.now(UTC)
     job_ids = [job.id for job in jobs]
     phases_by_job: dict[object, list[JobPhaseEntry]] = {job_id: [] for job_id in job_ids}
@@ -545,12 +549,8 @@ def processing_logs(
                     ),
                     "status": phase_entry.status.value,
                     "started_at": phase_entry.started_at.isoformat(),
-                    "finished_at": (
-                        phase_finished_at.isoformat() if phase_finished_at else None
-                    ),
-                    "duration_seconds": round(
-                        max(phase_duration.total_seconds(), 0), 3
-                    ),
+                    "finished_at": (phase_finished_at.isoformat() if phase_finished_at else None),
+                    "duration_seconds": round(max(phase_duration.total_seconds(), 0), 3),
                     "metadata": phase_entry.metadata_json or {},
                     "error": error,
                 }
