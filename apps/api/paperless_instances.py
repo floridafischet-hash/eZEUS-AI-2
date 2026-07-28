@@ -1,5 +1,6 @@
 import re
 from typing import Annotated
+from urllib.parse import urlparse
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -9,7 +10,6 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from apps.api.admin import require_admin_secret
 from connectors.base.errors import ConnectorError
 from connectors.paperless.connector import PaperlessConnector
 from core.config.settings import get_settings
@@ -26,13 +26,9 @@ SLUG_PATTERN = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$")
 
 
 class InstanceCreate(BaseModel):
-    name: str = Field(min_length=1, max_length=255)
-    slug: str = Field(min_length=1, max_length=64)
     base_url: AnyHttpUrl
     api_token: str = Field(min_length=1, max_length=4096)
     webhook_secret: str = Field(min_length=16, max_length=4096)
-    verify_tls: bool = True
-    enabled: bool = True
 
 
 class InstanceUpdate(BaseModel):
@@ -54,6 +50,20 @@ def _validate_slug(slug: str) -> str:
     return normalized
 
 
+def _instance_identity(base_url: str, db: Session) -> tuple[str, str]:
+    hostname = urlparse(base_url).hostname or "paperless"
+    name = hostname[:255]
+    base_slug = re.sub(r"[^a-z0-9]+", "-", hostname.lower()).strip("-")[:64]
+    base_slug = base_slug or "paperless"
+    slug = base_slug
+    suffix = 2
+    while db.scalar(select(PaperlessInstance.id).where(PaperlessInstance.slug == slug)):
+        suffix_text = f"-{suffix}"
+        slug = f"{base_slug[: 64 - len(suffix_text)]}{suffix_text}"
+        suffix += 1
+    return name, _validate_slug(slug)
+
+
 def _serialize(instance: PaperlessInstance) -> dict[str, object]:
     webhook_path = f"/webhooks/paperless/{instance.slug}"
     public_base_url = get_settings().public_webhook_base_url.rstrip("/")
@@ -73,7 +83,7 @@ def _serialize(instance: PaperlessInstance) -> dict[str, object]:
     }
 
 
-@router.get("/api/paperless-instances", dependencies=[Depends(require_admin_secret)])
+@router.get("/api/paperless-instances")
 def list_instances(db: Annotated[Session, Depends(get_db)]) -> dict[str, object]:
     instances = db.scalars(select(PaperlessInstance).order_by(PaperlessInstance.name)).all()
     return {"instances": [_serialize(item) for item in instances]}
@@ -82,20 +92,21 @@ def list_instances(db: Annotated[Session, Depends(get_db)]) -> dict[str, object]
 @router.post(
     "/api/paperless-instances",
     status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(require_admin_secret)],
 )
 def create_instance(
     payload: InstanceCreate,
     db: Annotated[Session, Depends(get_db)],
 ) -> dict[str, object]:
+    base_url = str(payload.base_url).rstrip("/")
+    name, slug = _instance_identity(base_url, db)
     instance = PaperlessInstance(
-        name=payload.name.strip(),
-        slug=_validate_slug(payload.slug),
-        base_url=str(payload.base_url).rstrip("/"),
+        name=name,
+        slug=slug,
+        base_url=base_url,
         api_token_encrypted=encrypt_credential(payload.api_token),
         webhook_secret_encrypted=encrypt_credential(payload.webhook_secret),
-        verify_tls=payload.verify_tls,
-        enabled=payload.enabled,
+        verify_tls=True,
+        enabled=True,
     )
     db.add(instance)
     try:
@@ -109,7 +120,6 @@ def create_instance(
 
 @router.patch(
     "/api/paperless-instances/{instance_id}",
-    dependencies=[Depends(require_admin_secret)],
 )
 def update_instance(
     instance_id: UUID,
@@ -139,7 +149,6 @@ def update_instance(
 
 @router.post(
     "/api/paperless-instances/{instance_id}/test",
-    dependencies=[Depends(require_admin_secret)],
 )
 async def test_instance(
     instance_id: UUID,
@@ -218,37 +227,17 @@ INSTANCE_ADMIN_HTML = """<!doctype html>
       <form id="instance-form">
         <div class="form-section">
           <h2>Neue Paperless-Instanz</h2>
-          <p class="muted">Bezeichnung und Verbindung der externen Instanz.</p>
+          <p class="muted">Verbindung und Zugangsdaten der externen Instanz.</p>
           <div class="grid">
-            <div><label for="name">Name</label><input id="name" required maxlength="255"></div>
-            <div><label for="slug">Eindeutige Kennung</label>
-              <input id="slug" required pattern="[a-z0-9][a-z0-9-]{0,63}"
-                placeholder="zum-beispiel-buero"></div>
             <div class="wide"><label for="base-url">Paperless-URL</label>
               <input id="base-url" type="url" required
                 placeholder="https://paperless.example.de"></div>
-          </div>
-        </div>
-        <div class="form-section">
-          <h2>Zugangsdaten</h2>
-          <p class="muted">API-Token und Webhook-Secret der Paperless-Instanz.</p>
-          <div class="grid">
             <div><label for="api-token">API-Token</label>
               <input id="api-token" type="password" required autocomplete="new-password"></div>
             <div><label for="webhook-secret">Webhook-Secret (mindestens 16 Zeichen)</label>
               <input id="webhook-secret" type="password" required minlength="16"
                 autocomplete="new-password"></div>
-            <div class="wide checks">
-              <label><input id="verify-tls" type="checkbox" checked>TLS-Zertifikat prüfen</label>
-              <label><input id="enabled" type="checkbox" checked>Instanz aktiv</label>
-            </div>
           </div>
-        </div>
-        <div class="form-section">
-          <h2>Freigabe</h2>
-          <p class="muted">Das Admin-Secret bestätigt und speichert alle Angaben gemeinsam.</p>
-          <label for="admin-secret">Admin-Secret</label>
-          <input id="admin-secret" type="password" required autocomplete="current-password">
           <div id="message"></div>
           <button type="submit">Instanz vollständig speichern</button>
         </div>
@@ -262,13 +251,11 @@ INSTANCE_ADMIN_HTML = """<!doctype html>
     </section>
   </main>
   <script>
-    const secretInput = document.getElementById("admin-secret");
     const message = document.getElementById("message");
     const instances = document.getElementById("instances");
-    secretInput.value = sessionStorage.getItem("ezeusAdminSecret") || "";
 
     function headers(json = false) {
-      const result = {"X-EZEUS-Admin-Secret": secretInput.value};
+      const result = {};
       if (json) result["Content-Type"] = "application/json";
       return result;
     }
@@ -280,12 +267,9 @@ INSTANCE_ADMIN_HTML = """<!doctype html>
       return `${location.protocol}//${location.host}${path}`;
     }
     async function loadInstances() {
-      if (!secretInput.value) return;
-      sessionStorage.setItem("ezeusAdminSecret", secretInput.value);
       const response = await fetch("/api/paperless-instances", {headers:headers()});
       if (!response.ok) {
-        instances.textContent = response.status === 401
-          ? "Admin-Secret ist ungültig." : `Laden fehlgeschlagen: HTTP ${response.status}`;
+        instances.textContent = `Laden fehlgeschlagen: HTTP ${response.status}`;
         return;
       }
       const payload = await response.json();
@@ -337,15 +321,10 @@ INSTANCE_ADMIN_HTML = """<!doctype html>
     }
     document.getElementById("instance-form").addEventListener("submit", async (event) => {
       event.preventDefault();
-      if (!secretInput.value) { showMessage("Admin-Secret fehlt.", true); return; }
       const payload = {
-        name:document.getElementById("name").value,
-        slug:document.getElementById("slug").value,
         base_url:document.getElementById("base-url").value,
         api_token:document.getElementById("api-token").value,
-        webhook_secret:document.getElementById("webhook-secret").value,
-        verify_tls:document.getElementById("verify-tls").checked,
-        enabled:document.getElementById("enabled").checked
+        webhook_secret:document.getElementById("webhook-secret").value
       };
       const response = await fetch("/api/paperless-instances", {
         method:"POST", headers:headers(true), body:JSON.stringify(payload)
@@ -355,11 +334,7 @@ INSTANCE_ADMIN_HTML = """<!doctype html>
         showMessage(body.detail || `Speichern fehlgeschlagen: HTTP ${response.status}`, true);
         return;
       }
-      const savedAdminSecret = secretInput.value;
       event.target.reset();
-      secretInput.value = savedAdminSecret;
-      document.getElementById("verify-tls").checked = true;
-      document.getElementById("enabled").checked = true;
       showMessage("Instanz wurde gespeichert.");
       await loadInstances();
     });
