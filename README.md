@@ -147,6 +147,8 @@ Anwendungsnetz erreichbare Instanz zeigen.
 - `ADMIN_API_SECRET`: gemeinsames Secret für administrative Endpunkte
 - `CREDENTIAL_ENCRYPTION_KEY`: Fernet-Schlüssel zur Verschlüsselung gespeicherter
   Paperless-Zugangsdaten
+- `PUBLIC_WEBHOOK_BASE_URL`: öffentliche eZEUS-Adresse, die auf der
+  Instanzverwaltungsseite für Webhook-URLs verwendet wird
 - `PAPERLESS_VERIFY_TLS`: TLS-Zertifikatsprüfung für Paperless
 - `LOCAL_ONLY`: kennzeichnet den ausschließlich lokalen Betriebsmodus
 - `CLOUD_AI_GLOBALLY_ALLOWED`: globale Freigabe für Cloud-AI; derzeit ist kein
