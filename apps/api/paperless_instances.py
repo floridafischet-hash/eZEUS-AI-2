@@ -179,6 +179,11 @@ INSTANCE_ADMIN_HTML = """<!doctype html>
     main { width:min(1080px,calc(100% - 2rem)); margin:2rem auto 4rem; }
     .panel { background:var(--panel); border:1px solid var(--border); border-radius:1rem;
       padding:1.25rem; margin-bottom:1rem; }
+    .form-panel { padding:0; overflow:hidden; }
+    .form-section { padding:1.25rem; border-bottom:1px solid var(--border); }
+    .form-section:last-child { border-bottom:0; }
+    .form-section h2 { margin-bottom:.25rem; }
+    .form-section p { margin-top:0; }
     h1,h2 { margin-top:0; }
     .muted { color:var(--muted); }
     .grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:1rem; }
@@ -207,36 +212,53 @@ INSTANCE_ADMIN_HTML = """<!doctype html>
   <header><strong>eZEUS-AI-2 Verwaltung</strong><a href="/">Zur Übersicht</a></header>
   <main>
     <h1>Paperless-Instanzen</h1>
-    <p class="muted">Zugangsdaten werden verschlüsselt gespeichert und nicht angezeigt.</p>
-    <section class="panel">
-      <h2>Administrativer Zugriff</h2>
-      <label for="admin-secret">Admin-Secret</label>
-      <input id="admin-secret" type="password" autocomplete="current-password">
-    </section>
-    <section class="panel">
-      <h2>Instanz hinzufügen</h2>
-      <form id="instance-form" class="grid">
-        <div><label for="name">Name</label><input id="name" required maxlength="255"></div>
-        <div><label for="slug">Eindeutige Kennung</label>
-          <input id="slug" required pattern="[a-z0-9][a-z0-9-]{0,63}"></div>
-        <div class="wide"><label for="base-url">Paperless-URL</label>
-          <input id="base-url" type="url" required placeholder="https://paperless.example.de"></div>
-        <div><label for="api-token">API-Token</label>
-          <input id="api-token" type="password" required autocomplete="new-password"></div>
-        <div><label for="webhook-secret">Webhook-Secret (mindestens 16 Zeichen)</label>
-          <input id="webhook-secret" type="password" required minlength="16"
-            autocomplete="new-password"></div>
-        <div class="wide checks">
-          <label><input id="verify-tls" type="checkbox" checked>TLS-Zertifikat prüfen</label>
-          <label><input id="enabled" type="checkbox" checked>Instanz aktiv</label>
+    <p class="muted">Alle Angaben können in einem Schritt eingetragen werden. Zugangsdaten
+      werden verschlüsselt gespeichert und nicht wieder angezeigt.</p>
+    <section class="panel form-panel">
+      <form id="instance-form">
+        <div class="form-section">
+          <h2>Neue Paperless-Instanz</h2>
+          <p class="muted">Bezeichnung und Verbindung der externen Instanz.</p>
+          <div class="grid">
+            <div><label for="name">Name</label><input id="name" required maxlength="255"></div>
+            <div><label for="slug">Eindeutige Kennung</label>
+              <input id="slug" required pattern="[a-z0-9][a-z0-9-]{0,63}"
+                placeholder="zum-beispiel-buero"></div>
+            <div class="wide"><label for="base-url">Paperless-URL</label>
+              <input id="base-url" type="url" required
+                placeholder="https://paperless.example.de"></div>
+          </div>
         </div>
-        <div class="wide"><button type="submit">Instanz speichern</button></div>
+        <div class="form-section">
+          <h2>Zugangsdaten</h2>
+          <p class="muted">API-Token und Webhook-Secret der Paperless-Instanz.</p>
+          <div class="grid">
+            <div><label for="api-token">API-Token</label>
+              <input id="api-token" type="password" required autocomplete="new-password"></div>
+            <div><label for="webhook-secret">Webhook-Secret (mindestens 16 Zeichen)</label>
+              <input id="webhook-secret" type="password" required minlength="16"
+                autocomplete="new-password"></div>
+            <div class="wide checks">
+              <label><input id="verify-tls" type="checkbox" checked>TLS-Zertifikat prüfen</label>
+              <label><input id="enabled" type="checkbox" checked>Instanz aktiv</label>
+            </div>
+          </div>
+        </div>
+        <div class="form-section">
+          <h2>Freigabe</h2>
+          <p class="muted">Das Admin-Secret bestätigt und speichert alle Angaben gemeinsam.</p>
+          <label for="admin-secret">Admin-Secret</label>
+          <input id="admin-secret" type="password" required autocomplete="current-password">
+          <div id="message"></div>
+          <button type="submit">Instanz vollständig speichern</button>
+        </div>
       </form>
-      <div id="message"></div>
     </section>
     <section class="panel">
       <h2>Konfigurierte Instanzen</h2>
-      <div id="instances" class="muted">Admin-Secret eingeben, um Instanzen zu laden.</div>
+      <div id="instances" class="muted">
+        Nach dem Speichern werden die Instanzen hier angezeigt.
+      </div>
     </section>
   </main>
   <script>
@@ -313,7 +335,6 @@ INSTANCE_ADMIN_HTML = """<!doctype html>
         instances.append(row);
       });
     }
-    secretInput.addEventListener("change", loadInstances);
     document.getElementById("instance-form").addEventListener("submit", async (event) => {
       event.preventDefault();
       if (!secretInput.value) { showMessage("Admin-Secret fehlt.", true); return; }
@@ -334,7 +355,9 @@ INSTANCE_ADMIN_HTML = """<!doctype html>
         showMessage(body.detail || `Speichern fehlgeschlagen: HTTP ${response.status}`, true);
         return;
       }
+      const savedAdminSecret = secretInput.value;
       event.target.reset();
+      secretInput.value = savedAdminSecret;
       document.getElementById("verify-tls").checked = true;
       document.getElementById("enabled").checked = true;
       showMessage("Instanz wurde gespeichert.");

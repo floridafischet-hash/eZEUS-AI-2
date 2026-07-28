@@ -98,4 +98,9 @@ def test_instance_admin_page_is_available() -> None:
     response = TestClient(app).get("/admin/instances")
     assert response.status_code == 200
     assert "Paperless-Instanzen" in response.text
-    assert "API-Token" in response.text
+    assert response.text.count('<form id="instance-form">') == 1
+    assert 'id="admin-secret"' in response.text
+    assert 'id="base-url"' in response.text
+    assert 'id="api-token"' in response.text
+    assert 'id="webhook-secret"' in response.text
+    assert "Instanz vollständig speichern" in response.text
