@@ -214,8 +214,9 @@ celery -A core.queue.celery_app.celery_app worker -Q high,normal,low --loglevel=
 
 Das Dashboard liegt am Startpfad `/`. Die OpenAPI-Dokumentation ist unter
 `/docs` erreichbar. Paperless-Instanzen werden unter `/admin/instances`
-verwaltet. Die Seite benötigt das `ADMIN_API_SECRET`; es wird nur im
-Sitzungsspeicher des Browsers gehalten.
+verwaltet. Zum Hinzufügen genügen Paperless-URL, API-Token und Webhook-Secret.
+Name und Webhook-Kennung werden automatisch aus der URL erzeugt. Die Seite
+wird am Reverse Proxy durch die bestehende HTTP-Basic-Authentifizierung geschützt.
 
 Einen Fernet-Schlüssel für `CREDENTIAL_ENCRYPTION_KEY` erzeugen:
 
