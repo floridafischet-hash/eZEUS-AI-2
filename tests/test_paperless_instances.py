@@ -80,11 +80,22 @@ def test_instance_credentials_are_encrypted_and_webhook_selects_source(
             json={"document_id": 42, "event_id": "created-42"},
         )
         assert accepted.status_code == 202
+
+        accepted_without_slug = client.post(
+            "/webhooks/paperless",
+            headers={"X-EZEUS-Webhook-Secret": "plain-webhook-secret"},
+            json={"document_id": 43, "event_id": "created-43"},
+        )
+        assert accepted_without_slug.status_code == 202
         with session_factory() as db:
-            document = db.scalar(select(Document))
-            assert document is not None
-            assert document.connector == "paperless:paperless-example-test"
-            assert document.external_document_id == "42"
+            documents = db.scalars(
+                select(Document).order_by(Document.external_document_id)
+            ).all()
+            assert [document.connector for document in documents] == [
+                "paperless:paperless-example-test",
+                "paperless:paperless-example-test",
+            ]
+            assert [document.external_document_id for document in documents] == ["42", "43"]
     finally:
         app.dependency_overrides.clear()
         get_settings.cache_clear()

@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from connectors.paperless.connector import PaperlessConnector
 from core.models.paperless_instance import PaperlessInstance
 from core.security.credentials import decrypt_credential
+from webhooks.paperless.security import verify_shared_secret
 
 CONNECTOR_PREFIX = "paperless:"
 
@@ -25,6 +26,22 @@ def get_enabled_instance(db: Session, slug: str) -> PaperlessInstance | None:
             PaperlessInstance.enabled.is_(True),
         )
     )
+
+
+def find_enabled_instance_by_webhook_secret(
+    db: Session, provided_secret: str | None
+) -> PaperlessInstance | None:
+    if provided_secret is None:
+        return None
+    instances = db.scalars(
+        select(PaperlessInstance).where(PaperlessInstance.enabled.is_(True))
+    )
+    for instance in instances:
+        if verify_shared_secret(
+            provided_secret, decrypt_credential(instance.webhook_secret_encrypted)
+        ):
+            return instance
+    return None
 
 
 def connector_for_document(db: Session, connector: str) -> PaperlessConnector:
