@@ -7,4 +7,4 @@ RUN addgroup --system ezeus && adduser --system --ingroup ezeus --home /home/eze
     && mkdir -p /home/ezeus \
     && chown -R ezeus:ezeus /app /home/ezeus
 USER ezeus
-CMD ["uvicorn", "apps.api.main:app", "--host", "0.0.0.0", "--port", "8080"]
+CMD ["sh", "-c", "uvicorn apps.api.main:app --host ${APP_HOST:-0.0.0.0} --port ${APP_PORT:-8080} --log-level ${APP_LOG_LEVEL:-INFO}"]

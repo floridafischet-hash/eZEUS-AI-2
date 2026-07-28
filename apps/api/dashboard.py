@@ -198,7 +198,7 @@ DASHBOARD_HTML = """<!doctype html>
           <div class="label">eZEUS API</div>
           <div class="value">
             <span class="status-dot" id="api-dot"></span>
-            <span id="api-status">Prüfung …</span>
+            <span id="api-status">Prüfung...</span>
           </div>
         </article>
         <article class="card">
@@ -245,7 +245,7 @@ DASHBOARD_HTML = """<!doctype html>
           </thead>
           <tbody id="log-body"></tbody>
         </table>
-        <div class="empty" id="log-empty">Logs werden geladen …</div>
+        <div class="empty" id="log-empty">Logs werden geladen...</div>
       </div>
     </section>
   </main>
@@ -271,11 +271,11 @@ DASHBOARD_HTML = """<!doctype html>
     );
 
     function setText(cell, value) {
-      cell.textContent = value ?? "–";
+      cell.textContent = value ?? "-";
     }
 
     function formatTime(value) {
-      return value ? new Date(value).toLocaleString("de-DE") : "–";
+      return value ? new Date(value).toLocaleString("de-DE") : "-";
     }
 
     function formatDuration(value) {

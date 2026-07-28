@@ -44,9 +44,7 @@ class OllamaExtractionProvider(ExtractionProvider):
         half = self.max_input_chars // 2
         return f"{text[:half]}\n\n[... Dokument gekürzt ...]\n\n{text[-half:]}"
 
-    async def extract(
-        self, text: str, config: dict[str, object]
-    ) -> list[ExtractionCandidate]:
+    async def extract(self, text: str, config: dict[str, object]) -> list[ExtractionCandidate]:
         settings = get_settings()
         if not settings.ollama_enabled:
             raise RuntimeError("Ollama extraction is disabled")

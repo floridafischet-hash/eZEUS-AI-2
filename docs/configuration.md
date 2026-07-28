@@ -3,7 +3,8 @@
 Alle Werte werden über Umgebungsvariablen gelesen.
 
 - `APP_ENV`: `development`, `test` oder `production`
-- `APP_LOG_LEVEL`: Log-Level
+- `APP_HOST`, `APP_PORT`: Bind-Adresse und Port des API-Containers
+- `APP_LOG_LEVEL`: Log-Level für Uvicorn und Celery
 - `DATABASE_URL`: SQLAlchemy-Datenbank-URL
 - `REDIS_URL`: Celery-Broker und Result-Backend
 - `PAPERLESS_BASE_URL`: Paperless-API-Basisadresse
@@ -26,3 +27,5 @@ Alle Werte werden über Umgebungsvariablen gelesen.
 - `OLLAMA_KEEP_ALIVE`: Vorhaltezeit des geladenen Modells
 
 Secrets dürfen nicht in Images, Versionsverwaltung oder Logs abgelegt werden.
+Im Produktionsmodus werden leere, mit `example-` beginnende und als
+`change-me` markierte Anwendungs-Secrets abgelehnt.

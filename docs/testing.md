@@ -19,7 +19,8 @@ docker compose up -d
 docker compose ps
 ```
 
-Der lokale E2E-Stack enthält einen Paperless-API-Mock und die echte PDF-Datei
-`tests/fixtures/invoice.pdf`. Der verifizierte Ablauf umfasst Webhook, Celery,
-PaddleOCR, Template, Regex/Keyword, Validierung, PostgreSQL, Audit und
-Paperless-Schreibschutz.
+Der lokale Stack enthält einen Paperless-API-Mock und die PDF-Datei
+`tests/fixtures/invoice.pdf` für manuelle End-to-End-Prüfungen. Der
+automatisierte Integrationstest verwendet einen isolierten Connector und einen
+OCR-Testprovider. Er prüft Templateauswahl, Extraktion, Validierung,
+Persistierung, Audit und Schreibschutz ohne externe Dienste.
