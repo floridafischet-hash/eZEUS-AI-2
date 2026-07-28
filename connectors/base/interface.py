@@ -14,6 +14,13 @@ class ConnectorDocument:
     custom_fields: dict[str, object] = field(default_factory=dict)
 
 
+@dataclass(slots=True, frozen=True)
+class ConnectorCustomField:
+    external_id: str
+    name: str
+    data_type: str
+
+
 class DocumentConnector(ABC):
     @abstractmethod
     async def health_check(self) -> bool: ...
@@ -31,3 +38,6 @@ class DocumentConnector(ABC):
     async def write_empty_fields(
         self, external_document_id: str, values: dict[str, object]
     ) -> dict[str, object]: ...
+
+    async def list_custom_fields(self) -> list[ConnectorCustomField]:
+        return []

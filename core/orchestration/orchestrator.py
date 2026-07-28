@@ -13,6 +13,7 @@ from core.models.extraction import ExtractionResult
 from core.models.job import Job
 from core.models.job_phase import JobPhaseEntry
 from core.paperless.service import connector_for_document
+from core.templates.automatic import config_from_custom_fields
 from core.templates.service import TemplateService
 from core.validation.engine import ValidationEngine
 from plugins.base.interfaces import ExtractionCandidate
@@ -125,15 +126,28 @@ class Orchestrator:
                     document.document_type_external_id
                 )
                 if selected is None:
-                    self._finish_phase(active_phase, metadata={"selected": False})
-                    job.status = JobStatus.COMPLETED_WITH_WARNINGS
-                    job.finished_at = datetime.now(UTC)
-                    self.db.commit()
-                    return
-                template, config = selected
-                job.selected_template_id = template.id
-                job.selected_template_version = template.version
-                self._finish_phase(active_phase, metadata={"template_id": str(template.id)})
+                    config = config_from_custom_fields(await connector.list_custom_fields())
+                    if config is None:
+                        self._finish_phase(active_phase, metadata={"selected": False})
+                        job.status = JobStatus.COMPLETED_WITH_WARNINGS
+                        job.finished_at = datetime.now(UTC)
+                        self.db.commit()
+                        return
+                    self._finish_phase(
+                        active_phase,
+                        metadata={
+                            "selected": True,
+                            "source": "paperless_custom_fields",
+                            "field_ids": [
+                                field.target_field_id for field in config.fields.values()
+                            ],
+                        },
+                    )
+                else:
+                    template, config = selected
+                    job.selected_template_id = template.id
+                    job.selected_template_version = template.version
+                    self._finish_phase(active_phase, metadata={"template_id": str(template.id)})
 
                 active_phase = self._start_phase(job, JobPhase.EXTRACT_FIELDS)
                 candidates_by_field: dict[
