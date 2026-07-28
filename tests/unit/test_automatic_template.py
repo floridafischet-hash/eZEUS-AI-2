@@ -214,6 +214,41 @@ async def test_invoice_label_does_not_consume_value_from_next_ocr_line() -> None
 @pytest.mark.parametrize(
     ("text", "expected"),
     [
+        ("Rechnung R1803", "R1803"),
+        ("Rechnung 184084", "184084"),
+        ("Bon-Nr.: 300007321", "300007321"),
+    ],
+)
+async def test_additional_invoice_identifier_formats(text: str, expected: str) -> None:
+    config = config_from_custom_fields([ConnectorCustomField("93", "Rechnungsnummer", "string")])
+    assert config is not None
+    provider = config.fields["invoice_number"].providers[0]
+
+    candidates = await RegexExtractionProvider().extract(
+        text, provider.model_dump(exclude={"type"})
+    )
+
+    assert [candidate.value for candidate in candidates] == [expected]
+
+
+@pytest.mark.asyncio
+async def test_plain_invoice_heading_is_not_an_identifier() -> None:
+    config = config_from_custom_fields([ConnectorCustomField("93", "Rechnungsnummer", "string")])
+    assert config is not None
+    provider = config.fields["invoice_number"].providers[0]
+
+    candidates = await RegexExtractionProvider().extract(
+        "Rechnung\nRechnungsdatum: 15.01.2015",
+        provider.model_dump(exclude={"type"}),
+    )
+
+    assert candidates == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
         ("Nettosumme 1.357,00 €\nGesamtsumme 1.614,83 €", "1.614,83"),
         ("Nettosumme € 899,99\nGesamtsumme € 1.070,99", "1.070,99"),
         ("Rechnungswert (brutto) 1.233,88 €", "1.233,88"),
@@ -228,6 +263,15 @@ async def test_invoice_label_does_not_consume_value_from_next_ocr_line() -> None
         ),
         ("19.00 % MwSt: 208.28 EUR\nGesamtsumme: 1304.48 EUR", "1304.48"),
         ("Fälligkeitsdatum: 27/02/2025 Summe: 6,66", "6,66"),
+        ("ZWISCHENSUMME netto 3.455,00 €\nENDSUMME brutto 4.111,45 €", "4.111,45"),
+        ("ENDSUMME brutto\n3.867,50 €", "3.867,50"),
+        ("Gesamtbetrag brutto: 28.441,00 EUR", "28.441,00"),
+        (
+            "Zahlungsbedingung Zahlbar sofort rein netto. Netto 320,70 €\n"
+            "Bindung Es gelten die AGB des Lieferanten Brutto 381,63 €",
+            "381,63",
+        ),
+        ("Artikel: 2 Total: 98,70\nBargeld 98,70€", "98,70"),
     ],
 )
 async def test_invoice_amount_patterns_select_only_gross_total(text: str, expected: str) -> None:

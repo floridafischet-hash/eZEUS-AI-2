@@ -25,6 +25,10 @@ FIELD_DEFINITIONS: dict[str, dict[str, object]] = {
             r"\s*[:.]?[ \t]*"
             r"(?!Kunden(?:nummer|[\s.-]*(?:Nr|Nummer)\.?))"
             r"([A-Z0-9][A-Z0-9./_-]*)",
+            r"(?im)^\s*Rechnung\s+(?=[A-Z0-9./_-]*\d)"
+            r"([A-Z0-9][A-Z0-9./_-]*)\s*$",
+            r"(?im)^\s*Bon[\s.-]*(?:Nr|Nummer)\.?\s*:\s*"
+            r"([A-Z0-9][A-Z0-9./_-]*)\s*$",
             r"(?i)(?:"
             r"BV(?:[\s.-]*(?:Nr|Nummer))?\.?|"
             r"Baustellen?(?:[\s.-]*(?:Nr|Nummer))\.?"
@@ -44,10 +48,16 @@ FIELD_DEFINITIONS: dict[str, dict[str, object]] = {
             r"(?:EUR|€)?\s*([\d.,]+\d{2})\s*(?:EUR|€|Euro)?\s*$",
             r"(?im)^\s*Fälligkeitsdatum\s*:\s*\d{1,2}[./-]\d{1,2}[./-]\d{2,4}"
             r"\s+Summe\s*:\s*(?:EUR|€)?\s*([\d.,]+\d{2})\s*(?:EUR|€)?\s*$",
+            r"(?im)^\s*Artikel\s*:\s*\d+\s+Total\s*:\s*"
+            r"(?:EUR|€)?\s*([\d.,]+\d{2})\s*(?:EUR|€)?\s*$",
+            r"(?i)(?<!Endsumme )(?<!Gesamtbetrag )\bBrutto\s*[:.]?\s*"
+            r"(?:EUR|€)?\s*([\d.,]+\d{2})\s*(?:EUR|€)?",
             r"(?i)(?:"
             r"Brutto[\s.-]*Rechnungsbetrag|"
             r"Bruttobetrag|"
+            r"Endsumme\s+brutto|"
             r"Gesamtbetrag|"
+            r"Gesamtbetrag\s+brutto|"
             r"Gesamtsumme|"
             r"Rechnungswert\s*\(\s*brutto\s*\)|"
             r"Zahlbetrag|"
