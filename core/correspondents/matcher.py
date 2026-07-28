@@ -31,6 +31,8 @@ def _line_score(rule: str, line: str) -> float:
         return 0.0
     if normalized_rule in normalized_line:
         return 1.0
+    if len(normalized_rule.split()) == 1:
+        return 0.0
     return SequenceMatcher(None, normalized_rule, normalized_line).ratio()
 
 
