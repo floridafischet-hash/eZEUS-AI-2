@@ -28,6 +28,8 @@ def test_dashboard_is_available() -> None:
     assert response.status_code == 200
     assert "Logs" in response.text
     assert "Qwen3:4b" in response.text
+    assert "const expandedJobIds = new Set();" in response.text
+    assert "expandedJobIds.add(entry.job_id);" in response.text
     assert "Was ist passiert?" in response.text
     assert "Vollständiger Jobfehler" in response.text
 

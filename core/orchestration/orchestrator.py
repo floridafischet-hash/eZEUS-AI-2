@@ -150,6 +150,16 @@ class Orchestrator:
                     self._finish_phase(active_phase, metadata={"template_id": str(template.id)})
 
                 active_phase = self._start_phase(job, JobPhase.EXTRACT_FIELDS)
+                extraction_text = (
+                    remote.content.strip()
+                    if remote.content and remote.content.strip()
+                    else ocr_result.text
+                )
+                extraction_source = (
+                    "paperless_content"
+                    if remote.content and remote.content.strip()
+                    else "paddleocr"
+                )
                 candidates_by_field: dict[
                     str, list[tuple[ExtractionCandidate, ExtractionResult]]
                 ] = {}
@@ -158,7 +168,7 @@ class Orchestrator:
                     for provider_config in field.providers:
                         provider_data = provider_config.model_dump(exclude={"type"})
                         for candidate in await PROVIDERS[provider_config.type]().extract(
-                            ocr_result.text, provider_data
+                            extraction_text, provider_data
                         ):
                             result = ExtractionResult(
                                 job_id=job.id,
@@ -183,6 +193,8 @@ class Orchestrator:
                         "candidates_found": sum(
                             len(items) for items in candidates_by_field.values()
                         ),
+                        "text_source": extraction_source,
+                        "text_characters": len(extraction_text),
                     },
                 )
 
@@ -238,7 +250,9 @@ class Orchestrator:
             active_phase = self._start_phase(job, JobPhase.CLEANUP)
             self._finish_phase(active_phase)
             active_phase = self._start_phase(job, JobPhase.COMPLETE)
-            job.status = JobStatus.COMPLETED
+            job.status = (
+                JobStatus.COMPLETED if extracted_values else JobStatus.COMPLETED_WITH_WARNINGS
+            )
             job.finished_at = datetime.now(UTC)
             self._finish_phase(active_phase)
         except Exception as exc:
