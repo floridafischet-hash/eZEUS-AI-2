@@ -44,6 +44,7 @@ def test_instance_credentials_are_encrypted_and_webhook_selects_source(
         create_response = client.post(
             "/api/paperless-instances",
             json={
+                "name": "Externes Paperless",
                 "base_url": "https://paperless.example.test",
                 "api_token": "plain-api-token",
                 "webhook_secret": "plain-webhook-secret",
@@ -96,6 +97,7 @@ def test_instance_admin_page_is_available() -> None:
     assert response.text.count('<form id="instance-form">') == 1
     assert 'id="admin-secret"' not in response.text
     assert "Admin-Secret" not in response.text
+    assert 'id="name"' in response.text
     assert 'id="base-url"' in response.text
     assert 'id="api-token"' in response.text
     assert 'id="webhook-secret"' in response.text

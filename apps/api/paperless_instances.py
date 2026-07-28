@@ -26,6 +26,7 @@ SLUG_PATTERN = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$")
 
 
 class InstanceCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
     base_url: AnyHttpUrl
     api_token: str = Field(min_length=1, max_length=4096)
     webhook_secret: str = Field(min_length=16, max_length=4096)
@@ -50,9 +51,8 @@ def _validate_slug(slug: str) -> str:
     return normalized
 
 
-def _instance_identity(base_url: str, db: Session) -> tuple[str, str]:
+def _instance_slug(base_url: str, db: Session) -> str:
     hostname = urlparse(base_url).hostname or "paperless"
-    name = hostname[:255]
     base_slug = re.sub(r"[^a-z0-9]+", "-", hostname.lower()).strip("-")[:64]
     base_slug = base_slug or "paperless"
     slug = base_slug
@@ -61,7 +61,7 @@ def _instance_identity(base_url: str, db: Session) -> tuple[str, str]:
         suffix_text = f"-{suffix}"
         slug = f"{base_slug[: 64 - len(suffix_text)]}{suffix_text}"
         suffix += 1
-    return name, _validate_slug(slug)
+    return _validate_slug(slug)
 
 
 def _serialize(instance: PaperlessInstance) -> dict[str, object]:
@@ -98,9 +98,9 @@ def create_instance(
     db: Annotated[Session, Depends(get_db)],
 ) -> dict[str, object]:
     base_url = str(payload.base_url).rstrip("/")
-    name, slug = _instance_identity(base_url, db)
+    slug = _instance_slug(base_url, db)
     instance = PaperlessInstance(
-        name=name,
+        name=payload.name.strip(),
         slug=slug,
         base_url=base_url,
         api_token_encrypted=encrypt_credential(payload.api_token),
@@ -229,6 +229,8 @@ INSTANCE_ADMIN_HTML = """<!doctype html>
           <h2>Neue Paperless-Instanz</h2>
           <p class="muted">Verbindung und Zugangsdaten der externen Instanz.</p>
           <div class="grid">
+            <div class="wide"><label for="name">Name</label>
+              <input id="name" required maxlength="255"></div>
             <div class="wide"><label for="base-url">Paperless-URL</label>
               <input id="base-url" type="url" required
                 placeholder="https://paperless.example.de"></div>
@@ -322,6 +324,7 @@ INSTANCE_ADMIN_HTML = """<!doctype html>
     document.getElementById("instance-form").addEventListener("submit", async (event) => {
       event.preventDefault();
       const payload = {
+        name:document.getElementById("name").value,
         base_url:document.getElementById("base-url").value,
         api_token:document.getElementById("api-token").value,
         webhook_secret:document.getElementById("webhook-secret").value
