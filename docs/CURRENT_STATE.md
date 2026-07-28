@@ -177,16 +177,33 @@ automatisch zu Gesamtsummen. Alle gefundenen Gesamtsummenkandidaten bleiben im
 Extraktionsprotokoll erhalten; niedrigere Kandidaten werden mit einem
 nachvollziehbaren Ablehnungsgrund markiert.
 
-Für das Zielfeld `Rechnungsnummer` werden vorrangig Bezeichnungen wie
-`Rechnungsnummer` und `Rechnung-Nr.` ausgewertet. Fehlen diese, kann eine
-`Kundennummer` beziehungsweise `Kunden-Nr.` als Ersatzwert verwendet werden.
-Enthält ein Dokument beide Angaben, besitzt die Rechnungsnummer Vorrang.
+Für das Zielfeld `Rechnungsnummer` gilt folgende verbindliche Priorität:
+
+1. Eine ausdrücklich bezeichnete Rechnungsnummer, beispielsweise
+   `Rechnungsnummer` oder `Rechnung-Nr.`
+2. Falls keine Rechnungsnummer erkannt wird, eine ausdrücklich bezeichnete
+   BV- oder Baustellennummer
+
+Eine BV- oder Baustellennummer wird nur akzeptiert, wenn sie genau fünfstellig
+ist und mit `24`, `25` oder `26` beginnt. `Kundennummer` und `Kunden-Nr.` sind
+als Ersatzwerte vollständig ausgeschlossen. Fehlen Rechnungsnummer und gültige
+BV-/Baustellennummer, bleibt das Zielfeld leer und der Job meldet eine Warnung.
+
+Der zusammengefallene OCR-Spaltenaufbau
+`Datum: Rechnungsnr.: Kunden-Nr.:` wird gesondert ausgewertet. Dabei wird der
+Wert unter `Rechnungsnr.` übernommen und der Wert unter `Kunden-Nr.` ignoriert.
+Dokument `3555` dient als produktiv bestätigter Referenzfall:
+
+- Rechnungsnummer: `5799588`
+- Kundennummer: `2011452`, nicht übernommen
+- BV-/Baustellennummer: `25164`, nur Ersatzkandidat
+- Rechnungsbetrag: `531,93`
 
 ## Qualitätssicherung
 
 Der dokumentierte Stand wurde mit folgenden Prüfungen validiert:
 
-- 31 Python-Tests erfolgreich
+- 52 Python-Tests erfolgreich
 - Ruff erfolgreich
 - mypy erfolgreich
 - produktiver Readiness-Test erfolgreich

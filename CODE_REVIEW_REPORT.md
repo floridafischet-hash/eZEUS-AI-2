@@ -431,3 +431,45 @@ verifiziertes Container-Build-Ergebnis vor.
 Es wurden keine ungenutzten Funktionen, Imports oder Variablen entfernt, weil
 Ruff und die manuelle Referenzprüfung dafür keinen sicheren Befund lieferten.
 Bewusst vorbereitete Plugin-Schnittstellen blieben erhalten.
+
+## Ergänzung: Schutz der Rechnungsnummernzuordnung
+
+Betroffene Dateien:
+
+- `core/templates/automatic.py`
+- `tests/unit/test_automatic_template.py`
+- `docs/CURRENT_STATE.md`
+- `README.md`
+
+Änderung:
+
+- Kundennummern wurden vollständig als Rechnungsnummer-Ersatz entfernt.
+- Eine gültige BV-/Baustellennummer darf nur ersatzweise verwendet werden,
+  wenn keine Rechnungsnummer erkannt wurde.
+- BV-/Baustellennummern müssen genau fünfstellig sein und mit `24`, `25` oder
+  `26` beginnen.
+- Zusammengefallene OCR-Spalten mit Datum, Rechnungsnummer und Kundennummer
+  werden positionsbezogen ausgewertet.
+- Fehlen Rechnungsnummer und gültige BV-/Baustellennummer, wird kein Wert
+  geschrieben.
+
+Grund:
+
+Bei Paperless-Dokument `3555` wurde durch eine fehlerhafte Ersatzregel der Text
+`Kunden-Nr.` in das Feld `Rechnungsnummer` geschrieben. Der Dokumentinhalt
+enthielt tatsächlich die Rechnungsnummer `5799588`, die Kundennummer `2011452`
+und die BV-/Baustellennummer `25164`.
+
+Auswirkung:
+
+Dokument `3555` wurde produktiv auf `5799588` korrigiert. Kundennummern können
+künftig weder als Wert noch als Bezeichnung in das Rechnungsnummernfeld
+gelangen. Der konkrete OCR-Aufbau ist durch einen Regressionstest abgedeckt.
+
+Validierung:
+
+- 52 Python-Tests erfolgreich
+- Ruff erfolgreich
+- mypy für den produktiven Quellcode erfolgreich
+- produktiver Readiness-Test vollständig erfolgreich
+- GitHub-Codecommit: `c59ad18`

@@ -268,6 +268,13 @@ Beispiel-Payload:
 Ein neuer Auftrag liefert HTTP 202. Ein bereits verarbeitetes Event liefert
 HTTP 200.
 
+Bei der automatischen Befüllung des Feldes `Rechnungsnummer` wird zuerst nach
+einer ausdrücklich bezeichneten Rechnungsnummer gesucht. Nur wenn diese fehlt,
+kann eine ausdrücklich bezeichnete, fünfstellige BV-/Baustellennummer mit
+Präfix `24`, `25` oder `26` verwendet werden. Kundennummern werden niemals als
+Rechnungsnummer übernommen. Fehlen beide zulässigen Werte, bleibt das Feld leer
+und der Auftrag wird mit einer Warnung protokolliert.
+
 Templates werden über `POST /api/templates` angelegt. Der Aufruf benötigt den
 Header `X-EZEUS-Admin-Secret`. Ein minimales Template:
 
