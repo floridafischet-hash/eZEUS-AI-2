@@ -12,12 +12,6 @@ def _normalized_name(value: str) -> str:
 FIELD_DEFINITIONS: dict[str, dict[str, object]] = {
     "rechnungsnummer": {
         "key": "invoice_number",
-        "field_name": "Rechnungsnummer",
-        "value_hint": "Exakter alphanumerischer Wert ohne Label",
-        "instructions": (
-            "Bevorzuge Rechnungsnummer, Rechnungs-Nr. oder Belegnummer. "
-            "Nicht Kunden-, Bestell- oder Lieferscheinnummer verwenden."
-        ),
         "validators": [{"type": "not_empty"}, {"type": "length", "min": 1, "max": 100}],
         "patterns": [
             r"(?i)(?:Rechnungsnummer|Rechnung(?:s)?[\s.-]*(?:Nr|Nummer)\.?)"
@@ -26,11 +20,6 @@ FIELD_DEFINITIONS: dict[str, dict[str, object]] = {
     },
     "rechnungsbetrag": {
         "key": "invoice_amount",
-        "field_name": "Rechnungsbetrag",
-        "value_hint": "Deutscher Dezimalbetrag ohne Währung, zum Beispiel 1234,56",
-        "instructions": (
-            "Extrahiere den zu zahlenden Brutto-Endbetrag, nicht Netto, Steuer oder Einzelposition."
-        ),
         "validators": [{"type": "not_empty"}, {"type": "monetary_amount"}],
         "patterns": [
             r"(?i)(?:Brutto[\s.-]*Rechnungsbetrag|Bruttobetrag|Gesamtbetrag|Rechnungsbetrag)"
@@ -39,12 +28,6 @@ FIELD_DEFINITIONS: dict[str, dict[str, object]] = {
     },
     "lieferscheinnummer": {
         "key": "delivery_note_number",
-        "field_name": "Lieferscheinnummer",
-        "value_hint": "Exakter alphanumerischer Wert ohne Label",
-        "instructions": (
-            "Bevorzuge Lieferscheinnummer oder Lieferschein-Nr. "
-            "Nicht Bestell- oder Rechnungsnummer verwenden."
-        ),
         "validators": [{"type": "not_empty"}, {"type": "length", "min": 1, "max": 100}],
         "patterns": [
             r"(?i)(?:Lieferscheinnummer|Lieferschein[\s.-]*(?:Nr|Nummer)\.?)"
@@ -66,13 +49,7 @@ def config_from_custom_fields(fields: list[ConnectorCustomField]) -> TemplateCon
                 {
                     "type": "regex",
                     "patterns": definition["patterns"],
-                },
-                {
-                    "type": "ollama",
-                    "field_name": definition["field_name"],
-                    "value_hint": definition["value_hint"],
-                    "instructions": definition["instructions"],
-                },
+                }
             ],
             "validators": definition["validators"],
             "minimum_confidence": 0.55,
