@@ -25,6 +25,11 @@ FIELD_DEFINITIONS: dict[str, dict[str, object]] = {
             r"\s*[:.]?[ \t]*"
             r"(?!Kunden(?:nummer|[\s.-]*(?:Nr|Nummer)\.?))"
             r"([A-Z0-9][A-Z0-9./_-]*)",
+            r"(?i)(?:"
+            r"BV(?:[\s.-]*(?:Nr|Nummer))?\.?|"
+            r"Baustellen?(?:[\s.-]*(?:Nr|Nummer))\.?"
+            r")"
+            r"\s*[:.]?[ \t]*(2[456]\d{3})(?!\d)",
             r"(?i)(?:Kundennummer|Kunden[\s.-]*(?:Nr|Nummer)\.?)"
             r"\s*[:.]?[ \t]*([A-Z0-9][A-Z0-9./_-]*)",
         ],
