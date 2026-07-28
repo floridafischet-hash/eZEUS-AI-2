@@ -21,6 +21,7 @@ FIELD_DEFINITIONS: dict[str, dict[str, object]] = {
     "rechnungsbetrag": {
         "key": "invoice_amount",
         "validators": [{"type": "not_empty"}, {"type": "monetary_amount"}],
+        "selection_strategy": "highest",
         "patterns": [
             r"(?i)(?:"
             r"Brutto[\s.-]*Rechnungsbetrag|"
@@ -62,6 +63,7 @@ def config_from_custom_fields(fields: list[ConnectorCustomField]) -> TemplateCon
             ],
             "validators": definition["validators"],
             "minimum_confidence": 0.55,
+            "selection_strategy": definition.get("selection_strategy", "unique"),
         }
     if not configured:
         return None

@@ -27,6 +27,7 @@ class FakeOCR(OCRProvider):
         assert document_path.parent.name.startswith("ezeus-")
         words = (
             OCRWord("Rechnungsnummer: R-4711", 0.99, BoundingBox(1, 1, 20, 2)),
+            OCRWord("Gesamtbetrag: 900,00 EUR", 0.98, BoundingBox(1, 2, 20, 3)),
             OCRWord("Gesamtbetrag: 1.234,56 EUR", 0.98, BoundingBox(1, 3, 20, 4)),
         )
         return OCRDocument(document_path, self.id, (OCRPage(1, words),))
@@ -102,6 +103,7 @@ async def test_document_pipeline_persists_results_and_audit(tmp_path: Path) -> N
                     },
                     "total": {
                         "target_field_id": 15,
+                        "selection_strategy": "highest",
                         "providers": [
                             {
                                 "type": "regex",
@@ -130,7 +132,15 @@ async def test_document_pipeline_persists_results_and_audit(tmp_path: Path) -> N
         assert connector.fields["14"] == "R-4711"
         assert connector.fields["15"] == "1234.56"
         assert connector.fields["99"] == "manual"
-        assert len(db.scalars(select(ExtractionResult)).all()) == 2
+        results = db.scalars(select(ExtractionResult)).all()
+        assert len(results) == 3
+        total_results = [result for result in results if result.field_key == "total"]
+        assert [result.normalized_value for result in total_results] == [
+            "900.00",
+            "1234.56",
+        ]
+        assert [result.accepted for result in total_results] == [False, True]
+        assert total_results[0].reason == "Lower validated total candidate"
         assert len(db.scalars(select(AuditEntry)).all()) == 3
         artifact = db.scalar(select(OCRArtifact))
         assert artifact is not None

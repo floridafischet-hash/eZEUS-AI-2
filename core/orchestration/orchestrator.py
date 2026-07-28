@@ -1,4 +1,5 @@
 from datetime import UTC, datetime
+from decimal import Decimal
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from time import monotonic
@@ -282,7 +283,20 @@ class Orchestrator:
                         if accepted and candidate.confidence >= field.minimum_confidence:
                             valid.append((candidate.confidence, normalized, result))
                     distinct = {str(item[1]) for item in valid}
-                    if valid and len(distinct) == 1:
+                    if valid and field.selection_strategy == "highest":
+                        winner = max(
+                            valid,
+                            key=lambda item: (
+                                Decimal(str(item[1])),
+                                item[0],
+                            ),
+                        )
+                        winner[2].accepted = True
+                        extracted_values[str(field.target_field_id)] = winner[1]
+                        for _, _, result in valid:
+                            if result is not winner[2]:
+                                result.reason = "Lower validated total candidate"
+                    elif valid and len(distinct) == 1:
                         winner = max(valid, key=lambda item: item[0])
                         winner[2].accepted = True
                         extracted_values[str(field.target_field_id)] = winner[1]
