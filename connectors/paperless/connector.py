@@ -12,7 +12,7 @@ from connectors.base.errors import (
     TimeoutError,
     ValidationError,
 )
-from connectors.base.interface import ConnectorDocument, DocumentConnector
+from connectors.base.interface import ConnectorCustomField, ConnectorDocument, DocumentConnector
 from core.config.settings import get_settings
 
 
@@ -50,9 +50,7 @@ class PaperlessConnector(DocumentConnector):
                 f"Paperless authentication failed: HTTP 401 from {request_url}"
             )
         if response.status_code == 403:
-            raise AuthorizationError(
-                f"Paperless authorization failed: HTTP 403 from {request_url}"
-            )
+            raise AuthorizationError(f"Paperless authorization failed: HTTP 403 from {request_url}")
         if response.status_code == 404:
             raise NotFoundError(f"Paperless resource not found: HTTP 404 from {request_url}")
         if response.status_code == 409:
@@ -93,6 +91,24 @@ class PaperlessConnector(DocumentConnector):
         if len(response.content) > settings.max_document_bytes:
             raise ValidationError("Document exceeds the configured size limit")
         return response.content
+
+    async def list_custom_fields(self) -> list[ConnectorCustomField]:
+        fields: list[ConnectorCustomField] = []
+        url = "/api/custom_fields/?page_size=100"
+        while url:
+            response = await self._request("GET", url)
+            data = response.json()
+            fields.extend(
+                ConnectorCustomField(
+                    external_id=str(item["id"]),
+                    name=str(item["name"]),
+                    data_type=str(item["data_type"]),
+                )
+                for item in data.get("results", [])
+            )
+            next_url = data.get("next")
+            url = str(next_url) if next_url else ""
+        return fields
 
     async def write_content(self, external_document_id: str, content: str) -> bool:
         current = await self.get_document(external_document_id)
