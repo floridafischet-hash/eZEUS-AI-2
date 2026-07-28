@@ -77,3 +77,34 @@ async def test_ollama_provider_returns_no_candidate_when_missing(
 
     assert result == []
     get_settings.cache_clear()
+
+
+@pytest.mark.asyncio
+async def test_ollama_provider_rejects_value_not_present_in_source(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OLLAMA_ENABLED", "true")
+    get_settings.cache_clear()
+
+    async def handler(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "message": {
+                    "role": "assistant",
+                    "content": json.dumps({"found": True, "value": "642,48", "confidence": 1}),
+                }
+            },
+        )
+
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(handler), base_url="http://ollama:11434"
+    ) as client:
+        provider = OllamaExtractionProvider(client=client)
+        result = await provider.extract(
+            "Brutto-Rechnungsbetrag 342,48 €",
+            {"field_name": "Rechnungsbetrag"},
+        )
+
+    assert result == []
+    get_settings.cache_clear()
