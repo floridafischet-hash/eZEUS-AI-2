@@ -79,7 +79,14 @@ class Orchestrator:
             document.filename = remote.filename
             document.mime_type = remote.mime_type
             document.document_type_external_id = remote.document_type_id
-            self._finish_phase(active_phase)
+            self._finish_phase(
+                active_phase,
+                metadata={
+                    "filename": remote.filename,
+                    "mime_type": remote.mime_type,
+                    "document_type_id": remote.document_type_id,
+                },
+            )
 
             active_phase = self._start_phase(job, JobPhase.DOWNLOAD_DOCUMENT)
             with TemporaryDirectory(prefix="ezeus-") as temp_dir:
@@ -108,7 +115,10 @@ class Orchestrator:
                 )
                 if wrote_content:
                     self._audit(job, "WRITE_CONTENT", "content", None, "[OCR content]")
-                self._finish_phase(active_phase)
+                self._finish_phase(
+                    active_phase,
+                    metadata={"content_written": wrote_content},
+                )
 
                 active_phase = self._start_phase(job, JobPhase.SELECT_TEMPLATE)
                 selected = self.templates.select_for_document_type(
@@ -152,7 +162,15 @@ class Orchestrator:
                             persisted.append((candidate, result))
                     candidates_by_field[field_key] = persisted
                 self.db.commit()
-                self._finish_phase(active_phase)
+                self._finish_phase(
+                    active_phase,
+                    metadata={
+                        "fields_configured": len(config.fields),
+                        "candidates_found": sum(
+                            len(items) for items in candidates_by_field.values()
+                        ),
+                    },
+                )
 
                 active_phase = self._start_phase(job, JobPhase.VALIDATE_RESULTS)
                 extracted_values: dict[str, object] = {}
@@ -177,11 +195,17 @@ class Orchestrator:
                         for _, _, result in valid:
                             result.reason = "Conflicting validated candidates"
                 self.db.commit()
-                self._finish_phase(active_phase)
+                self._finish_phase(
+                    active_phase,
+                    metadata={"fields_accepted": len(extracted_values)},
+                )
 
                 active_phase = self._start_phase(job, JobPhase.RELOAD_METADATA)
                 before_write = await connector.get_document(document.external_document_id)
-                self._finish_phase(active_phase)
+                self._finish_phase(
+                    active_phase,
+                    metadata={"metadata_reloaded": True},
+                )
 
                 active_phase = self._start_phase(job, JobPhase.WRITE_METADATA)
                 changed = await connector.write_empty_fields(

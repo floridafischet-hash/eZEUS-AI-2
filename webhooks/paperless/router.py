@@ -10,7 +10,11 @@ from core.db.session import get_db
 from core.events.document_imported import DocumentImportedEvent
 from core.jobs.service import JobService
 from core.models.enums import JobPriority
-from core.paperless.service import connector_name, get_enabled_instance
+from core.paperless.service import (
+    connector_name,
+    find_enabled_instance_by_webhook_secret,
+    get_enabled_instance,
+)
 from core.queue.adapter import QueueAdapter
 from core.security.credentials import CredentialEncryptionError, decrypt_credential
 from webhooks.paperless.schemas import PaperlessWebhookPayload
@@ -27,6 +31,15 @@ def receive_paperless_webhook(
     x_ezeus_webhook_secret: str | None = Header(default=None),
 ) -> dict[str, str | bool]:
     settings = get_settings()
+    instance = find_enabled_instance_by_webhook_secret(db, x_ezeus_webhook_secret)
+    if instance is not None:
+        return _accept_event(
+            payload,
+            response,
+            db,
+            connector=connector_name(instance.slug),
+            source_prefix=str(instance.id),
+        )
     if not verify_shared_secret(x_ezeus_webhook_secret, settings.paperless_webhook_secret):
         raise HTTPException(status_code=401, detail="Invalid webhook secret")
     return _accept_event(payload, response, db, connector="paperless", source_prefix="legacy")
