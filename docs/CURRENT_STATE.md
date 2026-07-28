@@ -125,6 +125,11 @@ verwendet vorhandene Custom-Field-Werte nicht als alleinige Wahrheitsquelle.
 - Bereits gefüllte Paperless-Felder werden nicht überschrieben.
 - Eine eindeutig erkannte Rechnungsnummer wird zusätzlich als Dokumenttitel
   gesetzt. Ein bereits identischer Titel verursacht keine Schreiboperation.
+- Ein leerer Korrespondent wird nur gesetzt, wenn die Paperless-Matching-Regel
+  beziehungsweise ersatzweise der Korrespondentenname mindestens 60 Prozent
+  mit dem OCR-Text übereinstimmt. Der beste eindeutige Treffer gewinnt;
+  Gleichstände und niedrigere Treffer bleiben leer. Bereits gesetzte
+  Korrespondenten werden nicht überschrieben.
 - Ein Auftrag ist nur `COMPLETED`, wenn alle vorgesehenen Felder eindeutig
   erkannt wurden.
 - Fehlende Felder führen zu `COMPLETED_WITH_WARNINGS`.

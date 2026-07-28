@@ -12,7 +12,12 @@ from connectors.base.errors import (
     TimeoutError,
     ValidationError,
 )
-from connectors.base.interface import ConnectorCustomField, ConnectorDocument, DocumentConnector
+from connectors.base.interface import (
+    ConnectorCorrespondent,
+    ConnectorCustomField,
+    ConnectorDocument,
+    DocumentConnector,
+)
 from core.config.settings import get_settings
 
 
@@ -110,6 +115,26 @@ class PaperlessConnector(DocumentConnector):
             url = str(next_url) if next_url else ""
         return fields
 
+    async def list_correspondents(self) -> list[ConnectorCorrespondent]:
+        correspondents: list[ConnectorCorrespondent] = []
+        url = "/api/correspondents/?page_size=100"
+        while url:
+            response = await self._request("GET", url)
+            data = response.json()
+            correspondents.extend(
+                ConnectorCorrespondent(
+                    external_id=str(item["id"]),
+                    name=str(item["name"]),
+                    match=str(item.get("match") or ""),
+                    matching_algorithm=int(item.get("matching_algorithm") or 0),
+                    is_insensitive=bool(item.get("is_insensitive", True)),
+                )
+                for item in data.get("results", [])
+            )
+            next_url = data.get("next")
+            url = str(next_url) if next_url else ""
+        return correspondents
+
     async def write_content(self, external_document_id: str, content: str) -> bool:
         current = await self.get_document(external_document_id)
         if current.content:
@@ -129,6 +154,19 @@ class PaperlessConnector(DocumentConnector):
             "PATCH",
             f"/api/documents/{external_document_id}/",
             json={"title": title},
+        )
+        return True
+
+    async def write_correspondent_if_empty(
+        self, external_document_id: str, correspondent_id: str
+    ) -> bool:
+        current = await self.get_document(external_document_id)
+        if current.correspondent_id is not None:
+            return False
+        await self._request(
+            "PATCH",
+            f"/api/documents/{external_document_id}/",
+            json={"correspondent": int(correspondent_id)},
         )
         return True
 
