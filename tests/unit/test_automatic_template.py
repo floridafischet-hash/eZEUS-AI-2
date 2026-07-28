@@ -81,6 +81,51 @@ async def test_customer_number_is_invoice_number_fallback() -> None:
 
 
 @pytest.mark.asyncio
+async def test_bv_number_precedes_customer_number_as_invoice_number_fallback() -> None:
+    config = config_from_custom_fields([ConnectorCustomField("93", "Rechnungsnummer", "string")])
+    assert config is not None
+    provider = config.fields["invoice_number"].providers[0]
+
+    candidates = await RegexExtractionProvider().extract(
+        "Kundennummer: KD-8842\nBV-Nr.: 25142",
+        provider.model_dump(exclude={"type"}),
+    )
+
+    assert [candidate.value for candidate in candidates] == ["25142", "KD-8842"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "label",
+    ["BV", "BV-Nr.", "BV Nummer", "Baustellen-Nr.", "Baustellennummer"],
+)
+async def test_bv_number_accepts_supported_labels(label: str) -> None:
+    config = config_from_custom_fields([ConnectorCustomField("93", "Rechnungsnummer", "string")])
+    assert config is not None
+    provider = config.fields["invoice_number"].providers[0]
+
+    candidates = await RegexExtractionProvider().extract(
+        f"{label}: 26123", provider.model_dump(exclude={"type"})
+    )
+
+    assert [candidate.value for candidate in candidates] == ["26123"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("invalid", ["23123", "27123", "2412", "251234"])
+async def test_bv_number_rejects_invalid_number_ranges_and_lengths(invalid: str) -> None:
+    config = config_from_custom_fields([ConnectorCustomField("93", "Rechnungsnummer", "string")])
+    assert config is not None
+    provider = config.fields["invoice_number"].providers[0]
+
+    candidates = await RegexExtractionProvider().extract(
+        f"BV-Nr.: {invalid}", provider.model_dump(exclude={"type"})
+    )
+
+    assert candidates == []
+
+
+@pytest.mark.asyncio
 async def test_invoice_number_candidate_precedes_customer_number() -> None:
     config = config_from_custom_fields([ConnectorCustomField("93", "Rechnungsnummer", "string")])
     assert config is not None
@@ -93,6 +138,24 @@ async def test_invoice_number_candidate_precedes_customer_number() -> None:
 
     assert [candidate.value for candidate in candidates] == [
         "RE-2026-19",
+        "KD-8842",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_invoice_number_precedes_bv_and_customer_number() -> None:
+    config = config_from_custom_fields([ConnectorCustomField("93", "Rechnungsnummer", "string")])
+    assert config is not None
+    provider = config.fields["invoice_number"].providers[0]
+
+    candidates = await RegexExtractionProvider().extract(
+        "Kundennummer: KD-8842\nBV: 24123\nRechnungsnummer: RE-2026-19",
+        provider.model_dump(exclude={"type"}),
+    )
+
+    assert [candidate.value for candidate in candidates] == [
+        "RE-2026-19",
+        "24123",
         "KD-8842",
     ]
 
