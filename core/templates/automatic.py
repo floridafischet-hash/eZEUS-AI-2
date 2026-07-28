@@ -15,10 +15,18 @@ FIELD_DEFINITIONS: dict[str, dict[str, object]] = {
         "validators": [{"type": "not_empty"}, {"type": "length", "min": 1, "max": 100}],
         "selection_strategy": "first",
         "patterns": [
+            r"(?im)^\s*Datum\s*:\s+"
+            r"(?:Rechnungsnummer|Rechnung(?:s)?[\s.-]*(?:Nr|Nummer)\.?)\s*:\s+"
+            r"(?:Kundennummer|Kunden[\s.-]*(?:Nr|Nummer)\.?)\s*:\s*$"
+            r"\s*^\s*\d{1,2}\.\d{1,2}\.\d{4}\s+"
+            r"([A-Z0-9][A-Z0-9./_-]*)\s+"
+            r"[A-Z0-9][A-Z0-9./_-]*\s*$",
             r"(?i)(?:Rechnungsnummer|Rechnung(?:s)?[\s.-]*(?:Nr|Nummer)\.?)"
-            r"\s*[:.]?\s*([A-Z0-9][A-Z0-9./_-]*)",
+            r"\s*[:.]?[ \t]*"
+            r"(?!Kunden(?:nummer|[\s.-]*(?:Nr|Nummer)\.?))"
+            r"([A-Z0-9][A-Z0-9./_-]*)",
             r"(?i)(?:Kundennummer|Kunden[\s.-]*(?:Nr|Nummer)\.?)"
-            r"\s*[:.]?\s*([A-Z0-9][A-Z0-9./_-]*)",
+            r"\s*[:.]?[ \t]*([A-Z0-9][A-Z0-9./_-]*)",
         ],
     },
     "rechnungsbetrag": {
