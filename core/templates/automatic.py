@@ -33,7 +33,7 @@ FIELD_DEFINITIONS: dict[str, dict[str, object]] = {
         ),
         "validators": [{"type": "not_empty"}, {"type": "monetary_amount"}],
         "patterns": [
-            r"(?i)(?:Bruttobetrag|Gesamtbetrag|Rechnungsbetrag)"
+            r"(?i)(?:Brutto[\s.-]*Rechnungsbetrag|Bruttobetrag|Gesamtbetrag|Rechnungsbetrag)"
             r"\s*[:.]?\s*([\d.]+,\d{2}\s*(?:EUR|€)?)"
         ],
     },

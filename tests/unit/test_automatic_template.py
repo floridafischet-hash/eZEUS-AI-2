@@ -50,7 +50,7 @@ async def test_invoice_patterns_extract_common_german_labels() -> None:
         ]
     )
     assert config is not None
-    text = "Lieferung vom 04.01.2025 Rechnung-Nr. 5007\nBruttobetrag 480,76 €"
+    text = "Lieferung vom 04.01.2025 Rechnung-Nr. 5007\nBrutto-Rechnungsbetrag 480,76 €"
 
     number_provider = config.fields["invoice_number"].providers[0]
     amount_provider = config.fields["invoice_amount"].providers[0]
