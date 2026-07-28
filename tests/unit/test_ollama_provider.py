@@ -61,9 +61,7 @@ async def test_ollama_provider_returns_no_candidate_when_missing(
             json={
                 "message": {
                     "role": "assistant",
-                    "content": json.dumps(
-                        {"found": False, "value": None, "confidence": 0}
-                    ),
+                    "content": json.dumps({"found": False, "value": None, "confidence": 0}),
                 }
             },
         )

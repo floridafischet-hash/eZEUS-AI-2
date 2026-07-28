@@ -108,9 +108,7 @@ class PaperlessConnector(DocumentConnector):
         if not changed:
             return {}
         payload = {
-            "custom_fields": [
-                {"field": int(key), "value": value} for key, value in merged.items()
-            ]
+            "custom_fields": [{"field": int(key), "value": value} for key, value in merged.items()]
         }
         await self._request("PATCH", f"/api/documents/{external_document_id}/", json=payload)
         return written

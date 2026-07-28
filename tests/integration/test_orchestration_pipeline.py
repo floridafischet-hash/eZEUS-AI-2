@@ -22,6 +22,8 @@ class FakeOCR(OCRProvider):
     id = "fake"
 
     def recognize(self, document_path: Path) -> OCRDocument:
+        assert document_path.name == "invoice.png"
+        assert document_path.parent.name.startswith("ezeus-")
         words = (
             OCRWord("Rechnungsnummer: R-4711", 0.99, BoundingBox(1, 1, 20, 2)),
             OCRWord("Gesamtbetrag: 1.234,56 EUR", 0.98, BoundingBox(1, 3, 20, 4)),
@@ -37,7 +39,7 @@ class FakePaperless:
     async def get_document(self, external_document_id: str) -> ConnectorDocument:
         return ConnectorDocument(
             external_id=external_document_id,
-            filename="invoice.png",
+            filename="../../invoice.png",
             mime_type="image/png",
             document_type_id="7",
             content=self.content,
@@ -85,9 +87,7 @@ async def test_document_pipeline_persists_results_and_audit(tmp_path: Path) -> N
                                 "patterns": [r"Rechnungsnummer:\s*([A-Z0-9-]+)"],
                             }
                         ],
-                        "validators": [
-                            {"type": "required_pattern", "pattern": r"^[A-Z0-9-]+$"}
-                        ],
+                        "validators": [{"type": "required_pattern", "pattern": r"^[A-Z0-9-]+$"}],
                     },
                     "total": {
                         "target_field_id": 15,

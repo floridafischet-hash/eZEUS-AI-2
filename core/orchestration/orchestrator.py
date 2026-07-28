@@ -82,7 +82,11 @@ class Orchestrator:
             active_phase = self._start_phase(job, JobPhase.DOWNLOAD_DOCUMENT)
             with TemporaryDirectory(prefix="ezeus-") as temp_dir:
                 content = await self.connector.download_original(document.external_document_id)
-                original = Path(temp_dir) / (document.filename or "document.bin")
+                remote_filename = (document.filename or "").replace("\\", "/")
+                safe_filename = Path(remote_filename).name
+                if safe_filename in {"", ".", ".."}:
+                    safe_filename = "document.bin"
+                original = Path(temp_dir) / safe_filename
                 original.write_bytes(content)
                 self._finish_phase(active_phase, metadata={"bytes": len(content)})
 
