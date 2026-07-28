@@ -77,6 +77,11 @@ async def test_invoice_patterns_extract_common_german_labels() -> None:
             "Netto-Rechnungsbetrag 287,80 €\nBrutto-Rechnungsbetrag 342,48 €",
             "342,48",
         ),
+        (
+            "MwSt Netto MwSt Summe\n19% 19.576,35 € 3.719,51 € 23.295,86 €\n"
+            "Gesamt 19.576,35 € 23.295,86 €",
+            "23.295,86",
+        ),
     ],
 )
 async def test_invoice_amount_patterns_select_only_gross_total(text: str, expected: str) -> None:
@@ -97,12 +102,17 @@ async def test_invoice_amount_patterns_collect_totals_from_all_pages() -> None:
     assert config is not None
     provider = config.fields["invoice_amount"].providers[0]
     text = (
-        "Seite 1 von 2\nZwischensumme 100,00 EUR\nGesamtsumme 119,00 EUR\n"
-        "\fSeite 2 von 2\nGesamtsumme 342,48 EUR"
+        "Seite 1 von 3\nZwischensumme 100,00 EUR\nÜbertrag: 119,00 EUR\n"
+        "\fSeite 2 von 3\nÜbertrag: 250,00 Euro\n"
+        "\fSeite 3 von 3\nGesamt 287,80 EUR 342,48 EUR"
     )
 
     candidates = await RegexExtractionProvider().extract(
         text, provider.model_dump(exclude={"type"})
     )
 
-    assert [candidate.value for candidate in candidates] == ["119,00", "342,48"]
+    assert [candidate.value for candidate in candidates] == [
+        "342,48",
+        "119,00",
+        "250,00",
+    ]
