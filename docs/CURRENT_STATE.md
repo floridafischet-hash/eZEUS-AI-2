@@ -78,23 +78,44 @@ Für Rechnungsnummern werden unter anderem folgende Bezeichnungen erkannt:
 - `Rechnung-Nr.`
 - `Rechnung Nr.`
 - `Rechnungs-Nr.`
+- `Rechnung <Kennung>`, wenn die Kennung mindestens eine Ziffer enthält
+- `Bon-Nr.` für Kassenbelege
 
 Für Brutto-Rechnungsbeträge werden folgende Bezeichnungen erkannt:
 
 - `Brutto-Rechnungsbetrag`
 - `Bruttobetrag`
 - `Gesamtbetrag`
+- `Gesamtbetrag brutto`
 - `Gesamtsumme`
+- `Endsumme brutto`
 - `Rechnungswert (brutto)`
 - `Zahlbetrag`
 - `Endbetrag`
 - `Zu zahlen`
+- `Brutto`, wenn direkt anschließend ein Geldbetrag steht
+- `Total` in eindeutig bezeichneten Kassenbeleg-Summenzeilen
+- `Summe` zusammen mit einem Fälligkeitsdatum
 
 Das Eurozeichen oder `EUR` darf vor oder hinter dem Betrag stehen.
+Dezimalpunkt und Dezimalkomma sowie deutsche und englische
+Tausendertrennzeichen werden unterstützt.
 `Netto-Rechnungsbetrag` wird ausdrücklich nicht als Bruttobetrag übernommen.
 
 Die Erkennung ist absichtlich konservativ. Noch nicht hinterlegte
 Bezeichnungen führen zu einem fehlenden Feld und nicht zu einem geratenen Wert.
+
+## Read-only-Regelaudit der Instanz Timo
+
+Am 28. Juli 2026 wurden alle 16 vorhandenen Dokumente ausschließlich lesend
+ausgewertet. Paperless-Dokumente, OCR-Inhalte und Custom Fields wurden dabei
+nicht verändert.
+
+Von 14 rechnungsartigen Dokumenten konnten nach der Regelerweiterung alle
+Rechnungs- beziehungsweise Belegnummern und alle Bruttogesamtbeträge im
+vorhandenen OCR-Text nachgewiesen werden. Neue Regressionstests decken die
+gefundenen Formate ab. Das Audit erzeugt keine Regeln aus unbelegten Werten und
+verwendet vorhandene Custom-Field-Werte nicht als alleinige Wahrheitsquelle.
 
 ## Validierung und Schreibschutz
 
