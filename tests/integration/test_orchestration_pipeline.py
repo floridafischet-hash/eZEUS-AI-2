@@ -43,11 +43,13 @@ class FailingOCR(OCRProvider):
 class FakePaperless:
     def __init__(self) -> None:
         self.content: str | None = None
+        self.title = "Imported invoice"
         self.fields: dict[str, object] = {"99": "manual"}
 
     async def get_document(self, external_document_id: str) -> ConnectorDocument:
         return ConnectorDocument(
             external_id=external_document_id,
+            title=self.title,
             filename="../../invoice.png",
             mime_type="image/png",
             document_type_id="7",
@@ -65,6 +67,12 @@ class FakePaperless:
         if self.content:
             return False
         self.content = content
+        return True
+
+    async def write_title(self, external_document_id: str, title: str) -> bool:
+        if self.title == title:
+            return False
+        self.title = title
         return True
 
     async def write_empty_fields(
@@ -132,6 +140,7 @@ async def test_document_pipeline_persists_results_and_audit(tmp_path: Path) -> N
         assert connector.fields["14"] == "R-4711"
         assert connector.fields["15"] == "1234.56"
         assert connector.fields["99"] == "manual"
+        assert connector.title == "R-4711"
         results = db.scalars(select(ExtractionResult)).all()
         assert len(results) == 3
         total_results = [result for result in results if result.field_key == "total"]
@@ -141,7 +150,7 @@ async def test_document_pipeline_persists_results_and_audit(tmp_path: Path) -> N
         ]
         assert [result.accepted for result in total_results] == [False, True]
         assert total_results[0].reason == "Lower validated total candidate"
-        assert len(db.scalars(select(AuditEntry)).all()) == 3
+        assert len(db.scalars(select(AuditEntry)).all()) == 4
         artifact = db.scalar(select(OCRArtifact))
         assert artifact is not None
         assert artifact.raw_text == connector.content

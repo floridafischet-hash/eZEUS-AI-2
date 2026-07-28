@@ -35,6 +35,9 @@ class DocumentConnector(ABC):
     async def write_content(self, external_document_id: str, content: str) -> bool: ...
 
     @abstractmethod
+    async def write_title(self, external_document_id: str, title: str) -> bool: ...
+
+    @abstractmethod
     async def write_empty_fields(
         self, external_document_id: str, values: dict[str, object]
     ) -> dict[str, object]: ...

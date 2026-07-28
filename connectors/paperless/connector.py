@@ -121,6 +121,17 @@ class PaperlessConnector(DocumentConnector):
         )
         return True
 
+    async def write_title(self, external_document_id: str, title: str) -> bool:
+        current = await self.get_document(external_document_id)
+        if current.title == title:
+            return False
+        await self._request(
+            "PATCH",
+            f"/api/documents/{external_document_id}/",
+            json={"title": title},
+        )
+        return True
+
     async def write_empty_fields(
         self, external_document_id: str, values: dict[str, object]
     ) -> dict[str, object]:
