@@ -7,11 +7,13 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 
 from connectors.base.interface import DocumentConnector
+from core.config.settings import get_settings
 from core.models.audit import AuditEntry
 from core.models.enums import JobPhase, JobStatus, PhaseStatus
 from core.models.extraction import ExtractionResult
 from core.models.job import Job
 from core.models.job_phase import JobPhaseEntry
+from core.models.ocr_artifact import OCRArtifact
 from core.paperless.service import connector_for_document
 from core.templates.automatic import config_from_custom_fields
 from core.templates.service import TemplateService
@@ -21,6 +23,7 @@ from plugins.extraction.keyword import KeywordExtractionProvider
 from plugins.extraction.regex import RegexExtractionProvider
 from plugins.llm.ollama import OllamaExtractionProvider
 from plugins.ocr.factory import create_ocr_adapter
+from plugins.ocr.qwen_cleanup import OCRCleanupResult, QwenOCRCleanup
 
 PROVIDERS = {
     "regex": RegexExtractionProvider,
@@ -34,6 +37,7 @@ class Orchestrator:
         self.db = db
         self.connector: DocumentConnector | None = None
         self.ocr = create_ocr_adapter()
+        self.ocr_cleanup = QwenOCRCleanup()
         self.templates = TemplateService(db)
         self.validator = ValidationEngine()
 
@@ -134,8 +138,9 @@ class Orchestrator:
                     ocr_result = self.ocr.recognize(original)
                     runtime_ms = int((monotonic() - started) * 1000)
                     document.page_count = len(ocr_result.pages)
-                    extraction_text = ocr_result.text
-                    extraction_source = "paddleocr"
+                    raw_text = ocr_result.text
+                    extraction_text = raw_text
+                    extraction_source = "paddleocr_raw"
                     self._finish_phase(
                         active_phase,
                         metadata={
@@ -145,14 +150,54 @@ class Orchestrator:
                     )
 
                     active_phase = self._start_phase(job, JobPhase.WRITE_OCR)
+                    settings = get_settings()
+                    cleanup = OCRCleanupResult(
+                        text=None,
+                        accepted=False,
+                        reason="Qwen OCR cleanup is disabled",
+                        model=self.ocr_cleanup.model,
+                    )
+                    cleanup_attempted = (
+                        settings.ollama_enabled
+                        and settings.ocr_qwen_cleanup_enabled
+                        and bool(raw_text.strip())
+                    )
+                    if cleanup_attempted:
+                        cleanup = await self.ocr_cleanup.clean(raw_text)
+                    text_to_write = (
+                        cleanup.text if cleanup.accepted and cleanup.text is not None else raw_text
+                    )
+                    self.db.add(
+                        OCRArtifact(
+                            job_id=job.id,
+                            provider=ocr_result.provider,
+                            model=cleanup.model if cleanup_attempted else None,
+                            raw_text=raw_text,
+                            cleaned_text=cleanup.text if cleanup_attempted else None,
+                            cleanup_accepted=cleanup.accepted,
+                            rejection_reason=cleanup.reason,
+                        )
+                    )
+                    self.db.commit()
                     wrote_content = await connector.write_content(
-                        document.external_document_id, ocr_result.text
+                        document.external_document_id, text_to_write
                     )
                     if wrote_content:
                         self._audit(job, "WRITE_CONTENT", "content", None, "[OCR content]")
                     self._finish_phase(
                         active_phase,
-                        metadata={"content_written": wrote_content},
+                        metadata={
+                            "content_written": wrote_content,
+                            "raw_characters": len(raw_text),
+                            "written_characters": len(text_to_write),
+                            "written_source": (
+                                "qwen_verified" if cleanup.accepted else "paddleocr_raw"
+                            ),
+                            "cleanup_attempted": cleanup_attempted,
+                            "cleanup_accepted": cleanup.accepted,
+                            "cleanup_reason": cleanup.reason,
+                            "cleanup_model": cleanup.model if cleanup_attempted else None,
+                        },
                     )
 
                 active_phase = self._start_phase(job, JobPhase.SELECT_TEMPLATE)

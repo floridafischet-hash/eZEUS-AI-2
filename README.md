@@ -169,6 +169,9 @@ Anwendungsnetz erreichbare Instanz zeigen.
 - `OCR_LANGUAGE`: OCR-Sprache
 - `OCR_DEVICE`: OCR-Gerät, beispielsweise `cpu`
 - `OCR_TIMEOUT_SECONDS`: Grundlage für das Celery-Zeitlimit
+- `OCR_QWEN_CLEANUP_ENABLED`: aktiviert die abgesicherte Qwen-Nachbearbeitung
+  ausschließlich für neu erzeugten PaddleOCR-Text
+- `OCR_QWEN_CLEANUP_TIMEOUT_SECONDS`: Zeitlimit der OCR-Nachbearbeitung
 - `MAX_DOCUMENT_BYTES`: maximale akzeptierte Downloadgröße
 
 ## Start der Anwendung

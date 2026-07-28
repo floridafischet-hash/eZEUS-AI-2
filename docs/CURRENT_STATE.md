@@ -147,6 +147,24 @@ In allen sechs Fällen wurde vorhandener Paperless-Inhalt verwendet. Download,
 PaddleOCR und Ollama wurden übersprungen. Rechnungsnummer und Bruttobetrag
 wurden vollständig geschrieben oder als bereits korrekt vorhanden erkannt.
 
+## Abgesicherte OCR-Nachbearbeitung
+
+Wenn Paperless keinen Text bereitstellt, erzeugt PaddleOCR weiterhin den
+maßgeblichen Rohtext. Optional bereinigt Qwen anschließend ausschließlich
+Darstellungsfehler wie Worttrennungen, Leerzeichen, Zeilenumbrüche und
+offensichtliche Buchstabenfehler.
+
+Zahlenhaltige Werte, darunter Beträge, Datumswerte, Rechnungsnummern und IBANs,
+müssen im Qwen-Vorschlag exakt und in gleicher Anzahl vorkommen. Entfernt,
+verändert oder ergänzt Qwen einen solchen Wert, wird der vollständige Vorschlag
+verworfen und der PaddleOCR-Rohtext nach Paperless geschrieben. Auch technische
+Fehler und Zeitüberschreitungen führen ohne Jobabbruch zum Rohtext-Fallback.
+
+Rohtext, Qwen-Vorschlag, Annahmestatus und Ablehnungsgrund werden getrennt in
+`ocr_artifacts` gespeichert. Die Feldextraktion verwendet unabhängig vom
+Annahmestatus immer den unveränderten PaddleOCR-Rohtext. Qwen bestimmt daher
+keine Rechnungsbeträge oder anderen fachlichen Feldwerte.
+
 ## Qualitätssicherung
 
 Der dokumentierte Stand wurde mit folgenden Prüfungen validiert:
