@@ -44,7 +44,7 @@ class FieldConfig(BaseModel):
     providers: list[ProviderConfig] = Field(min_length=1)
     validators: list[ValidatorConfig] = Field(default_factory=list)
     minimum_confidence: float = Field(default=0.8, ge=0, le=1)
-    selection_strategy: Literal["unique", "highest"] = "unique"
+    selection_strategy: Literal["unique", "first", "highest"] = "unique"
 
 
 class TemplateConfig(BaseModel):

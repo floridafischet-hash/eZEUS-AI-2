@@ -283,7 +283,13 @@ class Orchestrator:
                         if accepted and candidate.confidence >= field.minimum_confidence:
                             valid.append((candidate.confidence, normalized, result))
                     distinct = {str(item[1]) for item in valid}
-                    if valid and field.selection_strategy == "highest":
+                    if valid and field.selection_strategy == "first":
+                        winner = valid[0]
+                        winner[2].accepted = True
+                        extracted_values[str(field.target_field_id)] = winner[1]
+                        for _, _, result in valid[1:]:
+                            result.reason = "Lower-priority validated candidate"
+                    elif valid and field.selection_strategy == "highest":
                         winner = max(
                             valid,
                             key=lambda item: (

@@ -13,9 +13,12 @@ FIELD_DEFINITIONS: dict[str, dict[str, object]] = {
     "rechnungsnummer": {
         "key": "invoice_number",
         "validators": [{"type": "not_empty"}, {"type": "length", "min": 1, "max": 100}],
+        "selection_strategy": "first",
         "patterns": [
             r"(?i)(?:Rechnungsnummer|Rechnung(?:s)?[\s.-]*(?:Nr|Nummer)\.?)"
-            r"\s*[:.]?\s*([A-Z0-9][A-Z0-9./_-]*)"
+            r"\s*[:.]?\s*([A-Z0-9][A-Z0-9./_-]*)",
+            r"(?i)(?:Kundennummer|Kunden[\s.-]*(?:Nr|Nummer)\.?)"
+            r"\s*[:.]?\s*([A-Z0-9][A-Z0-9./_-]*)",
         ],
     },
     "rechnungsbetrag": {

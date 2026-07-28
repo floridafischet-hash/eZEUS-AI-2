@@ -19,6 +19,7 @@ def test_config_uses_live_paperless_custom_field_ids() -> None:
     assert config.fields["invoice_amount"].target_field_id == 95
     assert config.fields["invoice_number"].providers[0].type == "regex"
     assert len(config.fields["invoice_number"].providers) == 1
+    assert config.fields["invoice_number"].selection_strategy == "first"
     assert config.fields["invoice_amount"].selection_strategy == "highest"
     assert "Geprüft von Eins" not in config.fields
 
@@ -64,6 +65,36 @@ async def test_invoice_patterns_extract_common_german_labels() -> None:
 
     assert [candidate.value for candidate in number] == ["5007"]
     assert [candidate.value for candidate in amount] == ["480,76"]
+
+
+@pytest.mark.asyncio
+async def test_customer_number_is_invoice_number_fallback() -> None:
+    config = config_from_custom_fields([ConnectorCustomField("93", "Rechnungsnummer", "string")])
+    assert config is not None
+    provider = config.fields["invoice_number"].providers[0]
+
+    candidates = await RegexExtractionProvider().extract(
+        "Kundennummer: KD-8842", provider.model_dump(exclude={"type"})
+    )
+
+    assert [candidate.value for candidate in candidates] == ["KD-8842"]
+
+
+@pytest.mark.asyncio
+async def test_invoice_number_candidate_precedes_customer_number() -> None:
+    config = config_from_custom_fields([ConnectorCustomField("93", "Rechnungsnummer", "string")])
+    assert config is not None
+    provider = config.fields["invoice_number"].providers[0]
+
+    candidates = await RegexExtractionProvider().extract(
+        "Kundennummer: KD-8842\nRechnungsnummer: RE-2026-19",
+        provider.model_dump(exclude={"type"}),
+    )
+
+    assert [candidate.value for candidate in candidates] == [
+        "RE-2026-19",
+        "KD-8842",
+    ]
 
 
 @pytest.mark.asyncio
