@@ -62,4 +62,29 @@ async def test_invoice_patterns_extract_common_german_labels() -> None:
     )
 
     assert [candidate.value for candidate in number] == ["5007"]
-    assert [candidate.value for candidate in amount] == ["480,76 €"]
+    assert [candidate.value for candidate in amount] == ["480,76"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("Nettosumme 1.357,00 €\nGesamtsumme 1.614,83 €", "1.614,83"),
+        ("Nettosumme € 899,99\nGesamtsumme € 1.070,99", "1.070,99"),
+        ("Rechnungswert (brutto) 1.233,88 €", "1.233,88"),
+        (
+            "Netto-Rechnungsbetrag 287,80 €\nBrutto-Rechnungsbetrag 342,48 €",
+            "342,48",
+        ),
+    ],
+)
+async def test_invoice_amount_patterns_select_only_gross_total(text: str, expected: str) -> None:
+    config = config_from_custom_fields([ConnectorCustomField("95", "Rechnungsbetrag", "monetary")])
+    assert config is not None
+    provider = config.fields["invoice_amount"].providers[0]
+
+    candidates = await RegexExtractionProvider().extract(
+        text, provider.model_dump(exclude={"type"})
+    )
+
+    assert [candidate.value for candidate in candidates] == [expected]

@@ -22,8 +22,17 @@ FIELD_DEFINITIONS: dict[str, dict[str, object]] = {
         "key": "invoice_amount",
         "validators": [{"type": "not_empty"}, {"type": "monetary_amount"}],
         "patterns": [
-            r"(?i)(?:Brutto[\s.-]*Rechnungsbetrag|Bruttobetrag|Gesamtbetrag|Rechnungsbetrag)"
-            r"\s*[:.]?\s*([\d.]+,\d{2}\s*(?:EUR|€)?)"
+            r"(?i)(?:"
+            r"Brutto[\s.-]*Rechnungsbetrag|"
+            r"Bruttobetrag|"
+            r"Gesamtbetrag|"
+            r"Gesamtsumme|"
+            r"Rechnungswert\s*\(\s*brutto\s*\)|"
+            r"Zahlbetrag|"
+            r"Endbetrag|"
+            r"Zu\s+zahlen|"
+            r"(?<!Netto[ -])(?<![\w-])Rechnungsbetrag"
+            r")\s*[:.]?\s*(?:EUR|€)?\s*([\d.]+,\d{2})\s*(?:EUR|€)?"
         ],
     },
     "lieferscheinnummer": {
