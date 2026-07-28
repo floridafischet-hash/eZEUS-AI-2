@@ -94,7 +94,9 @@ def retry_job(
     job.status = JobStatus.QUEUED
     job.error_type = None
     job.error_message = None
+    job.started_at = None
     job.finished_at = None
+    job.retry_count += 1
     db.commit()
     QueueAdapter().enqueue_document_job(job.id, job.priority)
     return {"job_id": str(job.id), "status": job.status.value}
