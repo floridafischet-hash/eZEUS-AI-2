@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from connectors.base.interface import DocumentConnector
 from core.config.settings import get_settings
+from core.correspondents.matcher import match_correspondent
 from core.models.audit import AuditEntry
 from core.models.enums import JobPhase, JobStatus, PhaseStatus
 from core.models.extraction import ExtractionResult
@@ -362,11 +363,42 @@ class Orchestrator:
                             before_write.title,
                             str(invoice_number),
                         )
+                correspondent_written = False
+                correspondent_match = None
+                if before_write.correspondent_id is None:
+                    correspondent_match = match_correspondent(
+                        extraction_text,
+                        await connector.list_correspondents(),
+                    )
+                    if correspondent_match is not None:
+                        correspondent_written = await connector.write_correspondent_if_empty(
+                            document.external_document_id,
+                            correspondent_match.correspondent_id,
+                        )
+                        if correspondent_written:
+                            self._audit(
+                                job,
+                                "WRITE_CORRESPONDENT",
+                                "correspondent",
+                                None,
+                                correspondent_match.correspondent_id,
+                            )
                 self._finish_phase(
                     active_phase,
                     metadata={
                         "fields_written": len(changed),
                         "title_written": title_written,
+                        "correspondent_written": correspondent_written,
+                        "correspondent_match": (
+                            {
+                                "id": correspondent_match.correspondent_id,
+                                "name": correspondent_match.name,
+                                "score": round(correspondent_match.score, 4),
+                                "source": correspondent_match.source,
+                            }
+                            if correspondent_match is not None
+                            else None
+                        ),
                     },
                 )
 
