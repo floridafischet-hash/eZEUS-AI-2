@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 KNOWN_PROVIDERS = {"regex", "keyword", "ollama"}
@@ -42,6 +44,7 @@ class FieldConfig(BaseModel):
     providers: list[ProviderConfig] = Field(min_length=1)
     validators: list[ValidatorConfig] = Field(default_factory=list)
     minimum_confidence: float = Field(default=0.8, ge=0, le=1)
+    selection_strategy: Literal["unique", "highest"] = "unique"
 
 
 class TemplateConfig(BaseModel):

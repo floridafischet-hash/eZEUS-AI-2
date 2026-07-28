@@ -19,6 +19,7 @@ def test_config_uses_live_paperless_custom_field_ids() -> None:
     assert config.fields["invoice_amount"].target_field_id == 95
     assert config.fields["invoice_number"].providers[0].type == "regex"
     assert len(config.fields["invoice_number"].providers) == 1
+    assert config.fields["invoice_amount"].selection_strategy == "highest"
     assert "Geprüft von Eins" not in config.fields
 
 
@@ -88,3 +89,20 @@ async def test_invoice_amount_patterns_select_only_gross_total(text: str, expect
     )
 
     assert [candidate.value for candidate in candidates] == [expected]
+
+
+@pytest.mark.asyncio
+async def test_invoice_amount_patterns_collect_totals_from_all_pages() -> None:
+    config = config_from_custom_fields([ConnectorCustomField("95", "Rechnungsbetrag", "monetary")])
+    assert config is not None
+    provider = config.fields["invoice_amount"].providers[0]
+    text = (
+        "Seite 1 von 2\nZwischensumme 100,00 EUR\nGesamtsumme 119,00 EUR\n"
+        "\fSeite 2 von 2\nGesamtsumme 342,48 EUR"
+    )
+
+    candidates = await RegexExtractionProvider().extract(
+        text, provider.model_dump(exclude={"type"})
+    )
+
+    assert [candidate.value for candidate in candidates] == ["119,00", "342,48"]

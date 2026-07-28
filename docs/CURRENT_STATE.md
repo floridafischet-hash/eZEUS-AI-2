@@ -165,6 +165,18 @@ Rohtext, Qwen-Vorschlag, Annahmestatus und Ablehnungsgrund werden getrennt in
 Annahmestatus immer den unveränderten PaddleOCR-Rohtext. Qwen bestimmt daher
 keine Rechnungsbeträge oder anderen fachlichen Feldwerte.
 
+## Mehrseitige Rechnungen
+
+Die automatische Extraktion sammelt alle eindeutig als Brutto-, Gesamt-,
+End- oder Zahlbetrag bezeichneten Summen aus dem vollständigen Dokumenttext
+und damit aus allen Seiten. Nach Validierung und Normalisierung wird der
+höchste dieser Summenkandidaten als Rechnungsbetrag übernommen.
+
+Netto-, Steuer-, Positions- und unbeschriftete Beträge werden dadurch nicht
+automatisch zu Gesamtsummen. Alle gefundenen Gesamtsummenkandidaten bleiben im
+Extraktionsprotokoll erhalten; niedrigere Kandidaten werden mit einem
+nachvollziehbaren Ablehnungsgrund markiert.
+
 ## Qualitätssicherung
 
 Der dokumentierte Stand wurde mit folgenden Prüfungen validiert:
