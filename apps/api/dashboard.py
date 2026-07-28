@@ -527,7 +527,11 @@ def processing_logs(
     entries: list[dict[str, object]] = []
     for job in jobs:
         document = job.document
-        phase_entries = phases_by_job[job.id]
+        phase_entries = [
+            phase
+            for phase in phases_by_job[job.id]
+            if job.started_at is None or phase.started_at >= job.started_at
+        ]
         started_at = job.started_at or job.created_at
         finished_at = job.finished_at
         duration = (finished_at or now) - started_at

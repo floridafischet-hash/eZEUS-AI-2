@@ -67,7 +67,7 @@ class Orchestrator:
             raise ValueError(f"Unknown job: {job_id}")
         connector = self.connector or connector_for_document(self.db, job.document.connector)
         job.status = JobStatus.RUNNING
-        job.started_at = job.started_at or datetime.now(UTC)
+        job.started_at = datetime.now(UTC)
         job.error_type = None
         job.error_message = None
         self.db.commit()
