@@ -40,6 +40,15 @@ def test_match_below_sixty_percent_is_rejected() -> None:
     assert result is None
 
 
+def test_single_word_name_requires_a_complete_match() -> None:
+    result = match_correspondent(
+        "Blumen und Wunder der Natur",
+        [_correspondent("1", "Blumenwunder")],
+    )
+
+    assert result is None
+
+
 def test_more_specific_name_wins_on_same_line() -> None:
     result = match_correspondent(
         "H. Busse GmbH & Co. KG",
