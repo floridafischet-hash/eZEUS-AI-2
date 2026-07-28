@@ -1,5 +1,9 @@
 # eZEUS-AI-2
 
+Der verifizierte produktive Stand, der aktuelle Verarbeitungsablauf, die
+unterstützten Schlüsselbegriffe und die offenen fachlichen Entscheidungen sind
+in [docs/CURRENT_STATE.md](docs/CURRENT_STATE.md) dokumentiert.
+
 ## Projektbeschreibung
 
 eZEUS-AI-2 ist eine Dokumentenverarbeitungsplattform für Paperless-ngx. Die
