@@ -13,6 +13,8 @@ Alle Werte werden über Umgebungsvariablen gelesen.
 - `ADMIN_API_SECRET`: Secret für administrative API-Aufrufe; in Produktion Pflicht
 - `CREDENTIAL_ENCRYPTION_KEY`: URL-sicherer Fernet-Schlüssel zur Verschlüsselung
   gespeicherter Paperless-Zugangsdaten; in Produktion Pflicht
+- `PUBLIC_WEBHOOK_BASE_URL`: optionale öffentliche Basisadresse für die auf der
+  Verwaltungsseite angezeigten Webhook-URLs
 - `PAPERLESS_VERIFY_TLS`: standardmäßig `true`
 - `OCR_PROVIDER`: derzeit `paddleocr`
 - `OCR_LANGUAGE`, `OCR_DEVICE`: OCR-Konfiguration

@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from apps.api.admin import require_admin_secret
 from connectors.base.errors import ConnectorError
 from connectors.paperless.connector import PaperlessConnector
+from core.config.settings import get_settings
 from core.db.session import get_db
 from core.models.paperless_instance import PaperlessInstance
 from core.security.credentials import (
@@ -54,6 +55,8 @@ def _validate_slug(slug: str) -> str:
 
 
 def _serialize(instance: PaperlessInstance) -> dict[str, object]:
+    webhook_path = f"/webhooks/paperless/{instance.slug}"
+    public_base_url = get_settings().public_webhook_base_url.rstrip("/")
     return {
         "id": str(instance.id),
         "name": instance.name,
@@ -65,7 +68,8 @@ def _serialize(instance: PaperlessInstance) -> dict[str, object]:
         "has_webhook_secret": bool(instance.webhook_secret_encrypted),
         "created_at": instance.created_at.isoformat(),
         "updated_at": instance.updated_at.isoformat(),
-        "webhook_path": f"/webhooks/paperless/{instance.slug}",
+        "webhook_path": webhook_path,
+        "webhook_url": f"{public_base_url}{webhook_path}" if public_base_url else None,
     }
 
 
@@ -277,7 +281,7 @@ INSTANCE_ADMIN_HTML = """<!doctype html>
         const url = document.createElement("div");
         url.textContent = item.base_url;
         const webhook = document.createElement("code");
-        webhook.textContent = webhookUrl(item.webhook_path);
+        webhook.textContent = item.webhook_url || webhookUrl(item.webhook_path);
         info.append(title, url, webhook);
         const actions = document.createElement("div");
         actions.className = "actions";

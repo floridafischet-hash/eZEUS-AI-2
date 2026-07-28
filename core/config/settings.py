@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     paperless_webhook_secret: str = ""
     admin_api_secret: str = ""
     credential_encryption_key: str = ""
+    public_webhook_base_url: str = ""
     paperless_verify_tls: bool = True
 
     local_only: bool = True
