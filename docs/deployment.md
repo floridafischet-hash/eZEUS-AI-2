@@ -14,3 +14,7 @@ OCR-Modell-Volumes als Root und wechselt vor dem Celery-Start zum Benutzer
 Für Produktion müssen Images reproduzierbar gebaut, Paddle-Modelle vorab
 gespeichert, TLS verwendet und Datenbank-/Redis-Netze eingeschränkt werden.
 Backups müssen PostgreSQL-Daten und die verwendeten Templateversionen umfassen.
+Bei Verwendung der Mehrinstanz-Verwaltung muss auch
+`CREDENTIAL_ENCRYPTION_KEY` gesichert werden. Ohne diesen Schlüssel sind die
+verschlüsselten Paperless-API-Tokens und Webhook-Secrets nicht
+wiederherstellbar.
