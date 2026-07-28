@@ -11,6 +11,7 @@ from core.models.document import Document
 from core.models.enums import JobPriority, JobStatus
 from core.models.extraction import ExtractionResult
 from core.models.job import Job
+from core.models.ocr_artifact import OCRArtifact
 from core.models.template import Template
 from core.orchestration.orchestrator import Orchestrator
 from plugins.ocr.adapter import OCRAdapter
@@ -131,6 +132,11 @@ async def test_document_pipeline_persists_results_and_audit(tmp_path: Path) -> N
         assert connector.fields["99"] == "manual"
         assert len(db.scalars(select(ExtractionResult)).all()) == 2
         assert len(db.scalars(select(AuditEntry)).all()) == 3
+        artifact = db.scalar(select(OCRArtifact))
+        assert artifact is not None
+        assert artifact.raw_text == connector.content
+        assert artifact.cleaned_text is None
+        assert artifact.cleanup_accepted is False
 
 
 @pytest.mark.asyncio

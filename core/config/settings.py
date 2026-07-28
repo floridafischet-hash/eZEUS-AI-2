@@ -38,6 +38,8 @@ class Settings(BaseSettings):
     ocr_language: str = "de"
     ocr_device: str = "cpu"
     ocr_timeout_seconds: int = 300
+    ocr_qwen_cleanup_enabled: bool = True
+    ocr_qwen_cleanup_timeout_seconds: int = 180
     max_document_bytes: int = 100 * 1024 * 1024
 
     job_max_retries: int = 3
