@@ -177,6 +177,11 @@ automatisch zu Gesamtsummen. Alle gefundenen Gesamtsummenkandidaten bleiben im
 Extraktionsprotokoll erhalten; niedrigere Kandidaten werden mit einem
 nachvollziehbaren Ablehnungsgrund markiert.
 
+Für das Zielfeld `Rechnungsnummer` werden vorrangig Bezeichnungen wie
+`Rechnungsnummer` und `Rechnung-Nr.` ausgewertet. Fehlen diese, kann eine
+`Kundennummer` beziehungsweise `Kunden-Nr.` als Ersatzwert verwendet werden.
+Enthält ein Dokument beide Angaben, besitzt die Rechnungsnummer Vorrang.
+
 ## Qualitätssicherung
 
 Der dokumentierte Stand wurde mit folgenden Prüfungen validiert:
