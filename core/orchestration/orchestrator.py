@@ -245,9 +245,18 @@ class Orchestrator:
                         for _, _, result in valid:
                             result.reason = "Conflicting validated candidates"
                 self.db.commit()
+                missing_fields = [
+                    field_key
+                    for field_key, field in config.fields.items()
+                    if str(field.target_field_id) not in extracted_values
+                ]
+                all_fields_extracted = not missing_fields
                 self._finish_phase(
                     active_phase,
-                    metadata={"fields_accepted": len(extracted_values)},
+                    metadata={
+                        "fields_accepted": len(extracted_values),
+                        "missing_fields": missing_fields,
+                    },
                 )
 
                 active_phase = self._start_phase(job, JobPhase.RELOAD_METADATA)
@@ -275,7 +284,7 @@ class Orchestrator:
             self._finish_phase(active_phase)
             active_phase = self._start_phase(job, JobPhase.COMPLETE)
             job.status = (
-                JobStatus.COMPLETED if extracted_values else JobStatus.COMPLETED_WITH_WARNINGS
+                JobStatus.COMPLETED if all_fields_extracted else JobStatus.COMPLETED_WITH_WARNINGS
             )
             job.finished_at = datetime.now(UTC)
             self._finish_phase(active_phase)
