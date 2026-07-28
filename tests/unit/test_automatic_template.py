@@ -68,7 +68,7 @@ async def test_invoice_patterns_extract_common_german_labels() -> None:
 
 
 @pytest.mark.asyncio
-async def test_customer_number_is_invoice_number_fallback() -> None:
+async def test_customer_number_is_never_used_as_invoice_number() -> None:
     config = config_from_custom_fields([ConnectorCustomField("93", "Rechnungsnummer", "string")])
     assert config is not None
     provider = config.fields["invoice_number"].providers[0]
@@ -77,11 +77,11 @@ async def test_customer_number_is_invoice_number_fallback() -> None:
         "Kundennummer: KD-8842", provider.model_dump(exclude={"type"})
     )
 
-    assert [candidate.value for candidate in candidates] == ["KD-8842"]
+    assert candidates == []
 
 
 @pytest.mark.asyncio
-async def test_bv_number_precedes_customer_number_as_invoice_number_fallback() -> None:
+async def test_bv_number_is_used_when_customer_number_is_also_present() -> None:
     config = config_from_custom_fields([ConnectorCustomField("93", "Rechnungsnummer", "string")])
     assert config is not None
     provider = config.fields["invoice_number"].providers[0]
@@ -91,7 +91,7 @@ async def test_bv_number_precedes_customer_number_as_invoice_number_fallback() -
         provider.model_dump(exclude={"type"}),
     )
 
-    assert [candidate.value for candidate in candidates] == ["25142", "KD-8842"]
+    assert [candidate.value for candidate in candidates] == ["25142"]
 
 
 @pytest.mark.asyncio
@@ -126,7 +126,7 @@ async def test_bv_number_rejects_invalid_number_ranges_and_lengths(invalid: str)
 
 
 @pytest.mark.asyncio
-async def test_invoice_number_candidate_precedes_customer_number() -> None:
+async def test_invoice_number_is_used_when_customer_number_is_also_present() -> None:
     config = config_from_custom_fields([ConnectorCustomField("93", "Rechnungsnummer", "string")])
     assert config is not None
     provider = config.fields["invoice_number"].providers[0]
@@ -136,14 +136,11 @@ async def test_invoice_number_candidate_precedes_customer_number() -> None:
         provider.model_dump(exclude={"type"}),
     )
 
-    assert [candidate.value for candidate in candidates] == [
-        "RE-2026-19",
-        "KD-8842",
-    ]
+    assert [candidate.value for candidate in candidates] == ["RE-2026-19"]
 
 
 @pytest.mark.asyncio
-async def test_invoice_number_precedes_bv_and_customer_number() -> None:
+async def test_invoice_number_precedes_bv_while_customer_number_is_ignored() -> None:
     config = config_from_custom_fields([ConnectorCustomField("93", "Rechnungsnummer", "string")])
     assert config is not None
     provider = config.fields["invoice_number"].providers[0]
@@ -156,7 +153,6 @@ async def test_invoice_number_precedes_bv_and_customer_number() -> None:
     assert [candidate.value for candidate in candidates] == [
         "RE-2026-19",
         "24123",
-        "KD-8842",
     ]
 
 
@@ -178,6 +174,27 @@ async def test_invoice_number_is_extracted_from_collapsed_ocr_columns() -> None:
     )
 
     assert [candidate.value for candidate in candidates] == ["5799588"]
+
+
+@pytest.mark.asyncio
+async def test_document_3555_prefers_invoice_number_and_never_customer_number() -> None:
+    config = config_from_custom_fields([ConnectorCustomField("93", "Rechnungsnummer", "string")])
+    assert config is not None
+    provider = config.fields["invoice_number"].providers[0]
+    text = (
+        "Rechnung\n"
+        "Datum: Rechnungsnr.: Kunden-Nr.:\n"
+        "22.07.2026 5799588 2011452\n"
+        "BV 25164, Hechthausen, Marktplatz\n"
+    )
+
+    candidates = await RegexExtractionProvider().extract(
+        text, provider.model_dump(exclude={"type"})
+    )
+
+    assert [candidate.value for candidate in candidates] == ["5799588", "25164"]
+    assert "2011452" not in [candidate.value for candidate in candidates]
+    assert "Kunden-Nr." not in [candidate.value for candidate in candidates]
 
 
 @pytest.mark.asyncio
