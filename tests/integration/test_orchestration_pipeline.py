@@ -31,6 +31,13 @@ class FakeOCR(OCRProvider):
         return OCRDocument(document_path, self.id, (OCRPage(1, words),))
 
 
+class FailingOCR(OCRProvider):
+    id = "must-not-run"
+
+    def recognize(self, document_path: Path) -> OCRDocument:
+        raise AssertionError("OCR must not run when Paperless content is available")
+
+
 class FakePaperless:
     def __init__(self) -> None:
         self.content: str | None = None
@@ -121,3 +128,46 @@ async def test_document_pipeline_persists_results_and_audit(tmp_path: Path) -> N
         assert connector.fields["99"] == "manual"
         assert len(db.scalars(select(ExtractionResult)).all()) == 2
         assert len(db.scalars(select(AuditEntry)).all()) == 3
+
+
+@pytest.mark.asyncio
+async def test_pipeline_uses_existing_paperless_content_without_ocr(tmp_path: Path) -> None:
+    engine = create_engine(f"sqlite:///{tmp_path / 'existing-content.db'}")
+    Base.metadata.create_all(engine)
+    with Session(engine) as db:
+        document = Document(connector="paperless", external_document_id="129")
+        template = Template(
+            name="Invoice keywords",
+            document_type_external_id="7",
+            is_default=True,
+            config={
+                "fields": {
+                    "invoice_number": {
+                        "target_field_id": 14,
+                        "providers": [
+                            {
+                                "type": "regex",
+                                "patterns": [r"Rechnung-Nr\.\s*([A-Z0-9-]+)"],
+                            }
+                        ],
+                        "validators": [{"type": "not_empty"}],
+                    }
+                }
+            },
+        )
+        db.add_all([document, template])
+        db.flush()
+        job = Job(document_id=document.id, status=JobStatus.QUEUED, priority=JobPriority.NORMAL)
+        db.add(job)
+        db.commit()
+
+        connector = FakePaperless()
+        connector.content = "Rechnung-Nr. R-5007"
+        orchestrator = Orchestrator(db)
+        orchestrator.connector = connector
+        orchestrator.ocr = OCRAdapter(FailingOCR())
+        await orchestrator.process(job.id)
+
+        db.refresh(job)
+        assert job.status == JobStatus.COMPLETED
+        assert connector.fields["14"] == "R-5007"

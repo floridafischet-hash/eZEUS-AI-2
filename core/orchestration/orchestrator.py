@@ -91,35 +91,69 @@ class Orchestrator:
 
             active_phase = self._start_phase(job, JobPhase.DOWNLOAD_DOCUMENT)
             with TemporaryDirectory(prefix="ezeus-") as temp_dir:
-                content = await connector.download_original(document.external_document_id)
-                remote_filename = (document.filename or "").replace("\\", "/")
-                safe_filename = Path(remote_filename).name
-                if safe_filename in {"", ".", ".."}:
-                    safe_filename = "document.bin"
-                original = Path(temp_dir) / safe_filename
-                original.write_bytes(content)
-                self._finish_phase(active_phase, metadata={"bytes": len(content)})
+                paperless_text = (remote.content or "").strip()
+                if paperless_text:
+                    extraction_text = paperless_text
+                    extraction_source = "paperless_content"
+                    self._finish_phase(
+                        active_phase,
+                        metadata={
+                            "skipped": True,
+                            "reason": "Paperless OCR content is already available",
+                        },
+                    )
+                    active_phase = self._start_phase(job, JobPhase.RUN_OCR)
+                    self._finish_phase(
+                        active_phase,
+                        metadata={
+                            "skipped": True,
+                            "reason": "Existing Paperless OCR content is used",
+                        },
+                    )
+                    active_phase = self._start_phase(job, JobPhase.WRITE_OCR)
+                    self._finish_phase(
+                        active_phase,
+                        metadata={
+                            "skipped": True,
+                            "content_written": False,
+                            "reason": "Paperless content is not overwritten",
+                        },
+                    )
+                else:
+                    content = await connector.download_original(document.external_document_id)
+                    remote_filename = (document.filename or "").replace("\\", "/")
+                    safe_filename = Path(remote_filename).name
+                    if safe_filename in {"", ".", ".."}:
+                        safe_filename = "document.bin"
+                    original = Path(temp_dir) / safe_filename
+                    original.write_bytes(content)
+                    self._finish_phase(active_phase, metadata={"bytes": len(content)})
 
-                active_phase = self._start_phase(job, JobPhase.RUN_OCR)
-                started = monotonic()
-                ocr_result = self.ocr.recognize(original)
-                runtime_ms = int((monotonic() - started) * 1000)
-                document.page_count = len(ocr_result.pages)
-                self._finish_phase(
-                    active_phase,
-                    metadata={"provider": ocr_result.provider, "runtime_ms": runtime_ms},
-                )
+                    active_phase = self._start_phase(job, JobPhase.RUN_OCR)
+                    started = monotonic()
+                    ocr_result = self.ocr.recognize(original)
+                    runtime_ms = int((monotonic() - started) * 1000)
+                    document.page_count = len(ocr_result.pages)
+                    extraction_text = ocr_result.text
+                    extraction_source = "paddleocr"
+                    self._finish_phase(
+                        active_phase,
+                        metadata={
+                            "provider": ocr_result.provider,
+                            "runtime_ms": runtime_ms,
+                        },
+                    )
 
-                active_phase = self._start_phase(job, JobPhase.WRITE_OCR)
-                wrote_content = await connector.write_content(
-                    document.external_document_id, ocr_result.text
-                )
-                if wrote_content:
-                    self._audit(job, "WRITE_CONTENT", "content", None, "[OCR content]")
-                self._finish_phase(
-                    active_phase,
-                    metadata={"content_written": wrote_content},
-                )
+                    active_phase = self._start_phase(job, JobPhase.WRITE_OCR)
+                    wrote_content = await connector.write_content(
+                        document.external_document_id, ocr_result.text
+                    )
+                    if wrote_content:
+                        self._audit(job, "WRITE_CONTENT", "content", None, "[OCR content]")
+                    self._finish_phase(
+                        active_phase,
+                        metadata={"content_written": wrote_content},
+                    )
 
                 active_phase = self._start_phase(job, JobPhase.SELECT_TEMPLATE)
                 selected = self.templates.select_for_document_type(
@@ -150,16 +184,6 @@ class Orchestrator:
                     self._finish_phase(active_phase, metadata={"template_id": str(template.id)})
 
                 active_phase = self._start_phase(job, JobPhase.EXTRACT_FIELDS)
-                extraction_text = (
-                    remote.content.strip()
-                    if remote.content and remote.content.strip()
-                    else ocr_result.text
-                )
-                extraction_source = (
-                    "paperless_content"
-                    if remote.content and remote.content.strip()
-                    else "paddleocr"
-                )
                 candidates_by_field: dict[
                     str, list[tuple[ExtractionCandidate, ExtractionResult]]
                 ] = {}

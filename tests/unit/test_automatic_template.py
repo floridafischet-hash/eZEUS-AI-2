@@ -18,7 +18,7 @@ def test_config_uses_live_paperless_custom_field_ids() -> None:
     assert config.fields["invoice_number"].target_field_id == 93
     assert config.fields["invoice_amount"].target_field_id == 95
     assert config.fields["invoice_number"].providers[0].type == "regex"
-    assert config.fields["invoice_number"].providers[1].type == "ollama"
+    assert len(config.fields["invoice_number"].providers) == 1
     assert "Geprüft von Eins" not in config.fields
 
 
