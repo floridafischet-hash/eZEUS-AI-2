@@ -38,10 +38,12 @@ FIELD_DEFINITIONS: dict[str, dict[str, object]] = {
         "selection_strategy": "highest",
         "patterns": [
             r"(?im)^\s*Gesamt\s+"
-            r"(?:[\d.]+,\d{2}\s*(?:EUR|€)?\s+)?"
-            r"([\d.]+,\d{2})\s*(?:EUR|€)?\s*$",
+            r"(?:[\d.,]+\d{2}\s*(?:EUR|€)?\s+)?"
+            r"([\d.,]+\d{2})\s*(?:EUR|€)?\s*$",
             r"(?im)^\s*Übertrag\s*:\s*"
-            r"(?:EUR|€)?\s*([\d.]+,\d{2})\s*(?:EUR|€|Euro)?\s*$",
+            r"(?:EUR|€)?\s*([\d.,]+\d{2})\s*(?:EUR|€|Euro)?\s*$",
+            r"(?im)^\s*Fälligkeitsdatum\s*:\s*\d{1,2}[./-]\d{1,2}[./-]\d{2,4}"
+            r"\s+Summe\s*:\s*(?:EUR|€)?\s*([\d.,]+\d{2})\s*(?:EUR|€)?\s*$",
             r"(?i)(?:"
             r"Brutto[\s.-]*Rechnungsbetrag|"
             r"Bruttobetrag|"
@@ -52,7 +54,7 @@ FIELD_DEFINITIONS: dict[str, dict[str, object]] = {
             r"Endbetrag|"
             r"Zu\s+zahlen|"
             r"(?<!Netto[ -])(?<![\w-])Rechnungsbetrag"
-            r")\s*[:.]?\s*(?:EUR|€)?\s*([\d.]+,\d{2})\s*(?:EUR|€)?",
+            r")\s*[:.]?\s*(?:EUR|€)?\s*([\d.,]+\d{2})\s*(?:EUR|€)?",
         ],
     },
     "lieferscheinnummer": {

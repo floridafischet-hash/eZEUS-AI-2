@@ -226,6 +226,8 @@ async def test_invoice_label_does_not_consume_value_from_next_ocr_line() -> None
             "Gesamt 19.576,35 € 23.295,86 €",
             "23.295,86",
         ),
+        ("19.00 % MwSt: 208.28 EUR\nGesamtsumme: 1304.48 EUR", "1304.48"),
+        ("Fälligkeitsdatum: 27/02/2025 Summe: 6,66", "6,66"),
     ],
 )
 async def test_invoice_amount_patterns_select_only_gross_total(text: str, expected: str) -> None:
