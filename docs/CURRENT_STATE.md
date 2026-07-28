@@ -123,6 +123,8 @@ verwendet vorhandene Custom-Field-Werte nicht als alleinige Wahrheitsquelle.
 - Mehrere voneinander abweichende gültige Kandidaten gelten als Konflikt.
 - Konflikte werden nicht automatisch geschrieben.
 - Bereits gefüllte Paperless-Felder werden nicht überschrieben.
+- Eine eindeutig erkannte Rechnungsnummer wird zusätzlich als Dokumenttitel
+  gesetzt. Ein bereits identischer Titel verursacht keine Schreiboperation.
 - Ein Auftrag ist nur `COMPLETED`, wenn alle vorgesehenen Felder eindeutig
   erkannt wurden.
 - Fehlende Felder führen zu `COMPLETED_WITH_WARNINGS`.

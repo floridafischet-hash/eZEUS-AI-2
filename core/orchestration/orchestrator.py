@@ -270,6 +270,7 @@ class Orchestrator:
 
                 active_phase = self._start_phase(job, JobPhase.VALIDATE_RESULTS)
                 extracted_values: dict[str, object] = {}
+                extracted_by_key: dict[str, object] = {}
                 for field_key, field in config.fields.items():
                     valid: list[tuple[float, object, ExtractionResult]] = []
                     validators = [item.model_dump() for item in field.validators]
@@ -287,6 +288,7 @@ class Orchestrator:
                         winner = valid[0]
                         winner[2].accepted = True
                         extracted_values[str(field.target_field_id)] = winner[1]
+                        extracted_by_key[field_key] = winner[1]
                         for _, _, result in valid[1:]:
                             result.reason = "Lower-priority validated candidate"
                     elif valid and field.selection_strategy == "highest":
@@ -299,6 +301,7 @@ class Orchestrator:
                         )
                         winner[2].accepted = True
                         extracted_values[str(field.target_field_id)] = winner[1]
+                        extracted_by_key[field_key] = winner[1]
                         for _, _, result in valid:
                             if result is not winner[2]:
                                 result.reason = "Lower validated total candidate"
@@ -306,6 +309,7 @@ class Orchestrator:
                         winner = max(valid, key=lambda item: item[0])
                         winner[2].accepted = True
                         extracted_values[str(field.target_field_id)] = winner[1]
+                        extracted_by_key[field_key] = winner[1]
                     elif len(distinct) > 1:
                         for _, _, result in valid:
                             result.reason = "Conflicting validated candidates"
@@ -343,7 +347,28 @@ class Orchestrator:
                         before_write.custom_fields.get(field_id),
                         value,
                     )
-                self._finish_phase(active_phase, metadata={"fields_written": len(changed)})
+                title_written = False
+                invoice_number = extracted_by_key.get("invoice_number")
+                if invoice_number is not None:
+                    title_written = await connector.write_title(
+                        document.external_document_id,
+                        str(invoice_number),
+                    )
+                    if title_written:
+                        self._audit(
+                            job,
+                            "WRITE_TITLE",
+                            "title",
+                            before_write.title,
+                            str(invoice_number),
+                        )
+                self._finish_phase(
+                    active_phase,
+                    metadata={
+                        "fields_written": len(changed),
+                        "title_written": title_written,
+                    },
+                )
 
             active_phase = self._start_phase(job, JobPhase.CLEANUP)
             self._finish_phase(active_phase)
