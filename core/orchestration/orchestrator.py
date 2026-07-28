@@ -156,17 +156,8 @@ class Orchestrator:
                     )
 
                 active_phase = self._start_phase(job, JobPhase.SELECT_TEMPLATE)
-                selected = self.templates.select_for_document_type(
-                    document.document_type_external_id
-                )
-                if selected is None:
-                    config = config_from_custom_fields(await connector.list_custom_fields())
-                    if config is None:
-                        self._finish_phase(active_phase, metadata={"selected": False})
-                        job.status = JobStatus.COMPLETED_WITH_WARNINGS
-                        job.finished_at = datetime.now(UTC)
-                        self.db.commit()
-                        return
+                config = config_from_custom_fields(await connector.list_custom_fields())
+                if config is not None:
                     self._finish_phase(
                         active_phase,
                         metadata={
@@ -178,6 +169,15 @@ class Orchestrator:
                         },
                     )
                 else:
+                    selected = self.templates.select_for_document_type(
+                        document.document_type_external_id
+                    )
+                    if selected is None:
+                        self._finish_phase(active_phase, metadata={"selected": False})
+                        job.status = JobStatus.COMPLETED_WITH_WARNINGS
+                        job.finished_at = datetime.now(UTC)
+                        self.db.commit()
+                        return
                     template, config = selected
                     job.selected_template_id = template.id
                     job.selected_template_version = template.version

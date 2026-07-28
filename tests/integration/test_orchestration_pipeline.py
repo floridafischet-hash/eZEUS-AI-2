@@ -56,6 +56,9 @@ class FakePaperless:
     async def download_original(self, external_document_id: str) -> bytes:
         return b"image"
 
+    async def list_custom_fields(self) -> list[object]:
+        return []
+
     async def write_content(self, external_document_id: str, content: str) -> bool:
         if self.content:
             return False
