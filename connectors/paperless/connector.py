@@ -44,18 +44,25 @@ class PaperlessConnector(DocumentConnector):
             raise TimeoutError(str(exc)) from exc
         except httpx.RequestError as exc:
             raise ConnectionError(str(exc)) from exc
+        request_url = str(response.request.url)
         if response.status_code == 401:
-            raise AuthenticationError("Paperless authentication failed")
+            raise AuthenticationError(
+                f"Paperless authentication failed: HTTP 401 from {request_url}"
+            )
         if response.status_code == 403:
-            raise AuthorizationError("Paperless authorization failed")
+            raise AuthorizationError(
+                f"Paperless authorization failed: HTTP 403 from {request_url}"
+            )
         if response.status_code == 404:
-            raise NotFoundError("Paperless document not found")
+            raise NotFoundError(f"Paperless resource not found: HTTP 404 from {request_url}")
         if response.status_code == 409:
             raise ConflictError("Paperless reported a conflict")
         if response.status_code == 429:
             raise RateLimitError("Paperless rate limit exceeded")
         if response.status_code in {400, 422}:
-            raise ValidationError("Paperless rejected the request")
+            raise ValidationError(
+                f"Paperless rejected the request: HTTP {response.status_code} from {request_url}"
+            )
         if response.status_code >= 500:
             raise ConnectionError(f"Paperless server error: HTTP {response.status_code}")
         response.raise_for_status()
