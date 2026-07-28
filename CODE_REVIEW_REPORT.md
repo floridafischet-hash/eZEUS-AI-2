@@ -1,5 +1,16 @@
 # Code Review Report
 
+## Aktueller Referenzstand
+
+Der am 28. Juli 2026 produktiv verifizierte Referenzstand ist in
+`docs/CURRENT_STATE.md` beschrieben. Er verwendet vorhandenen
+Paperless-OCR-Inhalt vorrangig, extrahiert die automatisch unterstützten Felder
+deterministisch und setzt generative KI für diese Feldzuordnung nicht ein.
+
+Die letzte reale Prüfung umfasste sechs unterschiedliche Rechnungen. Beide
+Zielfelder wurden jeweils korrekt ermittelt; die eZEUS-Laufzeiten lagen zwischen
+0,556 und 1,219 Sekunden. Der Testbestand umfasst 31 erfolgreiche Tests.
+
 ## Erweiterung: mehrere Paperless-Instanzen
 
 Die Anwendung unterstützt zusätzlich zur bisherigen globalen
