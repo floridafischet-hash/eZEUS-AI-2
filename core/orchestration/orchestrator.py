@@ -6,12 +6,13 @@ from uuid import UUID
 
 from sqlalchemy.orm import Session
 
-from connectors.paperless.connector import PaperlessConnector
+from connectors.base.interface import DocumentConnector
 from core.models.audit import AuditEntry
 from core.models.enums import JobPhase, JobStatus, PhaseStatus
 from core.models.extraction import ExtractionResult
 from core.models.job import Job
 from core.models.job_phase import JobPhaseEntry
+from core.paperless.service import connector_for_document
 from core.templates.service import TemplateService
 from core.validation.engine import ValidationEngine
 from plugins.base.interfaces import ExtractionCandidate
@@ -30,7 +31,7 @@ PROVIDERS = {
 class Orchestrator:
     def __init__(self, db: Session) -> None:
         self.db = db
-        self.connector = PaperlessConnector()
+        self.connector: DocumentConnector | None = None
         self.ocr = create_ocr_adapter()
         self.templates = TemplateService(db)
         self.validator = ValidationEngine()
@@ -63,6 +64,7 @@ class Orchestrator:
         job = self.db.get(Job, job_id)
         if job is None:
             raise ValueError(f"Unknown job: {job_id}")
+        connector = self.connector or connector_for_document(self.db, job.document.connector)
         job.status = JobStatus.RUNNING
         job.started_at = job.started_at or datetime.now(UTC)
         job.error_type = None
@@ -72,7 +74,7 @@ class Orchestrator:
         active_phase: JobPhaseEntry | None = None
         try:
             active_phase = self._start_phase(job, JobPhase.LOAD_DOCUMENT)
-            remote = await self.connector.get_document(job.document.external_document_id)
+            remote = await connector.get_document(job.document.external_document_id)
             document = job.document
             document.filename = remote.filename
             document.mime_type = remote.mime_type
@@ -81,7 +83,7 @@ class Orchestrator:
 
             active_phase = self._start_phase(job, JobPhase.DOWNLOAD_DOCUMENT)
             with TemporaryDirectory(prefix="ezeus-") as temp_dir:
-                content = await self.connector.download_original(document.external_document_id)
+                content = await connector.download_original(document.external_document_id)
                 remote_filename = (document.filename or "").replace("\\", "/")
                 safe_filename = Path(remote_filename).name
                 if safe_filename in {"", ".", ".."}:
@@ -101,7 +103,7 @@ class Orchestrator:
                 )
 
                 active_phase = self._start_phase(job, JobPhase.WRITE_OCR)
-                wrote_content = await self.connector.write_content(
+                wrote_content = await connector.write_content(
                     document.external_document_id, ocr_result.text
                 )
                 if wrote_content:
@@ -178,11 +180,11 @@ class Orchestrator:
                 self._finish_phase(active_phase)
 
                 active_phase = self._start_phase(job, JobPhase.RELOAD_METADATA)
-                before_write = await self.connector.get_document(document.external_document_id)
+                before_write = await connector.get_document(document.external_document_id)
                 self._finish_phase(active_phase)
 
                 active_phase = self._start_phase(job, JobPhase.WRITE_METADATA)
-                changed = await self.connector.write_empty_fields(
+                changed = await connector.write_empty_fields(
                     document.external_document_id, extracted_values
                 )
                 for field_id, value in changed.items():

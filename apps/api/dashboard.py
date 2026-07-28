@@ -186,6 +186,7 @@ DASHBOARD_HTML = """<!doctype html>
     <nav aria-label="Hauptnavigation">
       <button class="active" data-tab="overview">Übersicht</button>
       <button data-tab="logs">Logs</button>
+      <a href="/admin/instances">Paperless-Instanzen</a>
       <a href="/docs">API</a>
     </nav>
   </header>

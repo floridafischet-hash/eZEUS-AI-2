@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     paperless_api_token: str = ""
     paperless_webhook_secret: str = ""
     admin_api_secret: str = ""
+    credential_encryption_key: str = ""
     paperless_verify_tls: bool = True
 
     local_only: bool = True
@@ -57,6 +58,7 @@ class Settings(BaseSettings):
                     ("PAPERLESS_API_TOKEN", self.paperless_api_token),
                     ("PAPERLESS_WEBHOOK_SECRET", self.paperless_webhook_secret),
                     ("ADMIN_API_SECRET", self.admin_api_secret),
+                    ("CREDENTIAL_ENCRYPTION_KEY", self.credential_encryption_key),
                 )
                 if not value or value == "change-me" or value.startswith("example-")
             ]

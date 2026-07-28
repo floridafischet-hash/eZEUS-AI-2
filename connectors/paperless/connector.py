@@ -17,11 +17,16 @@ from core.config.settings import get_settings
 
 
 class PaperlessConnector(DocumentConnector):
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        base_url: str | None = None,
+        api_token: str | None = None,
+        verify_tls: bool | None = None,
+    ) -> None:
         settings = get_settings()
-        self.base_url = settings.paperless_base_url.rstrip("/")
-        self.token = settings.paperless_api_token
-        self.verify_tls = settings.paperless_verify_tls
+        self.base_url = (base_url or settings.paperless_base_url).rstrip("/")
+        self.token = api_token if api_token is not None else settings.paperless_api_token
+        self.verify_tls = verify_tls if verify_tls is not None else settings.paperless_verify_tls
 
     def _client(self) -> httpx.AsyncClient:
         return httpx.AsyncClient(

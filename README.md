@@ -145,6 +145,8 @@ Anwendungsnetz erreichbare Instanz zeigen.
 - `PAPERLESS_API_TOKEN`: Paperless-API-Token
 - `PAPERLESS_WEBHOOK_SECRET`: gemeinsames Secret für Paperless-Webhooks
 - `ADMIN_API_SECRET`: gemeinsames Secret für administrative Endpunkte
+- `CREDENTIAL_ENCRYPTION_KEY`: Fernet-Schlüssel zur Verschlüsselung gespeicherter
+  Paperless-Zugangsdaten
 - `PAPERLESS_VERIFY_TLS`: TLS-Zertifikatsprüfung für Paperless
 - `LOCAL_ONLY`: kennzeichnet den ausschließlich lokalen Betriebsmodus
 - `CLOUD_AI_GLOBALLY_ALLOWED`: globale Freigabe für Cloud-AI; derzeit ist kein
@@ -209,9 +211,29 @@ celery -A core.queue.celery_app.celery_app worker -Q high,normal,low --loglevel=
 ## Verwendung
 
 Das Dashboard liegt am Startpfad `/`. Die OpenAPI-Dokumentation ist unter
-`/docs` erreichbar.
+`/docs` erreichbar. Paperless-Instanzen werden unter `/admin/instances`
+verwaltet. Die Seite benötigt das `ADMIN_API_SECRET`; es wird nur im
+Sitzungsspeicher des Browsers gehalten.
 
-Ein Paperless-Webhook sendet einen `POST` an:
+Einen Fernet-Schlüssel für `CREDENTIAL_ENCRYPTION_KEY` erzeugen:
+
+```bash
+python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+```
+
+Für jede angelegte Instanz zeigt die Verwaltungsseite eine eigene Webhook-URL:
+
+```text
+https://<ezeus-host>/webhooks/paperless/<instanzkennung>
+```
+
+URL, API-Token und Webhook-Secret werden pro Instanz verwaltet. API-Token und
+Webhook-Secret liegen verschlüsselt in der Datenbank und werden über API und
+Oberfläche nicht im Klartext ausgegeben. Die Instanzkennung trennt Dokumente
+und Ereignisse verschiedener Paperless-Systeme.
+
+Der bisherige Webhook bleibt für die globale `.env`-Konfiguration
+rückwärtskompatibel:
 
 ```text
 http://<host>:<port>/webhooks/paperless

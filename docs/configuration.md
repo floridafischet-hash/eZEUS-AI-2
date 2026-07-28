@@ -11,6 +11,8 @@ Alle Werte werden über Umgebungsvariablen gelesen.
 - `PAPERLESS_API_TOKEN`: API-Token; in Produktion Pflicht
 - `PAPERLESS_WEBHOOK_SECRET`: Webhook-Secret; in Produktion Pflicht
 - `ADMIN_API_SECRET`: Secret für administrative API-Aufrufe; in Produktion Pflicht
+- `CREDENTIAL_ENCRYPTION_KEY`: URL-sicherer Fernet-Schlüssel zur Verschlüsselung
+  gespeicherter Paperless-Zugangsdaten; in Produktion Pflicht
 - `PAPERLESS_VERIFY_TLS`: standardmäßig `true`
 - `OCR_PROVIDER`: derzeit `paddleocr`
 - `OCR_LANGUAGE`, `OCR_DEVICE`: OCR-Konfiguration
@@ -29,3 +31,22 @@ Alle Werte werden über Umgebungsvariablen gelesen.
 Secrets dürfen nicht in Images, Versionsverwaltung oder Logs abgelegt werden.
 Im Produktionsmodus werden leere, mit `example-` beginnende und als
 `change-me` markierte Anwendungs-Secrets abgelehnt.
+
+## Mehrere Paperless-Instanzen
+
+Die globalen `PAPERLESS_*`-Werte bleiben für den bisherigen Webhook
+`/webhooks/paperless` erhalten. Zusätzliche Instanzen werden auf der
+Verwaltungsseite `/admin/instances` angelegt. Jede Instanz besitzt:
+
+- eine eindeutige Kennung,
+- eine Paperless-Basis-URL,
+- einen eigenen API-Token,
+- ein eigenes Webhook-Secret,
+- eine eigene Einstellung für die TLS-Prüfung,
+- eine eigene Webhook-URL `/webhooks/paperless/<kennung>`.
+
+API-Token und Webhook-Secret werden mit `CREDENTIAL_ENCRYPTION_KEY`
+verschlüsselt gespeichert. Der Schlüssel darf nach dem Anlegen von Instanzen
+nicht verloren gehen oder ungeplant geändert werden. Er muss zusammen mit der
+Produktionskonfiguration gesichert werden. Ein Schlüsselwechsel erfordert eine
+kontrollierte Neuverschlüsselung oder erneute Eingabe aller Zugangsdaten.

@@ -1,5 +1,43 @@
 # Code Review Report
 
+## Erweiterung: mehrere Paperless-Instanzen
+
+Die Anwendung unterstützt zusätzlich zur bisherigen globalen
+Paperless-Konfiguration mehrere unabhängig verwaltete Paperless-Instanzen.
+
+- `core/models/paperless_instance.py`: neues persistentes Instanzmodell mit
+  Kennung, Basis-URL, TLS-Einstellung und Aktivstatus.
+- `core/security/credentials.py`: Fernet-Verschlüsselung für API-Tokens und
+  Webhook-Secrets. Klartext-Zugangsdaten werden nicht über die API ausgegeben.
+- `infrastructure/migrations/versions/0003_paperless_instances.py`: additive
+  Datenbankmigration ohne Änderung vorhandener Dokumente oder Jobs.
+- `apps/api/paperless_instances.py`: geschützte Verwaltungsseite und
+  Administrations-API zum Anlegen, Anzeigen, Ändern und Testen von Instanzen.
+- `webhooks/paperless/router.py`: instanzbezogene Webhooks unter
+  `/webhooks/paperless/<kennung>` mit eigenem Secret.
+- `core/paperless/service.py` und `core/orchestration/orchestrator.py`:
+  automatische Auswahl der Quellinstanz für den gesamten Lese- und
+  Schreibvorgang.
+- `connectors/paperless/connector.py`: explizite Zugangsdaten je
+  Connector-Instanz bei weiterhin vorhandener `.env`-Kompatibilität.
+
+Sicherheitswirkung:
+
+- API-Tokens und Webhook-Secrets werden verschlüsselt in PostgreSQL abgelegt.
+- `CREDENTIAL_ENCRYPTION_KEY` ist im Produktionsmodus verpflichtend.
+- Listenantworten und Verwaltungsoberfläche geben keine Zugangsdaten zurück.
+- Dokument- und Event-IDs werden mit der Instanzkennung getrennt, sodass
+  Überschneidungen verschiedener Paperless-Systeme keine falsche Zuordnung
+  verursachen.
+
+Validierung:
+
+- 21 Python-Tests bestanden.
+- Ruff-Lint und Ruff-Formatprüfung bestanden.
+- mypy im strikten Modus bestanden.
+- Eine externe Starlette-Abkündigungswarnung zur TestClient-Integration bleibt
+  bestehen und beeinflusst die Funktion nicht.
+
 ## Prüfrahmen
 
 - Repository: `ezeus-AI-2`
