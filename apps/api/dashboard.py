@@ -72,7 +72,8 @@ DASHBOARD_CONTENT = """
     <div>
       <h2 id="processing-title">Verarbeitungsprotokoll</h2>
       <p class="section-copy">Bereinigte technische Abläufe ohne Dokumentinhalte,
-        Zugangsdaten oder Tokens. Einträge lassen sich für Details aufklappen.</p>
+        Zugangsdaten oder Tokens. Es werden immer die letzten 5.000 Einträge
+        der gewählten Instanz geladen.</p>
     </div>
     <span class="status-badge success">Automatische Aktualisierung</span>
   </div>
@@ -85,19 +86,8 @@ DASHBOARD_CONTENT = """
     </div>
     <div>
       <label for="log-search">Einträge durchsuchen</label>
-      <input id="log-search" type="search" placeholder="Dateiname, Dokument-ID oder Status">
-    </div>
-    <div>
-      <label for="log-limit">Anzahl</label>
-      <select id="log-limit">
-        <option value="50">50</option>
-        <option value="100" selected>100</option>
-        <option value="250">250</option>
-        <option value="500">500</option>
-        <option value="1000">1.000</option>
-        <option value="2500">2.500</option>
-        <option value="5000">5.000</option>
-      </select>
+      <input id="log-search" type="search"
+        placeholder="Dokument-ID, Dateiname, Status oder Job-ID">
     </div>
     <button id="refresh-logs" class="primary" type="button">Aktualisieren</button>
     <span class="help-text" id="refresh-info" role="status">Wird geladen</span>
@@ -243,9 +233,8 @@ DASHBOARD_SCRIPT = """
     const empty = document.getElementById("log-empty");
     window.ezeusUI?.setBusy(button, true, "Lädt …");
     try {
-      const limit = document.getElementById("log-limit").value;
       const instance = document.getElementById("log-instance").value;
-      const params = new URLSearchParams({limit});
+      const params = new URLSearchParams({limit: "5000"});
       if (instance) params.set("instance_slug", instance);
       const response = await fetch(`/api/logs?${params.toString()}`,
         {headers:{"Accept":"application/json"},cache:"no-store"});
@@ -263,7 +252,6 @@ DASHBOARD_SCRIPT = """
   }
   document.getElementById("refresh-logs").addEventListener("click", loadLogs);
   document.getElementById("log-instance").addEventListener("change", loadLogs);
-  document.getElementById("log-limit").addEventListener("change", loadLogs);
   document.getElementById("log-search").addEventListener("input", renderLogs);
   fetch("/ready",{cache:"no-store"}).then((response) => {
     if (!response.ok) throw new Error();
@@ -301,7 +289,7 @@ def dashboard() -> str:
 @router.get("/api/logs")
 def processing_logs(
     db: Annotated[Session, Depends(get_db)],
-    limit: Annotated[int, Query(ge=1, le=5000)] = 100,
+    limit: Annotated[int, Query(ge=1, le=5000)] = 5000,
     instance_slug: Annotated[str | None, Query(max_length=64)] = None,
 ) -> dict[str, object]:
     instances = db.scalars(select(PaperlessInstance).order_by(PaperlessInstance.base_url)).all()

@@ -38,7 +38,9 @@ def test_dashboard_is_available() -> None:
     assert "Was ist passiert?" in response.text
     assert "Vollständiger Jobfehler" in response.text
     assert 'id="log-instance"' in response.text
-    assert '<option value="5000">5.000</option>' in response.text
+    assert 'new URLSearchParams({limit: "5000"})' in response.text
+    assert 'id="log-limit"' not in response.text
+    assert "Dokument-ID, Dateiname, Status oder Job-ID" in response.text
 
 
 def test_dashboard_uses_configured_ollama_model(monkeypatch: MonkeyPatch) -> None:
