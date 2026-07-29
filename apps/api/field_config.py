@@ -2,15 +2,17 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 
-from apps.api.admin import require_admin_secret
+from connectors.base.errors import ConnectorError
 from core.db.session import get_db
 from core.field_config.schemas import FieldConfigurationSave
 from core.field_config.service import FieldConfigurationService
 from core.models.paperless_instance import PaperlessInstance
+from core.paperless.service import connector_for_instance
+from core.security.admin_auth import AdminPrincipal, require_admin_secret, require_admin_user
 
 router = APIRouter(tags=["field-configuration"])
 
@@ -26,11 +28,11 @@ def _instance_or_404(
 
 @router.get(
     "/api/instances/{instance_slug}/field-config",
-    dependencies=[Depends(require_admin_secret)],
 )
 def get_field_configuration(
     instance_slug: str,
     db: Annotated[Session, Depends(get_db)],
+    _principal: Annotated[AdminPrincipal, Depends(require_admin_user)],
 ) -> dict[str, object]:
     service = FieldConfigurationService(db)
     instance = _instance_or_404(db, instance_slug)
@@ -43,19 +45,27 @@ def get_field_configuration(
 
 @router.put(
     "/api/instances/{instance_slug}/field-config",
-    dependencies=[Depends(require_admin_secret)],
 )
-def save_field_configuration(
+async def save_field_configuration(
     instance_slug: str,
     payload: FieldConfigurationSave,
     db: Annotated[Session, Depends(get_db)],
-    x_ezeus_admin_actor: str | None = Header(default=None),
+    principal: Annotated[AdminPrincipal, Depends(require_admin_secret)],
 ) -> dict[str, object]:
     service = FieldConfigurationService(db)
     instance = _instance_or_404(db, instance_slug)
-    actor = " ".join((x_ezeus_admin_actor or "admin").split())[:255] or "admin"
     try:
-        fields = service.save(instance, payload.fields, actor=actor)
+        fields = service.save(instance, payload.fields, actor=principal.username)
+        fields = await service.synchronize_paperless_fields(
+            instance,
+            connector_for_instance(instance),
+            actor=principal.username,
+        )
+    except ConnectorError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Paperless custom fields could not be synchronized: {exc}",
+        ) from exc
     except ValueError as exc:
         db.rollback()
         raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -67,12 +77,12 @@ def save_field_configuration(
 
 @router.post(
     "/api/instances/{instance_slug}/field-config/preview",
-    dependencies=[Depends(require_admin_secret)],
 )
 def preview_field_configuration(
     instance_slug: str,
     payload: FieldConfigurationSave,
     db: Annotated[Session, Depends(get_db)],
+    _principal: Annotated[AdminPrincipal, Depends(require_admin_user)],
 ) -> dict[str, object]:
     instance = _instance_or_404(db, instance_slug)
     fields = sorted(
@@ -144,7 +154,10 @@ FIELD_CONFIG_HTML = """<!doctype html>
     <div class="toolbar">
       <div><label for="secret">Admin-Secret</label>
         <input id="secret" type="password" autocomplete="current-password"></div>
-      <div><label for="actor">Administrator</label><input id="actor" maxlength="255"></div>
+      <div><label for="username">Benutzername</label>
+        <input id="username" autocomplete="username"></div>
+      <div><label for="password">Passwort</label>
+        <input id="password" type="password" autocomplete="current-password"></div>
       <button id="load" type="button">Konfiguration laden</button>
     </div>
     <div id="message"></div>
@@ -173,8 +186,11 @@ FIELD_CONFIG_HTML = """<!doctype html>
     ["date","Datum"],["boolean","Ja/Nein"],["select","Auswahlfeld"],
     ["textarea","Mehrzeiliger Text"]];
   function authHeaders(json=true) {
-    const headers = {"X-EZEUS-Admin-Secret":document.getElementById("secret").value,
-      "X-EZEUS-Admin-Actor":document.getElementById("actor").value || "admin"};
+    const username=document.getElementById("username").value;
+    const password=document.getElementById("password").value;
+    const headers = {};
+    if(username && password) headers["Authorization"]=`Basic ${btoa(`${username}:${password}`)}`;
+    else headers["X-EZEUS-Admin-Secret"]=document.getElementById("secret").value;
     if (json) headers["Content-Type"] = "application/json";
     return headers;
   }

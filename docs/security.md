@@ -2,11 +2,12 @@
 
 ## Feldadministration und Mandantentrennung
 
-Lese-, Vorschau- und Schreibzugriffe der Feldkonfigurations-API verlangen den
-Header `X-EZEUS-Admin-Secret`. Der Vergleich erfolgt über die bestehende
-konstantzeitliche Admin-Authentifizierung. Die Weboberfläche hält das Secret
-nur im aktuellen Browser-Dokument und überträgt es nicht in URL oder
-Serverprotokoll.
+Persönliche Administratorkonten werden mit Scrypt-gehashten Passwörtern
+gespeichert und verwenden HTTP Basic ausschließlich über TLS. `admin` darf
+Konfigurationen und Konten ändern; `viewer` darf Konfigurationen nur lesen und
+Vorschauen ausführen. Das bestehende `ADMIN_API_SECRET` dient ausschließlich
+zum Bootstrap des ersten aktiven Administrators und wird anschließend für
+API-Zugriffe abgewiesen.
 
 Der Mandant wird serverseitig aus `{instance_slug}` beziehungsweise bei der
 Verarbeitung aus `Document.connector` bestimmt. Feldkonfigurations-Payloads
@@ -25,7 +26,6 @@ Remotezustand erneut geladen.
 
 Vor einem Produktivbetrieb fehlen noch:
 
-- rollenbasierte Autorisierung zusätzlich zur Secret-Authentifizierung für `/api/*`
 - Rate Limiting am Reverse Proxy
 - SSRF-Schutz durch eine administrativ feste Paperless-URL
 - Malware-, PDF-Bomb- und Ressourcenlimits auf Betriebssystemebene

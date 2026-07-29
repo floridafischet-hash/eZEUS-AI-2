@@ -52,10 +52,6 @@ class OllamaExtractionProvider(ExtractionProvider):
         return re.sub(r"[^a-z0-9]", "", normalized)
 
     async def extract(self, text: str, config: dict[str, object]) -> list[ExtractionCandidate]:
-        settings = get_settings()
-        if not settings.ollama_enabled:
-            raise RuntimeError("Ollama extraction is disabled")
-
         field_name = str(config.get("field_name") or config.get("description") or "").strip()
         if not field_name:
             raise ValueError("Ollama provider requires field_name or description")

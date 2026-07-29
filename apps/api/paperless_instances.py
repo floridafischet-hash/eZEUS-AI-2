@@ -10,13 +10,13 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from apps.api.admin import require_admin_secret
 from connectors.base.errors import ConnectorError
 from connectors.paperless.connector import PaperlessConnector
 from core.config.settings import get_settings
 from core.db.session import get_db
 from core.field_config.service import FieldConfigurationService
 from core.models.paperless_instance import PaperlessInstance
+from core.security.admin_auth import require_admin_secret
 from core.security.credentials import (
     CredentialEncryptionError,
     decrypt_credential,
@@ -227,14 +227,23 @@ INSTANCE_ADMIN_HTML = """<!doctype html>
   </style>
 </head>
 <body>
-  <header><strong>eZEUS-AI-2 Verwaltung</strong><a href="/">Zur Übersicht</a></header>
+  <header><strong>eZEUS-AI-2 Verwaltung</strong><span>
+    <a href="/api/admin-users/page">Administratoren</a> ·
+    <a href="/">Zur Übersicht</a>
+  </span></header>
   <main>
     <h1>Paperless-Instanzen</h1>
     <p class="muted">Alle Angaben können in einem Schritt eingetragen werden. Zugangsdaten
       werden verschlüsselt gespeichert und nicht wieder angezeigt.</p>
     <section class="panel">
-      <label for="admin-secret">Admin-Secret</label>
-      <input id="admin-secret" type="password" autocomplete="current-password" required>
+      <div class="grid">
+        <div><label for="admin-username">Benutzername</label>
+          <input id="admin-username" autocomplete="username"></div>
+        <div><label for="admin-password">Passwort</label>
+          <input id="admin-password" type="password" autocomplete="current-password"></div>
+        <div class="wide"><label for="admin-secret">Alternatives Bootstrap-Admin-Secret</label>
+          <input id="admin-secret" type="password" autocomplete="current-password"></div>
+      </div>
     </section>
     <section class="panel form-panel">
       <form id="instance-form">
@@ -270,8 +279,14 @@ INSTANCE_ADMIN_HTML = """<!doctype html>
     const instances = document.getElementById("instances");
 
     function headers(json = false) {
-      const result = {"X-EZEUS-Admin-Secret":
-        document.getElementById("admin-secret").value};
+      const username = document.getElementById("admin-username").value;
+      const password = document.getElementById("admin-password").value;
+      const result = {};
+      if (username && password) {
+        result["Authorization"] = `Basic ${btoa(`${username}:${password}`)}`;
+      } else {
+        result["X-EZEUS-Admin-Secret"] = document.getElementById("admin-secret").value;
+      }
       if (json) result["Content-Type"] = "application/json";
       return result;
     }

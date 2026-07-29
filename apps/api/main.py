@@ -4,9 +4,10 @@ from contextlib import asynccontextmanager
 import httpx
 from fastapi import FastAPI, HTTPException
 from redis import Redis
-from sqlalchemy import text
+from sqlalchemy import select, text
 
 from apps.api.admin import router as admin_router
+from apps.api.admin_users import router as admin_users_router
 from apps.api.dashboard import router as dashboard_router
 from apps.api.field_config import router as field_config_router
 from apps.api.paperless_instances import router as paperless_instances_router
@@ -14,6 +15,7 @@ from connectors.base.errors import ConnectorError
 from connectors.paperless.connector import PaperlessConnector
 from core.config.settings import get_settings
 from core.db.session import engine
+from core.models.instance_field_config import InstanceFieldConfig
 from plugins.ocr.factory import create_ocr_adapter
 from webhooks.paperless.router import router as paperless_webhook_router
 
@@ -28,6 +30,7 @@ app = FastAPI(title="eZEUS-AI-2", version="0.2.0", lifespan=lifespan)
 app.include_router(dashboard_router)
 app.include_router(paperless_webhook_router)
 app.include_router(admin_router)
+app.include_router(admin_users_router)
 app.include_router(paperless_instances_router)
 app.include_router(field_config_router)
 
@@ -41,9 +44,20 @@ def health() -> dict[str, str]:
 async def ready() -> dict[str, object]:
     settings = get_settings()
     checks: dict[str, bool] = {}
+    ai_fields_enabled = False
     try:
         with engine.connect() as connection:
             connection.execute(text("SELECT 1"))
+            ai_fields_enabled = bool(
+                connection.scalar(
+                    select(InstanceFieldConfig.id)
+                    .where(
+                        InstanceFieldConfig.enabled.is_(True),
+                        InstanceFieldConfig.ai_enabled.is_(True),
+                    )
+                    .limit(1)
+                )
+            )
         checks["database"] = True
     except Exception:
         checks["database"] = False
@@ -60,7 +74,7 @@ async def ready() -> dict[str, object]:
         checks["ocr"] = True
     except (RuntimeError, ValueError):
         checks["ocr"] = False
-    if settings.ollama_enabled:
+    if settings.ollama_enabled or ai_fields_enabled:
         try:
             async with httpx.AsyncClient(
                 base_url=settings.ollama_base_url,

@@ -1,3 +1,4 @@
+from core.models.admin_user import AdminUser
 from core.models.audit import AuditEntry
 from core.models.document import Document
 from core.models.extraction import ExtractionResult
@@ -9,6 +10,7 @@ from core.models.paperless_instance import PaperlessInstance
 from core.models.template import Template
 
 __all__ = [
+    "AdminUser",
     "AuditEntry",
     "Document",
     "ExtractionResult",

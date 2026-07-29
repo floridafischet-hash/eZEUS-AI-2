@@ -65,3 +65,11 @@ def connector_for_document(db: Session, connector: str) -> PaperlessConnector:
         api_token=decrypt_credential(instance.api_token_encrypted),
         verify_tls=instance.verify_tls,
     )
+
+
+def connector_for_instance(instance: PaperlessInstance) -> PaperlessConnector:
+    return PaperlessConnector(
+        base_url=instance.base_url,
+        api_token=decrypt_credential(instance.api_token_encrypted),
+        verify_tls=instance.verify_tls,
+    )

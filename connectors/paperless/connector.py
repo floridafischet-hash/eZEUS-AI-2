@@ -108,12 +108,85 @@ class PaperlessConnector(DocumentConnector):
                     external_id=str(item["id"]),
                     name=str(item["name"]),
                     data_type=str(item["data_type"]),
+                    extra_data=(
+                        dict(item["extra_data"])
+                        if isinstance(item.get("extra_data"), dict)
+                        else {}
+                    ),
                 )
                 for item in data.get("results", [])
             )
             next_url = data.get("next")
             url = str(next_url) if next_url else ""
         return fields
+
+    async def create_custom_field(
+        self,
+        name: str,
+        data_type: str,
+        options: list[str] | None = None,
+    ) -> ConnectorCustomField:
+        payload: dict[str, object] = {"name": name, "data_type": data_type}
+        if data_type == "select":
+            payload["extra_data"] = {
+                "select_options": [{"label": option} for option in options or []]
+            }
+        elif data_type == "monetary":
+            payload["extra_data"] = {"default_currency": "EUR"}
+        response = await self._request("POST", "/api/custom_fields/", json=payload)
+        item = response.json()
+        return ConnectorCustomField(
+            external_id=str(item["id"]),
+            name=str(item["name"]),
+            data_type=str(item["data_type"]),
+            extra_data=(
+                dict(item["extra_data"]) if isinstance(item.get("extra_data"), dict) else {}
+            ),
+        )
+
+    async def update_custom_field(
+        self,
+        external_field_id: str,
+        name: str,
+        data_type: str,
+        options: list[str] | None = None,
+    ) -> ConnectorCustomField:
+        payload: dict[str, object] = {"name": name}
+        if data_type == "select":
+            current = await self._request("GET", f"/api/custom_fields/{external_field_id}/")
+            current_data = current.json()
+            extra_data = current_data.get("extra_data")
+            current_options = (
+                extra_data.get("select_options", []) if isinstance(extra_data, dict) else []
+            )
+            ids_by_label = {
+                str(option["label"]): str(option["id"])
+                for option in current_options
+                if isinstance(option, dict) and option.get("label") and option.get("id")
+            }
+            payload["extra_data"] = {
+                "select_options": [
+                    {
+                        "label": option,
+                        **({"id": ids_by_label[option]} if option in ids_by_label else {}),
+                    }
+                    for option in options or []
+                ]
+            }
+        response = await self._request(
+            "PATCH",
+            f"/api/custom_fields/{external_field_id}/",
+            json=payload,
+        )
+        item = response.json()
+        return ConnectorCustomField(
+            external_id=str(item["id"]),
+            name=str(item["name"]),
+            data_type=str(item["data_type"]),
+            extra_data=(
+                dict(item["extra_data"]) if isinstance(item.get("extra_data"), dict) else {}
+            ),
+        )
 
     async def list_correspondents(self) -> list[ConnectorCorrespondent]:
         correspondents: list[ConnectorCorrespondent] = []
