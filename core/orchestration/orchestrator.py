@@ -10,14 +10,20 @@ from sqlalchemy.orm import Session
 from connectors.base.interface import DocumentConnector
 from core.config.settings import get_settings
 from core.correspondents.matcher import match_correspondent
+from core.field_config.service import FieldConfigurationService, RuntimeFieldConfiguration
 from core.models.audit import AuditEntry
 from core.models.enums import JobPhase, JobStatus, PhaseStatus
 from core.models.extraction import ExtractionResult
 from core.models.job import Job
 from core.models.job_phase import JobPhaseEntry
 from core.models.ocr_artifact import OCRArtifact
-from core.paperless.service import connector_for_document
+from core.paperless.service import (
+    connector_for_document,
+    get_enabled_instance,
+    instance_slug_from_connector,
+)
 from core.templates.automatic import config_from_custom_fields
+from core.templates.schema import TemplateConfig
 from core.templates.service import TemplateService
 from core.validation.engine import ValidationEngine
 from plugins.base.interfaces import ExtractionCandidate
@@ -203,8 +209,35 @@ class Orchestrator:
                     )
 
                 active_phase = self._start_phase(job, JobPhase.SELECT_TEMPLATE)
-                config = config_from_custom_fields(await connector.list_custom_fields())
-                if config is not None:
+                paperless_fields = await connector.list_custom_fields()
+                runtime_fields: RuntimeFieldConfiguration | None = None
+                config: TemplateConfig | None
+                instance_slug = instance_slug_from_connector(document.connector)
+                instance = (
+                    get_enabled_instance(self.db, instance_slug)
+                    if instance_slug is not None
+                    else None
+                )
+                if instance is not None:
+                    runtime_fields = FieldConfigurationService(self.db).runtime_config(
+                        instance, paperless_fields
+                    )
+                    config = runtime_fields.template
+                    self._finish_phase(
+                        active_phase,
+                        metadata={
+                            "selected": True,
+                            "source": "instance_field_configuration",
+                            "instance": instance.slug,
+                            "field_ids": [
+                                field.target_field_id for field in config.fields.values()
+                                if field.target_field_id is not None
+                            ],
+                        },
+                    )
+                else:
+                    config = config_from_custom_fields(paperless_fields)
+                if instance is None and config is not None:
                     self._finish_phase(
                         active_phase,
                         metadata={
@@ -212,10 +245,11 @@ class Orchestrator:
                             "source": "paperless_custom_fields",
                             "field_ids": [
                                 field.target_field_id for field in config.fields.values()
+                                if field.target_field_id is not None
                             ],
                         },
                     )
-                else:
+                elif instance is None:
                     selected = self.templates.select_for_document_type(
                         document.document_type_external_id
                     )
@@ -229,6 +263,8 @@ class Orchestrator:
                     job.selected_template_id = template.id
                     job.selected_template_version = template.version
                     self._finish_phase(active_phase, metadata={"template_id": str(template.id)})
+                if config is None:
+                    raise RuntimeError("Field configuration could not be resolved")
 
                 active_phase = self._start_phase(job, JobPhase.EXTRACT_FIELDS)
                 candidates_by_field: dict[
@@ -237,6 +273,11 @@ class Orchestrator:
                 for field_key, field in config.fields.items():
                     persisted: list[tuple[ExtractionCandidate, ExtractionResult]] = []
                     for provider_config in field.providers:
+                        if (
+                            provider_config.type == "ollama"
+                            and not get_settings().ollama_enabled
+                        ):
+                            continue
                         provider_data = provider_config.model_dump(exclude={"type"})
                         for candidate in await PROVIDERS[provider_config.type]().extract(
                             extraction_text, provider_data
@@ -244,7 +285,11 @@ class Orchestrator:
                             result = ExtractionResult(
                                 job_id=job.id,
                                 field_key=field_key,
-                                target_field_id=str(field.target_field_id),
+                                target_field_id=(
+                                    str(field.target_field_id)
+                                    if field.target_field_id is not None
+                                    else field_key
+                                ),
                                 provider=candidate.provider,
                                 raw_value=candidate.value,
                                 normalized_value=None,
@@ -288,8 +333,9 @@ class Orchestrator:
                     if valid and field.selection_strategy == "first":
                         winner = valid[0]
                         winner[2].accepted = True
-                        extracted_values[str(field.target_field_id)] = winner[1]
                         extracted_by_key[field_key] = winner[1]
+                        if field.target_field_id is not None:
+                            extracted_values[str(field.target_field_id)] = winner[1]
                         for _, _, result in valid[1:]:
                             result.reason = "Lower-priority validated candidate"
                     elif valid and field.selection_strategy == "highest":
@@ -301,16 +347,18 @@ class Orchestrator:
                             ),
                         )
                         winner[2].accepted = True
-                        extracted_values[str(field.target_field_id)] = winner[1]
                         extracted_by_key[field_key] = winner[1]
+                        if field.target_field_id is not None:
+                            extracted_values[str(field.target_field_id)] = winner[1]
                         for _, _, result in valid:
                             if result is not winner[2]:
                                 result.reason = "Lower validated total candidate"
                     elif valid and len(distinct) == 1:
                         winner = max(valid, key=lambda item: item[0])
                         winner[2].accepted = True
-                        extracted_values[str(field.target_field_id)] = winner[1]
                         extracted_by_key[field_key] = winner[1]
+                        if field.target_field_id is not None:
+                            extracted_values[str(field.target_field_id)] = winner[1]
                     elif len(distinct) > 1:
                         for _, _, result in valid:
                             result.reason = "Conflicting validated candidates"
@@ -318,9 +366,12 @@ class Orchestrator:
                 missing_fields = [
                     field_key
                     for field_key, field in config.fields.items()
-                    if str(field.target_field_id) not in extracted_values
+                    if field.required
+                    and (
+                        field_key not in extracted_by_key
+                        or field.target_field_id is None
+                    )
                 ]
-                all_fields_extracted = not missing_fields
                 self._finish_phase(
                     active_phase,
                     metadata={
@@ -365,7 +416,10 @@ class Orchestrator:
                         )
                 correspondent_written = False
                 correspondent_match = None
-                if before_write.correspondent_id is None:
+                correspondent_enabled = (
+                    runtime_fields.correspondent_enabled if runtime_fields is not None else True
+                )
+                if correspondent_enabled and before_write.correspondent_id is None:
                     correspondent_match = match_correspondent(
                         extraction_text,
                         await connector.list_correspondents(),
@@ -383,6 +437,14 @@ class Orchestrator:
                                 None,
                                 correspondent_match.correspondent_id,
                             )
+                if (
+                    runtime_fields is not None
+                    and runtime_fields.correspondent_required
+                    and before_write.correspondent_id is None
+                    and correspondent_match is None
+                ):
+                    missing_fields.append("correspondent")
+                all_fields_extracted = not missing_fields
                 self._finish_phase(
                     active_phase,
                     metadata={
@@ -423,9 +485,12 @@ class Orchestrator:
     def _audit(
         self, job: Job, action: str, field: str, old_value: object, new_value: object
     ) -> None:
+        slug = instance_slug_from_connector(job.document.connector)
+        instance = get_enabled_instance(self.db, slug) if slug is not None else None
         self.db.add(
             AuditEntry(
                 job_id=job.id,
+                instance_id=instance.id if instance is not None else None,
                 actor="system",
                 action=action,
                 entity_type="document",

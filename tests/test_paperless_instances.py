@@ -32,6 +32,7 @@ def test_instance_credentials_are_encrypted_and_webhook_selects_source(
 
     encryption_key = Fernet.generate_key().decode()
     monkeypatch.setenv("CREDENTIAL_ENCRYPTION_KEY", encryption_key)
+    monkeypatch.setenv("ADMIN_API_SECRET", "test-admin-secret")
     get_settings.cache_clear()
     monkeypatch.setattr(
         QueueAdapter,
@@ -43,6 +44,7 @@ def test_instance_credentials_are_encrypted_and_webhook_selects_source(
         client = TestClient(app)
         create_response = client.post(
             "/api/paperless-instances",
+            headers={"X-EZEUS-Admin-Secret": "test-admin-secret"},
             json={
                 "name": "Externes Paperless",
                 "base_url": "https://paperless.example.test",
@@ -61,7 +63,10 @@ def test_instance_credentials_are_encrypted_and_webhook_selects_source(
             assert "plain-api-token" not in instance.api_token_encrypted
             assert "plain-webhook-secret" not in instance.webhook_secret_encrypted
 
-        listed = client.get("/api/paperless-instances")
+        listed = client.get(
+            "/api/paperless-instances",
+            headers={"X-EZEUS-Admin-Secret": "test-admin-secret"},
+        )
         assert listed.status_code == 200
         serialized = str(listed.json())
         assert "plain-api-token" not in serialized
@@ -106,8 +111,8 @@ def test_instance_admin_page_is_available() -> None:
     assert response.status_code == 200
     assert "Paperless-Instanzen" in response.text
     assert response.text.count('<form id="instance-form">') == 1
-    assert 'id="admin-secret"' not in response.text
-    assert "Admin-Secret" not in response.text
+    assert 'id="admin-secret"' in response.text
+    assert "Admin-Secret" in response.text
     assert 'id="name"' in response.text
     assert 'id="base-url"' in response.text
     assert 'id="api-token"' in response.text
@@ -131,6 +136,7 @@ def test_unscoped_webhook_rejects_secret_shared_by_multiple_instances(
             yield session
 
     monkeypatch.setenv("CREDENTIAL_ENCRYPTION_KEY", Fernet.generate_key().decode())
+    monkeypatch.setenv("ADMIN_API_SECRET", "test-admin-secret")
     get_settings.cache_clear()
     monkeypatch.setattr(
         QueueAdapter,
@@ -147,6 +153,7 @@ def test_unscoped_webhook_rejects_secret_shared_by_multiple_instances(
         ):
             response = client.post(
                 "/api/paperless-instances",
+                headers={"X-EZEUS-Admin-Secret": "test-admin-secret"},
                 json={
                     "name": name,
                     "base_url": base_url,
