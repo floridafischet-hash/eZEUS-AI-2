@@ -9,8 +9,14 @@ Nginx-Basic-Authentication ihren eigenen `Authorization`-Header unabhängig
 verwenden kann. `admin` darf
 Konfigurationen und Konten ändern; `viewer` darf Konfigurationen nur lesen und
 Vorschauen ausführen. Das bestehende `ADMIN_API_SECRET` dient ausschließlich
-zum Bootstrap des ersten aktiven Administrators und wird anschließend für
-API-Zugriffe abgewiesen.
+dem Bootstrap des ersten Administratorkontos.
+
+Bei vorgeschalteter HTTP-Basic-Authentifizierung kann der Reverse Proxy den
+bereits geprüften Benutzernamen über `X-EZEUS-Proxy-User` weiterreichen. Die
+Anwendung akzeptiert ihn nur zusammen mit dem internen
+`X-EZEUS-Proxy-Secret`, dessen Wert `PROXY_AUTH_SECRET` entsprechen muss, und
+nur wenn ein aktives Anwendungskonto mit demselben Namen existiert. Der Proxy
+muss beide eingehenden Header stets überschreiben.
 
 Der Mandant wird serverseitig aus `{instance_slug}` beziehungsweise bei der
 Verarbeitung aus `Document.connector` bestimmt. Feldkonfigurations-Payloads
