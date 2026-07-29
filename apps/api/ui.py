@@ -51,6 +51,7 @@ def page_shell(
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#0a0a0a">
   <title>{escape(title)} | eZEUS-AI-2</title>
+  <link rel="icon" type="image/png" href="/static/ezeus-logo.png">
   <link rel="stylesheet" href="/static/ezeus-ui.css">
   <script src="/static/ezeus-ui.js" defer></script>
 </head>

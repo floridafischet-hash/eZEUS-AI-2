@@ -229,6 +229,30 @@ Webhook-Secret. Die Webhook-Kennung wird automatisch aus der URL erzeugt. Die
 Seite wird am Reverse Proxy durch die bestehende HTTP-Basic-Authentifizierung
 geschützt.
 
+### Weboberfläche und Designsystem
+
+Die Administrationsoberfläche orientiert sich am Markenauftritt von eZEUS-AI:
+nahezu schwarze Grundflächen, abgestufte Anthrazitkarten, eZEUS-Rot als
+Akzentfarbe und eine feste Seitennavigation auf großen Bildschirmen. Das
+unveränderte Original-Logo liegt unter
+`apps/api/static/ezeus-logo.png` und wird in Navigation und Kopfbereich
+verwendet.
+
+Das gemeinsame Grundlayout wird durch `apps/api/ui.py` erzeugt. Zentrale
+Design-Tokens, Komponenten- und Responsive-Regeln befinden sich in
+`apps/api/static/ezeus-ui.css`; das gemeinsame Verhalten für mobile Navigation,
+Ladezustände und Meldungen liegt in `apps/api/static/ezeus-ui.js`. Die
+Oberfläche verwendet folgende Breakpoints:
+
+- Desktop ab 1180 Pixel mit breiten Mehrspalten-Layouts,
+- Notebook und Tablet bis 1180 beziehungsweise 860 Pixel,
+- Smartphone bis 600 Pixel mit einklappbarer Navigation sowie gestapelten
+  Formularen und Karten.
+
+Tabellen bleiben auf kleinen Bildschirmen horizontal scrollbar. Alle
+Formularfelder besitzen sichtbare Beschriftungen, interaktive Elemente
+Fokusmarkierungen und kritische Deaktivierungen eine Bestätigung.
+
 Einen Fernet-Schlüssel für `CREDENTIAL_ENCRYPTION_KEY` erzeugen:
 
 ```bash
