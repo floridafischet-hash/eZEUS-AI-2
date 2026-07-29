@@ -22,8 +22,9 @@ FIELD_DEFINITIONS: dict[str, dict[str, object]] = {
             r"([A-Z0-9][A-Z0-9./_-]*)\s+"
             r"[A-Z0-9][A-Z0-9./_-]*\s*$",
             r"(?i)(?:Rechnungsnummer|Rechnung(?:s)?[\s.-]*(?:Nr|Nummer)\.?)"
-            r"\s*[:.]?[ \t]*"
+            r"[ \t]*[:.]?[ \t]*"
             r"(?!Kunden(?:nummer|[\s.-]*(?:Nr|Nummer)\.?))"
+            r"(?=[A-Z0-9./_-]*\d)"
             r"([A-Z0-9][A-Z0-9./_-]*)",
             r"(?im)^\s*Rechnung\s+(?=[A-Z0-9./_-]*\d)"
             r"([A-Z0-9][A-Z0-9./_-]*)\s*$",
