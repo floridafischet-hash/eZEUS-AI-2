@@ -1,4 +1,5 @@
 from datetime import UTC, datetime
+from html import escape
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
@@ -7,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from apps.api.ui import page_shell
+from core.config.settings import get_settings
 from core.db.session import get_db
 from core.models.job import Job
 from core.models.job_phase import JobPhaseEntry
@@ -43,7 +45,7 @@ DASHBOARD_CONTENT = """
   </article>
   <article class="metric-card">
     <div class="metric-label">Lokale KI</div>
-    <div class="metric-value">Qwen3:4b</div>
+    <div class="metric-value">{{OLLAMA_MODEL}}</div>
     <div class="metric-note">Lokale, mandantenbezogene Extraktion</div>
   </article>
   <article class="metric-card">
@@ -244,6 +246,10 @@ DASHBOARD_SCRIPT = """
 
 @router.get("/", response_class=HTMLResponse, include_in_schema=False)
 def dashboard() -> str:
+    content = DASHBOARD_CONTENT.replace(
+        "{{OLLAMA_MODEL}}",
+        escape(get_settings().ollama_model),
+    )
     return page_shell(
         title="Betriebsübersicht",
         description=(
@@ -251,7 +257,7 @@ def dashboard() -> str:
             "angebundenen Paperless-Instanzen."
         ),
         active="dashboard",
-        content=DASHBOARD_CONTENT,
+        content=content,
         script=DASHBOARD_SCRIPT,
     )
 
