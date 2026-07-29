@@ -29,14 +29,24 @@ def _instance_or_404(
 @router.get(
     "/api/instances/{instance_slug}/field-config",
 )
-def get_field_configuration(
+async def get_field_configuration(
     instance_slug: str,
     db: Annotated[Session, Depends(get_db)],
-    _principal: Annotated[AdminPrincipal, Depends(require_admin_user)],
+    principal: Annotated[AdminPrincipal, Depends(require_admin_user)],
 ) -> dict[str, object]:
     service = FieldConfigurationService(db)
     instance = _instance_or_404(db, instance_slug)
-    fields = service.ensure_defaults(instance)
+    try:
+        fields = await service.import_paperless_fields(
+            instance,
+            connector_for_instance(instance),
+            actor=principal.username,
+        )
+    except ConnectorError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Paperless custom fields could not be loaded: {exc}",
+        ) from exc
     return {
         "instance": {"id": str(instance.id), "slug": instance.slug, "name": instance.name},
         "fields": [service.serialize(field) for field in fields],
@@ -164,6 +174,9 @@ FIELD_CONFIG_HTML = """<!doctype html>
   </section>
   <section class="panel">
     <h2>Felder</h2>
+    <p>Paperless-Felder werden automatisch angezeigt. „In eZEUS aktiv“ steuert
+      ausschließlich die Verarbeitung durch eZEUS-AI-2; das Feld bleibt in
+      Paperless unabhängig davon erhalten und nutzbar.</p>
     <div id="fields"></div>
     <div class="actions">
       <button id="add" type="button">Benutzerdefiniertes Feld hinzufügen</button>
@@ -224,7 +237,7 @@ FIELD_CONFIG_HTML = """<!doctype html>
         const option=new Option(label,value); option.selected=field.field_type===value; type.add(option); });
       type.addEventListener("change",()=>{field.field_type=type.value;
         if(type.value!=="select")field.options=[]; render();}); row.append(control("Typ",type));
-      row.append(control("Aktiv",checkbox(field.enabled,v=>field.enabled=v),"checks"));
+      row.append(control("In eZEUS aktiv",checkbox(field.enabled,v=>field.enabled=v),"checks"));
       row.append(control("Pflichtfeld",checkbox(field.required,v=>field.required=v),"checks"));
       row.append(control("OCR",checkbox(field.ocr_enabled,v=>field.ocr_enabled=v),"checks"));
       row.append(control("KI",checkbox(field.ai_enabled,v=>field.ai_enabled=v),"checks"));

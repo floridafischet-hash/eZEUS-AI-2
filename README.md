@@ -279,11 +279,18 @@ dabei weder gelöscht noch überschrieben. Die Vorschau wird serverseitig mit
 denselben Eingabeschemata validiert wie das Speichern, verändert aber keine
 Daten.
 
+Beim Laden der Feldkonfiguration werden vorhandene Custom Fields direkt aus der
+zugeordneten Paperless-Instanz übernommen. Noch nicht bekannte Paperless-Felder
+erscheinen zunächst als „In eZEUS aktiv“ deaktiviert. Dieser Schalter betrifft
+nur Anzeige, Extraktion und Verarbeitung in eZEUS-AI-2. Das Custom Field und
+seine vorhandenen Werte bleiben in Paperless unverändert verfügbar.
+
 Die Verarbeitung löst den Mandanten ausschließlich aus dem beim Webhook
 gespeicherten Connector `paperless:<instanzkennung>` auf. Eine Mandanten-ID aus
 einem Request-Payload wird nicht akzeptiert. Für verwaltete Instanzen gilt:
 
 - deaktivierte Felder werden weder extrahiert noch geschrieben,
+- das Deaktivieren in eZEUS verändert oder deaktiviert kein Feld in Paperless,
 - nur erforderliche, aber fehlende Felder erzeugen einen Warnstatus,
 - OCR-aktivierte Standardfelder verwenden die hinterlegten deterministischen
   Regeln,

@@ -20,6 +20,10 @@ Felder mit der API der zugeordneten Paperless-Instanz. Fehlende Felder werden
 mit dem passenden Paperless-Datentyp erstellt; vorhandene Felder werden über
 ihre ID oder ihren normalisierten Namen gebunden. Die dauerhafte externe ID
 wird anschließend in `InstanceFieldConfig.external_field_id` gespeichert.
+Beim Laden werden bislang unbekannte Custom Fields aus Paperless mandantenbezogen
+als deaktivierte `InstanceFieldConfig` importiert. Ihr Aktivstatus ist eine
+reine eZEUS-Einstellung; deaktivierte Einträge werden in Paperless weder
+geändert noch entfernt.
 
 `AdminUser` speichert individuelle Konten mit Scrypt-Passworthash, Rolle und
 Aktivstatus. Das Bootstrap-Secret authentifiziert nur, solange noch kein
