@@ -7,7 +7,7 @@ from uuid import UUID, uuid4
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from connectors.base.interface import ConnectorCustomField
+from connectors.base.interface import ConnectorCustomField, DocumentConnector
 from core.field_config.schemas import FieldConfigurationInput
 from core.models.audit import AuditEntry
 from core.models.instance_field_config import InstanceFieldConfig
@@ -83,6 +83,16 @@ FIELD_ALIASES: dict[str, tuple[str, ...]] = {
     "invoice_amount": ("rechnungsbetrag",),
     "customer_number": ("kundennummer",),
     "construction_site_number": ("baustellennummer", "baustellennr", "bvnummer"),
+}
+
+PAPERLESS_FIELD_TYPES = {
+    "text": "string",
+    "number": "float",
+    "money": "monetary",
+    "date": "date",
+    "boolean": "boolean",
+    "select": "select",
+    "textarea": "longtext",
 }
 
 
@@ -239,6 +249,7 @@ class FieldConfigurationService:
         external_by_name = {
             normalized_name(field.name): int(field.external_id) for field in paperless_fields
         }
+        external_by_id = {int(field.external_id): field for field in paperless_fields}
         template_fields: dict[str, object] = {}
         enabled_keys: set[str] = set()
         required_keys: set[str] = set()
@@ -255,6 +266,18 @@ class FieldConfigurationService:
                 correspondent_required = field.required
                 continue
             target_id = self._target_id(field, external_by_name)
+            value_mapping: dict[str, object] = {}
+            remote_field = external_by_id.get(target_id) if target_id is not None else None
+            if field.field_type == "select" and remote_field is not None:
+                remote_options = remote_field.extra_data.get("select_options", [])
+                if isinstance(remote_options, list):
+                    value_mapping = {
+                        str(option["label"]): option["id"]
+                        for option in remote_options
+                        if isinstance(option, dict)
+                        and option.get("label") is not None
+                        and option.get("id") is not None
+                    }
             providers: list[dict[str, object]] = []
             if field.ocr_enabled:
                 patterns = STANDARD_PATTERNS.get(field.field_key)
@@ -280,6 +303,7 @@ class FieldConfigurationService:
                     "highest" if field.field_type == "money" else "first"
                 ),
                 "required": field.required,
+                "value_mapping": value_mapping,
             }
         return RuntimeFieldConfiguration(
             template=TemplateConfig.model_validate({"fields": template_fields}),
@@ -288,6 +312,71 @@ class FieldConfigurationService:
             correspondent_enabled=correspondent_enabled,
             correspondent_required=correspondent_required,
         )
+
+    async def synchronize_paperless_fields(
+        self,
+        instance: PaperlessInstance,
+        connector: DocumentConnector,
+        *,
+        actor: str,
+    ) -> list[InstanceFieldConfig]:
+        remote_fields = await connector.list_custom_fields()
+        remote_by_name = {normalized_name(field.name): field for field in remote_fields}
+        for field in self.ensure_defaults(instance):
+            if not field.enabled or field.field_key == "correspondent":
+                continue
+            expected_type = PAPERLESS_FIELD_TYPES[field.field_type]
+            remote = None
+            if field.external_field_id:
+                remote = next(
+                    (
+                        item
+                        for item in remote_fields
+                        if item.external_id == field.external_field_id
+                    ),
+                    None,
+                )
+            if remote is None:
+                remote = remote_by_name.get(normalized_name(field.label))
+            if remote is not None and remote.data_type != expected_type:
+                raise ValueError(
+                    f"Paperless field '{field.label}' has type {remote.data_type}, "
+                    f"expected {expected_type}"
+                )
+            if remote is None:
+                remote = await connector.create_custom_field(
+                    field.label,
+                    expected_type,
+                    field.options or None,
+                )
+                remote_fields.append(remote)
+                remote_by_name[normalized_name(remote.name)] = remote
+            elif remote.name != field.label or expected_type == "select":
+                remote = await connector.update_custom_field(
+                    remote.external_id,
+                    field.label,
+                    expected_type,
+                    field.options or None,
+                )
+            if field.external_field_id != remote.external_id:
+                old_value = field.external_field_id
+                field.external_field_id = remote.external_id
+                self.db.add(
+                    AuditEntry(
+                        actor=actor,
+                        action="LINK_PAPERLESS_CUSTOM_FIELD",
+                        entity_type="instance_field_config",
+                        entity_id=str(field.id),
+                        instance_id=instance.id,
+                        target_system="paperless",
+                        field=field.field_key,
+                        old_value=old_value,
+                        new_value=remote.external_id,
+                        details={"tenant_slug": instance.slug},
+                    )
+                )
+        self.db.commit()
+        return self.list_fields(instance.id)
 
     @staticmethod
     def _target_id(

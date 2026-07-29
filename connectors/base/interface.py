@@ -19,6 +19,7 @@ class ConnectorCustomField:
     external_id: str
     name: str
     data_type: str
+    extra_data: dict[str, object] = field(default_factory=dict)
 
 
 @dataclass(slots=True, frozen=True)
@@ -58,6 +59,23 @@ class DocumentConnector(ABC):
 
     async def list_custom_fields(self) -> list[ConnectorCustomField]:
         return []
+
+    async def create_custom_field(
+        self,
+        name: str,
+        data_type: str,
+        options: list[str] | None = None,
+    ) -> ConnectorCustomField:
+        raise NotImplementedError
+
+    async def update_custom_field(
+        self,
+        external_field_id: str,
+        name: str,
+        data_type: str,
+        options: list[str] | None = None,
+    ) -> ConnectorCustomField:
+        raise NotImplementedError
 
     async def list_correspondents(self) -> list[ConnectorCorrespondent]:
         return []

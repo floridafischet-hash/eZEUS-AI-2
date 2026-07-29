@@ -148,7 +148,8 @@ Anwendungsnetz erreichbare Instanz zeigen.
 - `PAPERLESS_BASE_URL`: Basisadresse der Paperless-API
 - `PAPERLESS_API_TOKEN`: Paperless-API-Token
 - `PAPERLESS_WEBHOOK_SECRET`: gemeinsames Secret für Paperless-Webhooks
-- `ADMIN_API_SECRET`: gemeinsames Secret für administrative Endpunkte
+- `ADMIN_API_SECRET`: einmaliges Bootstrap-Secret zum Anlegen des ersten
+  individuellen Administratorkontos
 - `CREDENTIAL_ENCRYPTION_KEY`: Fernet-Schlüssel zur Verschlüsselung gespeicherter
   Paperless-Zugangsdaten
 - `PUBLIC_WEBHOOK_BASE_URL`: öffentliche eZEUS-Adresse, die auf der
@@ -157,7 +158,9 @@ Anwendungsnetz erreichbare Instanz zeigen.
 - `LOCAL_ONLY`: kennzeichnet den ausschließlich lokalen Betriebsmodus
 - `CLOUD_AI_GLOBALLY_ALLOWED`: globale Freigabe für Cloud-AI; derzeit ist kein
   Cloud-Provider implementiert
-- `OLLAMA_ENABLED`: aktiviert den Ollama-Extraktionsprovider
+- `OLLAMA_ENABLED`: aktiviert Ollama für globale Legacy-Templates und die
+  abgesicherte OCR-Nachbearbeitung; mandantenbezogene KI-Felder aktivieren
+  Ollama unabhängig davon
 - `OLLAMA_BASE_URL`: Basisadresse der Ollama-API
 - `OLLAMA_MODEL`: Name des lokalen Ollama-Modells
 - `OLLAMA_TIMEOUT_SECONDS`: Zeitlimit eines Ollama-Aufrufs
@@ -256,9 +259,12 @@ Feldkonfiguration und Verarbeitung verwenden dieselbe Kennung:
 ```
 
 Die Verwaltungsseite `/admin/instances` enthält für jede Instanz einen Link
-`Feldkonfiguration`. Zum Laden, Prüfen und Speichern wird zusätzlich zum Schutz
-des Reverse Proxys das `ADMIN_API_SECRET` verlangt. Der optionale Name des
-Administrators wird mit jeder Änderung protokolliert.
+`Feldkonfiguration`. Das Bootstrap-Secret erlaubt nur so lange administrative
+Zugriffe, bis unter `/api/admin-users/page` das erste persönliche Konto
+angelegt wurde. Danach erfolgt die Anmeldung mit Benutzername und Passwort.
+Die Rolle `admin` darf ändern, die Rolle `viewer` ausschließlich lesen und
+Vorschauen aufrufen. Jede Änderung wird mit dem tatsächlich authentifizierten
+Konto protokolliert.
 
 Neue Instanzen erhalten automatisch die Standardfelder Korrespondent,
 Rechnungsnummer, Rechnungsdatum, Rechnungsbetrag, Kundennummer und
@@ -285,8 +291,10 @@ einem Request-Payload wird nicht akzeptiert. Für verwaltete Instanzen gilt:
   Anker,
 - KI-aktivierte Felder werden mit Bezeichnung, Typ und Extraktionshinweisen in
   die lokale Ollama-Anweisung aufgenommen,
-- die Paperless-Zuordnung erfolgt über die konfigurierte Feld-ID oder den
-  normalisierten Feldnamen,
+- fehlende Paperless-Custom-Fields werden mit passendem Datentyp automatisch
+  angelegt und dauerhaft verknüpft,
+- geänderte Bezeichnungen und Auswahloptionen werden mit Paperless
+  synchronisiert; inkompatible vorhandene Datentypen werden abgewiesen,
 - Korrespondentenerkennung und Dokumenttitel folgen derselben Konfiguration.
 
 `instance_field_configs` ist über `instance_id` mit `paperless_instances`
@@ -426,8 +434,9 @@ Weitere Informationen stehen in [docs/testing.md](docs/testing.md).
   `PAPERLESS_BASE_URL` prüfen.
 - Der Webhook meldet HTTP 401: Header und `PAPERLESS_WEBHOOK_SECRET` müssen
   übereinstimmen.
-- Administrative Endpunkte melden HTTP 401: `ADMIN_API_SECRET` setzen und als
-  `X-EZEUS-Admin-Secret` senden.
+- Administrative Endpunkte melden HTTP 401: mit einem aktiven persönlichen
+  Konto per HTTP Basic anmelden. Nur vor dem ersten Konto kann
+  `ADMIN_API_SECRET` als `X-EZEUS-Admin-Secret` verwendet werden.
 - PaddleOCR ist nicht installiert: das Extra `ocr-paddle` installieren oder
   `Dockerfile.paddle` verwenden.
 - Das Ollama-Modell wird nicht als bereit erkannt: `OLLAMA_ENABLED`,
@@ -444,8 +453,9 @@ Weitere Informationen stehen in [docs/testing.md](docs/testing.md).
 - Dashboard, Log-Endpunkt und OpenAPI-Dokumentation besitzen keine eigene
   Benutzerverwaltung. Ein produktiver Zugriff benötigt einen
   authentifizierenden TLS-Reverse-Proxy.
-- Die Administrationsendpunkte verwenden ein gemeinsames Secret und keine
-  rollenbasierte Autorisierung.
+- Administrationskonten verwenden Scrypt-Passworthashes und die Rollen
+  `admin` und `viewer`. Das Bootstrap-Secret verliert nach dem ersten aktiven
+  Administratorkonto seine Zugriffsberechtigung.
 - Der Paperless-Mock ist ausschließlich für lokale Entwicklung und Tests
   vorgesehen.
 - Container-Netze, Datenbank und Redis dürfen im Produktivbetrieb nicht
@@ -499,14 +509,12 @@ werden.
 
 ## Bekannte Einschränkungen
 
-- Die Anwendung unterstützt genau eine konfigurierte Paperless-Instanz.
 - Der Compose-Stack ist eine Entwicklungsumgebung und enthält einen Mock statt
   eines produktiven Paperless-Dienstes.
-- Referenzdaten aus Paperless werden nicht lokal synchronisiert.
-- Die Administrations-API besitzt keine rollenbasierte Autorisierung.
+- Paperless-Custom-Fields werden synchronisiert; andere Referenzdaten werden
+  weiterhin bei Bedarf über die API geladen.
 - Dashboard und Log-API sind innerhalb der Anwendung nicht authentifiziert.
 - PaddleOCR-Modelle können beim ersten Worker-Start heruntergeladen werden.
-- Ollama ist nicht Bestandteil des Compose-Stacks.
 - Die Dashboard-Karten nennen fest Qwen3:4b und PaddleOCR und spiegeln
   abweichende Laufzeitkonfigurationen nicht dynamisch wider.
 - Die Regex-Laufzeitprüfung kann einen einzelnen bereits laufenden regulären

@@ -9,7 +9,7 @@ FIELD_KEY_PATTERN = re.compile(r"^[a-z][a-z0-9_]{1,63}$")
 
 class FieldConfigurationInput(BaseModel):
     field_key: str | None = None
-    label: str = Field(min_length=1, max_length=255)
+    label: str = Field(min_length=1, max_length=128)
     field_type: FieldType
     sort_order: int = Field(ge=0, le=100_000)
     enabled: bool = True

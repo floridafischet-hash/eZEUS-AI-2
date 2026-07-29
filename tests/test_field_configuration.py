@@ -1,3 +1,4 @@
+import base64
 from collections.abc import Generator
 
 import pytest
@@ -19,10 +20,53 @@ from core.models.paperless_instance import PaperlessInstance
 from plugins.extraction.regex import RegexExtractionProvider
 
 
+class FakeCustomFieldConnector:
+    def __init__(self) -> None:
+        self.fields = [
+            ConnectorCustomField("14", "Rechnungsnummer", "string"),
+            ConnectorCustomField("15", "Rechnungsbetrag", "monetary"),
+            ConnectorCustomField("16", "Rechnungsdatum", "date"),
+            ConnectorCustomField("17", "Kundennummer", "string"),
+            ConnectorCustomField("88", "Baustellennummer", "string"),
+            ConnectorCustomField("77", "Projektcode", "select"),
+        ]
+
+    async def list_custom_fields(self) -> list[ConnectorCustomField]:
+        return list(self.fields)
+
+    async def create_custom_field(
+        self,
+        name: str,
+        data_type: str,
+        options: list[str] | None = None,
+    ) -> ConnectorCustomField:
+        field = ConnectorCustomField(str(100 + len(self.fields)), name, data_type)
+        self.fields.append(field)
+        return field
+
+    async def update_custom_field(
+        self,
+        external_field_id: str,
+        name: str,
+        data_type: str,
+        options: list[str] | None = None,
+    ) -> ConnectorCustomField:
+        updated = ConnectorCustomField(external_field_id, name, data_type)
+        self.fields = [
+            updated if field.external_id == external_field_id else field
+            for field in self.fields
+        ]
+        return updated
+
+
 @pytest.fixture
 def field_config_client(
     monkeypatch,
-) -> Generator[tuple[TestClient, sessionmaker[Session]], None, None]:
+) -> Generator[
+    tuple[TestClient, sessionmaker[Session], FakeCustomFieldConnector],
+    None,
+    None,
+]:
     engine = create_engine(
         "sqlite://",
         connect_args={"check_same_thread": False},
@@ -37,10 +81,15 @@ def field_config_client(
 
     monkeypatch.setenv("CREDENTIAL_ENCRYPTION_KEY", Fernet.generate_key().decode())
     monkeypatch.setenv("ADMIN_API_SECRET", "test-admin-secret")
+    connector = FakeCustomFieldConnector()
+    monkeypatch.setattr(
+        "apps.api.field_config.connector_for_instance",
+        lambda _instance: connector,
+    )
     get_settings.cache_clear()
     app.dependency_overrides[get_db] = database
     try:
-        yield TestClient(app), session_factory
+        yield TestClient(app), session_factory, connector
     finally:
         app.dependency_overrides.clear()
         get_settings.cache_clear()
@@ -68,10 +117,15 @@ def admin_headers(actor: str = "Administrator A") -> dict[str, str]:
     }
 
 
+def basic_headers(username: str, password: str) -> dict[str, str]:
+    encoded = base64.b64encode(f"{username}:{password}".encode()).decode()
+    return {"Authorization": f"Basic {encoded}"}
+
+
 def test_url_slug_selects_tenant_and_requires_administrator(
     field_config_client,
 ) -> None:
-    client, _ = field_config_client
+    client, _, _ = field_config_client
     first = create_instance(client, "Kunde A", "kunde-a.example.test")
     second = create_instance(client, "Kunde B", "kunde-b.example.test")
 
@@ -95,7 +149,7 @@ def test_url_slug_selects_tenant_and_requires_administrator(
 def test_configuration_is_saved_reloaded_and_isolated_with_audit(
     field_config_client,
 ) -> None:
-    client, session_factory = field_config_client
+    client, session_factory, _ = field_config_client
     first = create_instance(client, "Kunde A", "kunde-a.example.test")
     second = create_instance(client, "Kunde B", "kunde-b.example.test")
     endpoint = f"/api/instances/{first['slug']}/field-config"
@@ -150,12 +204,12 @@ def test_configuration_is_saved_reloaded_and_isolated_with_audit(
             select(AuditEntry).where(AuditEntry.instance_id == first_instance.id)
         ).all()
         assert audits
-        assert all(audit.actor == "Alice" for audit in audits)
+        assert all(audit.actor == "system-admin" for audit in audits)
         assert all(audit.details["tenant_slug"] == first["slug"] for audit in audits)
 
 
 def test_preview_validates_fields_without_saving(field_config_client) -> None:
-    client, session_factory = field_config_client
+    client, session_factory, _ = field_config_client
     instance = create_instance(client, "Kunde A", "kunde-a.example.test")
     endpoint = f"/api/instances/{instance['slug']}/field-config"
     fields = client.get(endpoint, headers=admin_headers()).json()["fields"]
@@ -181,7 +235,7 @@ def test_preview_validates_fields_without_saving(field_config_client) -> None:
 async def test_runtime_extraction_uses_only_tenant_configuration(
     field_config_client,
 ) -> None:
-    client, session_factory = field_config_client
+    client, session_factory, _ = field_config_client
     instance_data = create_instance(client, "Kunde A", "kunde-a.example.test")
     endpoint = f"/api/instances/{instance_data['slug']}/field-config"
     fields = client.get(endpoint, headers=admin_headers()).json()["fields"]
@@ -224,3 +278,86 @@ async def test_runtime_extraction_uses_only_tenant_configuration(
             regex_config,
         )
         assert [candidate.value for candidate in candidates] == ["25164"]
+
+
+def test_individual_accounts_enforce_roles_and_record_identity(
+    field_config_client,
+) -> None:
+    client, session_factory, _ = field_config_client
+    instance = create_instance(client, "Kunde A", "kunde-a.example.test")
+    response = client.post(
+        "/api/admin-users",
+        headers=admin_headers(),
+        json={
+            "username": "alice",
+            "password": "correct-horse-battery-staple",
+            "role": "admin",
+        },
+    )
+    assert response.status_code == 201
+    admin_auth = basic_headers("alice", "correct-horse-battery-staple")
+    response = client.post(
+        "/api/admin-users",
+        headers=admin_auth,
+        json={
+            "username": "observer",
+            "password": "correct-horse-battery-staple",
+            "role": "viewer",
+        },
+    )
+    assert response.status_code == 201
+    endpoint = f"/api/instances/{instance['slug']}/field-config"
+    assert client.get(endpoint, headers=admin_headers()).status_code == 401
+
+    viewer_headers = basic_headers("observer", "correct-horse-battery-staple")
+    assert client.get(endpoint, headers=viewer_headers).status_code == 200
+    fields = client.get(endpoint, headers=viewer_headers).json()["fields"]
+    fields[0]["label"] = "Nicht erlaubt"
+    assert client.put(
+        endpoint, headers=viewer_headers, json={"fields": fields}
+    ).status_code == 403
+
+    fields[0]["label"] = "Lieferant"
+    saved = client.put(endpoint, headers=admin_auth, json={"fields": fields})
+    assert saved.status_code == 200
+    with session_factory() as db:
+        audit = db.scalar(
+            select(AuditEntry)
+            .where(
+                AuditEntry.action == "UPDATE_FIELD_CONFIGURATION",
+                AuditEntry.field == fields[0]["field_key"],
+            )
+            .order_by(AuditEntry.created_at.desc())
+        )
+        assert audit is not None
+        assert audit.actor == "alice"
+
+
+def test_missing_paperless_custom_field_is_created_and_linked(
+    field_config_client,
+) -> None:
+    client, _, connector = field_config_client
+    instance = create_instance(client, "Kunde A", "kunde-a.example.test")
+    endpoint = f"/api/instances/{instance['slug']}/field-config"
+    fields = client.get(endpoint, headers=admin_headers()).json()["fields"]
+    fields.append(
+        {
+            "field_key": None,
+            "label": "Neue Referenz",
+            "field_type": "textarea",
+            "sort_order": 70,
+            "enabled": True,
+            "required": False,
+            "ocr_enabled": True,
+            "ai_enabled": False,
+            "external_field_id": None,
+            "options": [],
+            "extraction_instructions": None,
+        }
+    )
+    saved = client.put(endpoint, headers=admin_headers(), json={"fields": fields})
+    assert saved.status_code == 200
+    created = next(field for field in connector.fields if field.name == "Neue Referenz")
+    assert created.data_type == "longtext"
+    linked = next(field for field in saved.json()["fields"] if field["label"] == "Neue Referenz")
+    assert linked["external_field_id"] == created.external_id

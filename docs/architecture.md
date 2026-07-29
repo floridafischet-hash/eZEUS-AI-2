@@ -15,6 +15,17 @@ für verwaltete Instanzen ausschließlich dieses Laufzeit-Template. Die
 bisherigen dokumenttypbezogenen Templates bleiben für die Legacy-Konfiguration
 erhalten.
 
+Beim Speichern synchronisiert der Service alle aktiven, nicht systeminternen
+Felder mit der API der zugeordneten Paperless-Instanz. Fehlende Felder werden
+mit dem passenden Paperless-Datentyp erstellt; vorhandene Felder werden über
+ihre ID oder ihren normalisierten Namen gebunden. Die dauerhafte externe ID
+wird anschließend in `InstanceFieldConfig.external_field_id` gespeichert.
+
+`AdminUser` speichert individuelle Konten mit Scrypt-Passworthash, Rolle und
+Aktivstatus. Das Bootstrap-Secret authentifiziert nur, solange noch kein
+aktiver Administrator existiert. Damit bleibt die Ersteinrichtung möglich,
+ohne im laufenden Betrieb ein gemeinsames Administrationskennwort zu verwenden.
+
 Der Webhook normalisiert Paperless-Ereignisse und erzeugt ausschließlich
 persistente Jobs. Celery transportiert Job-IDs über Redis; PostgreSQL bleibt die
 Quelle für Status, Phasen, Ergebnisse und Auditdaten.

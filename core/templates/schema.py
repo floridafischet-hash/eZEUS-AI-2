@@ -46,6 +46,7 @@ class FieldConfig(BaseModel):
     minimum_confidence: float = Field(default=0.8, ge=0, le=1)
     selection_strategy: Literal["unique", "first", "highest"] = "unique"
     required: bool = True
+    value_mapping: dict[str, object] = Field(default_factory=dict)
 
 
 class TemplateConfig(BaseModel):

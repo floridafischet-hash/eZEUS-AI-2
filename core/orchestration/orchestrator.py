@@ -273,11 +273,6 @@ class Orchestrator:
                 for field_key, field in config.fields.items():
                     persisted: list[tuple[ExtractionCandidate, ExtractionResult]] = []
                     for provider_config in field.providers:
-                        if (
-                            provider_config.type == "ollama"
-                            and not get_settings().ollama_enabled
-                        ):
-                            continue
                         provider_data = provider_config.model_dump(exclude={"type"})
                         for candidate in await PROVIDERS[provider_config.type]().extract(
                             extraction_text, provider_data
@@ -333,9 +328,10 @@ class Orchestrator:
                     if valid and field.selection_strategy == "first":
                         winner = valid[0]
                         winner[2].accepted = True
-                        extracted_by_key[field_key] = winner[1]
+                        output_value = field.value_mapping.get(str(winner[1]), winner[1])
+                        extracted_by_key[field_key] = output_value
                         if field.target_field_id is not None:
-                            extracted_values[str(field.target_field_id)] = winner[1]
+                            extracted_values[str(field.target_field_id)] = output_value
                         for _, _, result in valid[1:]:
                             result.reason = "Lower-priority validated candidate"
                     elif valid and field.selection_strategy == "highest":
@@ -347,18 +343,20 @@ class Orchestrator:
                             ),
                         )
                         winner[2].accepted = True
-                        extracted_by_key[field_key] = winner[1]
+                        output_value = field.value_mapping.get(str(winner[1]), winner[1])
+                        extracted_by_key[field_key] = output_value
                         if field.target_field_id is not None:
-                            extracted_values[str(field.target_field_id)] = winner[1]
+                            extracted_values[str(field.target_field_id)] = output_value
                         for _, _, result in valid:
                             if result is not winner[2]:
                                 result.reason = "Lower validated total candidate"
                     elif valid and len(distinct) == 1:
                         winner = max(valid, key=lambda item: item[0])
                         winner[2].accepted = True
-                        extracted_by_key[field_key] = winner[1]
+                        output_value = field.value_mapping.get(str(winner[1]), winner[1])
+                        extracted_by_key[field_key] = output_value
                         if field.target_field_id is not None:
-                            extracted_values[str(field.target_field_id)] = winner[1]
+                            extracted_values[str(field.target_field_id)] = output_value
                     elif len(distinct) > 1:
                         for _, _, result in valid:
                             result.reason = "Conflicting validated candidates"
