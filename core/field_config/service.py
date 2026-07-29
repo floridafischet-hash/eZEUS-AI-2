@@ -1,7 +1,7 @@
 import re
 import unicodedata
-from hashlib import sha256
 from dataclasses import dataclass
+from hashlib import sha256
 from typing import cast
 from uuid import UUID, uuid4
 
