@@ -2,7 +2,7 @@ from datetime import UTC, datetime
 from html import escape
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import HTMLResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from apps.api.ui import page_shell
 from core.config.settings import get_settings
 from core.db.session import get_db
+from core.models.document import Document
 from core.models.job import Job
 from core.models.job_phase import JobPhaseEntry
 from core.models.paperless_instance import PaperlessInstance
@@ -33,6 +34,13 @@ PHASE_DESCRIPTIONS = {
     "CLEANUP": "Temporäre Verarbeitungsdaten bereinigt.",
     "COMPLETE": "Verarbeitung abgeschlossen.",
 }
+
+
+def elapsed_seconds(started_at: datetime, finished_at: datetime | None, now: datetime) -> float:
+    endpoint = finished_at or now
+    if started_at.tzinfo is None and endpoint.tzinfo is not None:
+        endpoint = endpoint.replace(tzinfo=None)
+    return max((endpoint - started_at).total_seconds(), 0)
 
 
 DASHBOARD_CONTENT = """
@@ -70,6 +78,12 @@ DASHBOARD_CONTENT = """
   </div>
   <div class="log-toolbar">
     <div>
+      <label for="log-instance">Instanz (Paperless-URL)</label>
+      <select id="log-instance">
+        <option value="">Alle Instanzen</option>
+      </select>
+    </div>
+    <div>
       <label for="log-search">Einträge durchsuchen</label>
       <input id="log-search" type="search" placeholder="Dateiname, Dokument-ID oder Status">
     </div>
@@ -79,6 +93,10 @@ DASHBOARD_CONTENT = """
         <option value="50">50</option>
         <option value="100" selected>100</option>
         <option value="250">250</option>
+        <option value="500">500</option>
+        <option value="1000">1.000</option>
+        <option value="2500">2.500</option>
+        <option value="5000">5.000</option>
       </select>
     </div>
     <button id="refresh-logs" class="primary" type="button">Aktualisieren</button>
@@ -101,6 +119,7 @@ DASHBOARD_SCRIPT = """
 <script>
   const expandedJobIds = new Set();
   let logEntries = [];
+  let logInstancesLoaded = false;
 
   function setText(element, value) { element.textContent = value ?? "–"; }
   function formatTime(value) {
@@ -208,16 +227,32 @@ DASHBOARD_SCRIPT = """
     empty.textContent = query ? "Keine passenden Einträge gefunden." :
       "Noch keine Verarbeitungseinträge vorhanden.";
   }
+  function renderInstances(instances) {
+    if (logInstancesLoaded) return;
+    const select = document.getElementById("log-instance");
+    instances.forEach((instance) => {
+      const option = document.createElement("option");
+      option.value = instance.slug;
+      option.textContent = `${instance.base_url} (${instance.name})`;
+      select.appendChild(option);
+    });
+    logInstancesLoaded = true;
+  }
   async function loadLogs() {
     const button = document.getElementById("refresh-logs");
     const empty = document.getElementById("log-empty");
     window.ezeusUI?.setBusy(button, true, "Lädt …");
     try {
       const limit = document.getElementById("log-limit").value;
-      const response = await fetch(`/api/logs?limit=${encodeURIComponent(limit)}`,
+      const instance = document.getElementById("log-instance").value;
+      const params = new URLSearchParams({limit});
+      if (instance) params.set("instance_slug", instance);
+      const response = await fetch(`/api/logs?${params.toString()}`,
         {headers:{"Accept":"application/json"},cache:"no-store"});
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      logEntries = (await response.json()).entries;
+      const payload = await response.json();
+      renderInstances(payload.instances);
+      logEntries = payload.entries;
       renderLogs();
       document.getElementById("refresh-info").textContent =
         `Aktualisiert ${new Date().toLocaleTimeString("de-DE")}`;
@@ -227,6 +262,7 @@ DASHBOARD_SCRIPT = """
     } finally { window.ezeusUI?.setBusy(button, false); }
   }
   document.getElementById("refresh-logs").addEventListener("click", loadLogs);
+  document.getElementById("log-instance").addEventListener("change", loadLogs);
   document.getElementById("log-limit").addEventListener("change", loadLogs);
   document.getElementById("log-search").addEventListener("input", renderLogs);
   fetch("/ready",{cache:"no-store"}).then((response) => {
@@ -265,9 +301,17 @@ def dashboard() -> str:
 @router.get("/api/logs")
 def processing_logs(
     db: Annotated[Session, Depends(get_db)],
-    limit: Annotated[int, Query(ge=1, le=250)] = 100,
+    limit: Annotated[int, Query(ge=1, le=5000)] = 100,
+    instance_slug: Annotated[str | None, Query(max_length=64)] = None,
 ) -> dict[str, object]:
-    jobs = db.scalars(select(Job).order_by(Job.created_at.desc()).limit(limit)).all()
+    instances = db.scalars(select(PaperlessInstance).order_by(PaperlessInstance.base_url)).all()
+    instances_by_slug = {instance.slug: instance for instance in instances}
+    jobs_query = select(Job).join(Document)
+    if instance_slug:
+        if instance_slug not in instances_by_slug:
+            raise HTTPException(status_code=404, detail="Paperless instance not found")
+        jobs_query = jobs_query.where(Document.connector == f"paperless:{instance_slug}")
+    jobs = db.scalars(jobs_query.order_by(Job.created_at.desc()).limit(limit)).all()
     now = datetime.now(UTC)
     job_ids = [job.id for job in jobs]
     phases_by_job: dict[object, list[JobPhaseEntry]] = {job_id: [] for job_id in job_ids}
@@ -280,7 +324,7 @@ def processing_logs(
         for phase in phases:
             phases_by_job[phase.job_id].append(phase)
 
-    instances = {instance.slug: instance.name for instance in db.scalars(select(PaperlessInstance))}
+    instance_names = {instance.slug: instance.name for instance in instances}
     entries: list[dict[str, object]] = []
     for job in jobs:
         document = job.document
@@ -291,12 +335,10 @@ def processing_logs(
         ]
         started_at = job.started_at or job.created_at
         finished_at = job.finished_at
-        duration = (finished_at or now) - started_at
         slug = instance_slug_from_connector(document.connector)
         steps: list[dict[str, object]] = []
         for phase_entry in phase_entries:
             phase_finished_at = phase_entry.finished_at
-            phase_duration = (phase_finished_at or now) - phase_entry.started_at
             phase_name = phase_entry.phase.value
             error = phase_entry.error
             if error and job.error_message:
@@ -311,7 +353,10 @@ def processing_logs(
                     "status": phase_entry.status.value,
                     "started_at": phase_entry.started_at.isoformat(),
                     "finished_at": (phase_finished_at.isoformat() if phase_finished_at else None),
-                    "duration_seconds": round(max(phase_duration.total_seconds(), 0), 3),
+                    "duration_seconds": round(
+                        elapsed_seconds(phase_entry.started_at, phase_finished_at, now),
+                        3,
+                    ),
                     "metadata": phase_entry.metadata_json or {},
                     "error": error,
                 }
@@ -322,11 +367,11 @@ def processing_logs(
                 "document_id": document.external_document_id,
                 "filename": document.filename,
                 "connector": document.connector,
-                "instance_name": instances.get(slug) if slug else "Legacy-Konfiguration",
+                "instance_name": instance_names.get(slug) if slug else "Legacy-Konfiguration",
                 "status": job.status.value,
                 "started_at": started_at.isoformat(),
                 "finished_at": job.finished_at.isoformat() if job.finished_at else None,
-                "duration_seconds": round(max(duration.total_seconds(), 0), 1),
+                "duration_seconds": round(elapsed_seconds(started_at, finished_at, now), 1),
                 "error_type": job.error_type,
                 "error_message": job.error_message,
                 "worker_id": job.worker_id,
@@ -334,4 +379,15 @@ def processing_logs(
                 "steps": steps,
             }
         )
-    return {"entries": entries, "generated_at": now.isoformat()}
+    return {
+        "entries": entries,
+        "instances": [
+            {
+                "slug": instance.slug,
+                "name": instance.name,
+                "base_url": instance.base_url,
+            }
+            for instance in instances
+        ],
+        "generated_at": now.isoformat(),
+    }
