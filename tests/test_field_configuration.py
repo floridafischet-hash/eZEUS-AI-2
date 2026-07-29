@@ -140,7 +140,7 @@ def test_trusted_proxy_user_uses_existing_role(field_config_client, monkeypatch)
         )
 
     response = client.get(
-        "/api/admin/users",
+        "/api/admin-users",
         headers={
             "X-EZEUS-Proxy-User": "florian",
             "X-EZEUS-Proxy-Secret": "trusted-proxy-secret",
@@ -149,7 +149,7 @@ def test_trusted_proxy_user_uses_existing_role(field_config_client, monkeypatch)
     assert response.status_code == 200
 
     spoofed = client.get(
-        "/api/admin/users",
+        "/api/admin-users",
         headers={
             "X-EZEUS-Proxy-User": "florian",
             "X-EZEUS-Proxy-Secret": "wrong-secret",
