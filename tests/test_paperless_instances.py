@@ -1,4 +1,5 @@
 from collections.abc import Generator
+from uuid import UUID
 
 from cryptography.fernet import Fernet
 from fastapi.testclient import TestClient
@@ -10,6 +11,7 @@ from apps.api.main import app
 from core.config.settings import get_settings
 from core.db.base import Base
 from core.db.session import get_db
+from core.models.audit import AuditEntry
 from core.models.document import Document
 from core.models.paperless_instance import PaperlessInstance
 from core.queue.adapter import QueueAdapter
@@ -120,6 +122,85 @@ def test_instance_admin_page_is_available() -> None:
     assert 'id="api-token"' in response.text
     assert 'id="webhook-secret"' in response.text
     assert "Instanz speichern" in response.text
+    assert 'id="edit-instance-dialog"' in response.text
+    assert 'id="edit-name"' in response.text
+    assert 'id="edit-api-token"' in response.text
+    assert "Bearbeiten" in response.text
+
+
+def test_instance_can_be_edited_without_exposing_or_replacing_secrets(
+    monkeypatch,
+) -> None:
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    session_factory = sessionmaker(bind=engine, class_=Session)
+
+    def database() -> Generator[Session, None, None]:
+        with session_factory() as session:
+            yield session
+
+    monkeypatch.setenv("CREDENTIAL_ENCRYPTION_KEY", Fernet.generate_key().decode())
+    monkeypatch.setenv("ADMIN_API_SECRET", "test-admin-secret")
+    get_settings.cache_clear()
+    app.dependency_overrides[get_db] = database
+    try:
+        client = TestClient(app)
+        headers = {"X-EZEUS-Admin-Secret": "test-admin-secret"}
+        created = client.post(
+            "/api/paperless-instances",
+            headers=headers,
+            json={
+                "name": "Alter Name",
+                "base_url": "https://old.example.test",
+                "api_token": "existing-api-token",
+                "webhook_secret": "existing-webhook-secret",
+            },
+        ).json()
+        with session_factory() as db:
+            before = db.get(PaperlessInstance, UUID(created["id"]))
+            assert before is not None
+            old_token = before.api_token_encrypted
+            old_secret = before.webhook_secret_encrypted
+            old_slug = before.slug
+
+        response = client.patch(
+            f"/api/paperless-instances/{created['id']}",
+            headers=headers,
+            json={
+                "name": "Neuer Name",
+                "base_url": "https://new.example.test",
+                "verify_tls": False,
+            },
+        )
+        assert response.status_code == 200
+        body = response.json()
+        assert body["name"] == "Neuer Name"
+        assert body["base_url"] == "https://new.example.test"
+        assert body["slug"] == old_slug
+        assert "existing-api-token" not in str(body)
+        assert "existing-webhook-secret" not in str(body)
+
+        with session_factory() as db:
+            updated = db.get(PaperlessInstance, UUID(created["id"]))
+            assert updated is not None
+            assert updated.api_token_encrypted == old_token
+            assert updated.webhook_secret_encrypted == old_secret
+            audit = db.scalar(
+                select(AuditEntry).where(
+                    AuditEntry.action == "UPDATE_PAPERLESS_INSTANCE"
+                )
+            )
+            assert audit is not None
+            assert audit.instance_id == updated.id
+            assert audit.new_value["api_token_replaced"] is False
+            assert "existing-api-token" not in str(audit.new_value)
+    finally:
+        app.dependency_overrides.clear()
+        get_settings.cache_clear()
 
 
 def test_shared_design_assets_are_available() -> None:

@@ -290,6 +290,25 @@ tbody tr:hover { background: rgba(255, 255, 255, 0.018); }
 .instance-meta, .user-meta { display: grid; gap: var(--space-1); margin-top: var(--space-3); color: var(--color-text-muted); font-size: 0.78rem; }
 .instance-actions, .user-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--space-2); }
 
+.edit-dialog {
+  width: min(680px, calc(100vw - 2rem)); max-height: calc(100vh - 2rem);
+  padding: 0; overflow: auto; border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-lg); background: var(--color-surface);
+  color: var(--color-text); box-shadow: 0 28px 90px rgba(0, 0, 0, 0.72);
+}
+.edit-dialog::backdrop { background: rgba(0, 0, 0, 0.76); backdrop-filter: blur(3px); }
+.edit-dialog form { padding: clamp(var(--space-5), 4vw, var(--space-8)); }
+.dialog-heading {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: var(--space-5); margin-bottom: var(--space-6);
+}
+.dialog-heading .icon-button { flex: 0 0 auto; font-size: 1.4rem; line-height: 1; }
+.dialog-actions { justify-content: flex-end; }
+.toggle-label {
+  display: inline-flex; align-items: center; gap: var(--space-3);
+  margin: 0; color: var(--color-text);
+}
+
 .log-toolbar { display: grid; grid-template-columns: minmax(220px, 1fr) 150px auto auto; gap: var(--space-3); align-items: end; }
 .log-list { max-height: min(62vh, 760px); overflow: auto; }
 .log-row {
