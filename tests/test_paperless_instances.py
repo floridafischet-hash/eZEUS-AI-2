@@ -110,6 +110,18 @@ def test_instance_admin_page_is_available() -> None:
     response = TestClient(app).get("/admin/instances")
     assert response.status_code == 200
     assert "Paperless-Instanzen" in response.text
+    assert 'href="/static/ezeus-ui.css"' in response.text
+    assert 'src="/static/ezeus-logo.png"' in response.text
+
+
+def test_shared_design_assets_are_available() -> None:
+    client = TestClient(app)
+    stylesheet = client.get("/static/ezeus-ui.css")
+    logo = client.get("/static/ezeus-logo.png")
+    assert stylesheet.status_code == 200
+    assert "--color-brand: #e53935" in stylesheet.text
+    assert logo.status_code == 200
+    assert logo.headers["content-type"] == "image/png"
     assert response.text.count('<form id="instance-form">') == 1
     assert 'id="admin-secret"' in response.text
     assert "Admin-Secret" in response.text

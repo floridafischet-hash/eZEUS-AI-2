@@ -1,8 +1,10 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 import httpx
 from fastapi import FastAPI, HTTPException
+from fastapi.staticfiles import StaticFiles
 from redis import Redis
 from sqlalchemy import select, text
 
@@ -27,6 +29,11 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(title="eZEUS-AI-2", version="0.2.0", lifespan=lifespan)
+app.mount(
+    "/static",
+    StaticFiles(directory=Path(__file__).parent / "static"),
+    name="static",
+)
 app.include_router(dashboard_router)
 app.include_router(paperless_webhook_router)
 app.include_router(admin_router)
