@@ -1,4 +1,3 @@
-import base64
 from collections.abc import Generator
 
 import pytest
@@ -118,8 +117,10 @@ def admin_headers(actor: str = "Administrator A") -> dict[str, str]:
 
 
 def basic_headers(username: str, password: str) -> dict[str, str]:
-    encoded = base64.b64encode(f"{username}:{password}".encode()).decode()
-    return {"Authorization": f"Basic {encoded}"}
+    return {
+        "X-EZEUS-Admin-User": username,
+        "X-EZEUS-Admin-Password": password,
+    }
 
 
 def test_url_slug_selects_tenant_and_requires_administrator(

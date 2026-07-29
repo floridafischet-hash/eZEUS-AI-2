@@ -189,7 +189,10 @@ FIELD_CONFIG_HTML = """<!doctype html>
     const username=document.getElementById("username").value;
     const password=document.getElementById("password").value;
     const headers = {};
-    if(username && password) headers["Authorization"]=`Basic ${btoa(`${username}:${password}`)}`;
+    if(username && password) {
+      headers["X-EZEUS-Admin-User"]=username;
+      headers["X-EZEUS-Admin-Password"]=password;
+    }
     else headers["X-EZEUS-Admin-Secret"]=document.getElementById("secret").value;
     if (json) headers["Content-Type"] = "application/json";
     return headers;

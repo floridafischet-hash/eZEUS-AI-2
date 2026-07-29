@@ -39,6 +39,8 @@ def require_admin_user(
     db: Annotated[Session, Depends(get_db)],
     credentials: Annotated[HTTPBasicCredentials | None, Depends(basic_auth)],
     x_ezeus_admin_secret: str | None = Header(default=None),
+    x_ezeus_admin_user: str | None = Header(default=None),
+    x_ezeus_admin_password: str | None = Header(default=None),
 ) -> AdminPrincipal:
     if _valid_legacy_secret(x_ezeus_admin_secret):
         active_admin = db.scalar(
@@ -49,7 +51,9 @@ def require_admin_user(
         )
         if active_admin is None:
             return AdminPrincipal(None, "system-admin", "admin", legacy=True)
-    if credentials is None:
+    username = x_ezeus_admin_user or (credentials.username if credentials else None)
+    password = x_ezeus_admin_password or (credentials.password if credentials else None)
+    if not username or not password:
         raise HTTPException(
             status_code=401,
             detail="Administrative authentication required",
@@ -57,11 +61,11 @@ def require_admin_user(
         )
     user = db.scalar(
         select(AdminUser).where(
-            AdminUser.username == credentials.username,
+            AdminUser.username == username,
             AdminUser.enabled.is_(True),
         )
     )
-    if user is None or not verify_password(credentials.password, user.password_hash):
+    if user is None or not verify_password(password, user.password_hash):
         raise HTTPException(
             status_code=401,
             detail="Invalid administrative credentials",
