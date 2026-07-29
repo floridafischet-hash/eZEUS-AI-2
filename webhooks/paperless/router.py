@@ -11,6 +11,7 @@ from core.events.document_imported import DocumentImportedEvent
 from core.jobs.service import JobService
 from core.models.enums import JobPriority
 from core.paperless.service import (
+    AmbiguousWebhookSecretError,
     connector_name,
     find_enabled_instance_by_webhook_secret,
     get_enabled_instance,
@@ -31,7 +32,16 @@ def receive_paperless_webhook(
     x_ezeus_webhook_secret: str | None = Header(default=None),
 ) -> dict[str, str | bool]:
     settings = get_settings()
-    instance = find_enabled_instance_by_webhook_secret(db, x_ezeus_webhook_secret)
+    try:
+        instance = find_enabled_instance_by_webhook_secret(db, x_ezeus_webhook_secret)
+    except AmbiguousWebhookSecretError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Webhook secret matches multiple Paperless instances; "
+                "use the instance-specific webhook URL"
+            ),
+        ) from exc
     if instance is not None:
         return _accept_event(
             payload,
