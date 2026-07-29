@@ -112,6 +112,14 @@ def test_instance_admin_page_is_available() -> None:
     assert "Paperless-Instanzen" in response.text
     assert 'href="/static/ezeus-ui.css"' in response.text
     assert 'src="/static/ezeus-logo.png"' in response.text
+    assert response.text.count('<form id="instance-form">') == 1
+    assert 'id="admin-secret"' in response.text
+    assert "Bootstrap-Admin-Secret" in response.text
+    assert 'id="name"' in response.text
+    assert 'id="base-url"' in response.text
+    assert 'id="api-token"' in response.text
+    assert 'id="webhook-secret"' in response.text
+    assert "Instanz speichern" in response.text
 
 
 def test_shared_design_assets_are_available() -> None:
@@ -122,14 +130,6 @@ def test_shared_design_assets_are_available() -> None:
     assert "--color-brand: #e53935" in stylesheet.text
     assert logo.status_code == 200
     assert logo.headers["content-type"] == "image/png"
-    assert response.text.count('<form id="instance-form">') == 1
-    assert 'id="admin-secret"' in response.text
-    assert "Admin-Secret" in response.text
-    assert 'id="name"' in response.text
-    assert 'id="base-url"' in response.text
-    assert 'id="api-token"' in response.text
-    assert 'id="webhook-secret"' in response.text
-    assert "Instanz vollständig speichern" in response.text
 
 
 def test_unscoped_webhook_rejects_secret_shared_by_multiple_instances(
