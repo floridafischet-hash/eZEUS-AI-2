@@ -10,10 +10,12 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from apps.api.admin import require_admin_secret
 from connectors.base.errors import ConnectorError
 from connectors.paperless.connector import PaperlessConnector
 from core.config.settings import get_settings
 from core.db.session import get_db
+from core.field_config.service import FieldConfigurationService
 from core.models.paperless_instance import PaperlessInstance
 from core.security.credentials import (
     CredentialEncryptionError,
@@ -83,7 +85,10 @@ def _serialize(instance: PaperlessInstance) -> dict[str, object]:
     }
 
 
-@router.get("/api/paperless-instances")
+@router.get(
+    "/api/paperless-instances",
+    dependencies=[Depends(require_admin_secret)],
+)
 def list_instances(db: Annotated[Session, Depends(get_db)]) -> dict[str, object]:
     instances = db.scalars(select(PaperlessInstance).order_by(PaperlessInstance.name)).all()
     return {"instances": [_serialize(item) for item in instances]}
@@ -92,6 +97,7 @@ def list_instances(db: Annotated[Session, Depends(get_db)]) -> dict[str, object]
 @router.post(
     "/api/paperless-instances",
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_admin_secret)],
 )
 def create_instance(
     payload: InstanceCreate,
@@ -115,11 +121,13 @@ def create_instance(
         db.rollback()
         raise HTTPException(status_code=409, detail="Kennung ist bereits vergeben") from exc
     db.refresh(instance)
+    FieldConfigurationService(db).ensure_defaults(instance)
     return _serialize(instance)
 
 
 @router.patch(
     "/api/paperless-instances/{instance_id}",
+    dependencies=[Depends(require_admin_secret)],
 )
 def update_instance(
     instance_id: UUID,
@@ -149,6 +157,7 @@ def update_instance(
 
 @router.post(
     "/api/paperless-instances/{instance_id}/test",
+    dependencies=[Depends(require_admin_secret)],
 )
 async def test_instance(
     instance_id: UUID,
@@ -223,6 +232,10 @@ INSTANCE_ADMIN_HTML = """<!doctype html>
     <h1>Paperless-Instanzen</h1>
     <p class="muted">Alle Angaben können in einem Schritt eingetragen werden. Zugangsdaten
       werden verschlüsselt gespeichert und nicht wieder angezeigt.</p>
+    <section class="panel">
+      <label for="admin-secret">Admin-Secret</label>
+      <input id="admin-secret" type="password" autocomplete="current-password" required>
+    </section>
     <section class="panel form-panel">
       <form id="instance-form">
         <div class="form-section">
@@ -257,7 +270,8 @@ INSTANCE_ADMIN_HTML = """<!doctype html>
     const instances = document.getElementById("instances");
 
     function headers(json = false) {
-      const result = {};
+      const result = {"X-EZEUS-Admin-Secret":
+        document.getElementById("admin-secret").value};
       if (json) result["Content-Type"] = "application/json";
       return result;
     }
@@ -293,6 +307,13 @@ INSTANCE_ADMIN_HTML = """<!doctype html>
         info.append(title, url, webhook);
         const actions = document.createElement("div");
         actions.className = "actions";
+        const configure = document.createElement("button");
+        configure.type = "button";
+        configure.className = "secondary";
+        configure.textContent = "Feldkonfiguration";
+        configure.addEventListener("click", () => {
+          location.href = `/admin/instances/${encodeURIComponent(item.slug)}/fields`;
+        });
         const test = document.createElement("button");
         test.type = "button";
         test.className = "secondary";
@@ -316,7 +337,7 @@ INSTANCE_ADMIN_HTML = """<!doctype html>
           });
           await loadInstances();
         });
-        actions.append(test, toggle);
+        actions.append(configure, test, toggle);
         row.append(info, actions);
         instances.append(row);
       });

@@ -1,5 +1,20 @@
 # Architektur
 
+## Mandanten- und Feldkonfiguration
+
+`PaperlessInstance` ist die Mandantenwurzel. Die eindeutige `slug` wird aus
+der Paperless-URL erzeugt und in Webhook-Pfaden sowie im Dokument-Connector
+`paperless:<slug>` verwendet. `InstanceFieldConfig` gehört über `instance_id`
+genau zu einer Instanz. API-Routen nehmen keine frei wählbare Mandanten-ID im
+Request-Body entgegen, sondern lösen die Instanz aus dem Pfadsegment auf.
+
+`FieldConfigurationService` stellt die Standardvorlage bereit, validiert und
+speichert Änderungen, erzeugt Auditdaten und übersetzt die persistierte
+Konfiguration in die vorhandene `TemplateConfig`. Der Orchestrator verwendet
+für verwaltete Instanzen ausschließlich dieses Laufzeit-Template. Die
+bisherigen dokumenttypbezogenen Templates bleiben für die Legacy-Konfiguration
+erhalten.
+
 Der Webhook normalisiert Paperless-Ereignisse und erzeugt ausschließlich
 persistente Jobs. Celery transportiert Job-IDs über Redis; PostgreSQL bleibt die
 Quelle für Status, Phasen, Ergebnisse und Auditdaten.

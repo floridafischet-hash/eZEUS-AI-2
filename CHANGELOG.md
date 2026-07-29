@@ -2,6 +2,15 @@
 
 Alle wesentlichen Änderungen an eZEUS-AI-2 werden in dieser Datei dokumentiert.
 
+## Unveröffentlicht
+
+- Mandantenbezogene Feldkonfiguration mit Standardvorlage, Custom-Feldern,
+  Feldtypen, Pflichtstatus, Sortierung sowie OCR-/KI-Schaltern ergänzt.
+- Geschützte Feldkonfigurations-API und Weboberfläche mit Vorschau ergänzt.
+- Verarbeitungs-Pipeline an die dauerhaft gespeicherte Instanzkonfiguration
+  gebunden.
+- Konfigurationsänderungen um mandantenbezogene Auditdaten erweitert.
+
 ## 0.2.0 - 2026-07-27
 
 ### Hinzugefügt

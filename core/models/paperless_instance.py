@@ -1,5 +1,5 @@
 from sqlalchemy import Boolean, String
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from core.db.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
 
@@ -14,3 +14,10 @@ class PaperlessInstance(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     webhook_secret_encrypted: Mapped[str] = mapped_column(String(4096), nullable=False)
     verify_tls: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    field_configs = relationship(
+        "InstanceFieldConfig",
+        back_populates="instance",
+        cascade="all, delete-orphan",
+        order_by="InstanceFieldConfig.sort_order",
+    )

@@ -1,5 +1,20 @@
 # Sicherheit
 
+## Feldadministration und Mandantentrennung
+
+Lese-, Vorschau- und Schreibzugriffe der Feldkonfigurations-API verlangen den
+Header `X-EZEUS-Admin-Secret`. Der Vergleich erfolgt über die bestehende
+konstantzeitliche Admin-Authentifizierung. Die Weboberfläche hält das Secret
+nur im aktuellen Browser-Dokument und überträgt es nicht in URL oder
+Serverprotokoll.
+
+Der Mandant wird serverseitig aus `{instance_slug}` beziehungsweise bei der
+Verarbeitung aus `Document.connector` bestimmt. Feldkonfigurations-Payloads
+enthalten keine `instance_id`. Fremdschlüssel, eindeutige Constraints und
+mandantenbezogene Abfragen bilden eine zweite Trennlinie unterhalb der API.
+Alle Änderungen werden mit Akteur, Mandant, Zeitpunkt und Vorher-/Nachherwert
+in `audit_entries` gespeichert.
+
 Webhook-Secrets werden mit konstantem Zeitverhalten verglichen. Paperless-TLS
 ist standardmäßig aktiv. Downloads besitzen eine Größenbegrenzung und temporäre
 Dateien liegen in automatisch bereinigten Verzeichnissen. Externe Dateinamen

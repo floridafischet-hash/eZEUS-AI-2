@@ -40,11 +40,12 @@ class ValidatorConfig(BaseModel):
 
 
 class FieldConfig(BaseModel):
-    target_field_id: int
-    providers: list[ProviderConfig] = Field(min_length=1)
+    target_field_id: int | None = None
+    providers: list[ProviderConfig] = Field(default_factory=list)
     validators: list[ValidatorConfig] = Field(default_factory=list)
     minimum_confidence: float = Field(default=0.8, ge=0, le=1)
     selection_strategy: Literal["unique", "first", "highest"] = "unique"
+    required: bool = True
 
 
 class TemplateConfig(BaseModel):

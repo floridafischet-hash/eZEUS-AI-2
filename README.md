@@ -243,6 +243,57 @@ Webhook-Secret liegen verschlüsselt in der Datenbank und werden über API und
 Oberfläche nicht im Klartext ausgegeben. Die Instanzkennung trennt Dokumente
 und Ereignisse verschiedener Paperless-Systeme.
 
+### Mandantenbezogene Feldkonfiguration
+
+Jede Paperless-Instanz ist ein eigener Mandant. Die beim Anlegen aus der
+Paperless-URL erzeugte Kennung (`slug`) ist dauerhaft eindeutig. Webhooks,
+Feldkonfiguration und Verarbeitung verwenden dieselbe Kennung:
+
+```text
+/webhooks/paperless/<instanzkennung>
+/admin/instances/<instanzkennung>/fields
+/api/instances/<instanzkennung>/field-config
+```
+
+Die Verwaltungsseite `/admin/instances` enthält für jede Instanz einen Link
+`Feldkonfiguration`. Zum Laden, Prüfen und Speichern wird zusätzlich zum Schutz
+des Reverse Proxys das `ADMIN_API_SECRET` verlangt. Der optionale Name des
+Administrators wird mit jeder Änderung protokolliert.
+
+Neue Instanzen erhalten automatisch die Standardfelder Korrespondent,
+Rechnungsnummer, Rechnungsdatum, Rechnungsbetrag, Kundennummer und
+Baustellennummer. Pro Feld können Bezeichnung, Typ, Reihenfolge, Aktivstatus,
+Pflichtstatus, OCR-Auslesung, lokale KI-Auslesung, Paperless-Feld-ID und
+Extraktionshinweise konfiguriert werden. Unterstützte Typen sind Text, Zahl,
+Geldbetrag, Datum, Ja/Nein, Auswahlfeld und mehrzeiliger Text.
+
+Zusätzliche Felder erhalten einen stabilen internen Schlüssel und können später
+deaktiviert werden. Bestehende Extraktionsergebnisse und Paperless-Werte werden
+dabei weder gelöscht noch überschrieben. Die Vorschau wird serverseitig mit
+denselben Eingabeschemata validiert wie das Speichern, verändert aber keine
+Daten.
+
+Die Verarbeitung löst den Mandanten ausschließlich aus dem beim Webhook
+gespeicherten Connector `paperless:<instanzkennung>` auf. Eine Mandanten-ID aus
+einem Request-Payload wird nicht akzeptiert. Für verwaltete Instanzen gilt:
+
+- deaktivierte Felder werden weder extrahiert noch geschrieben,
+- nur erforderliche, aber fehlende Felder erzeugen einen Warnstatus,
+- OCR-aktivierte Standardfelder verwenden die hinterlegten deterministischen
+  Regeln,
+- OCR-aktivierte benutzerdefinierte Felder verwenden ihre Bezeichnung als
+  Anker,
+- KI-aktivierte Felder werden mit Bezeichnung, Typ und Extraktionshinweisen in
+  die lokale Ollama-Anweisung aufgenommen,
+- die Paperless-Zuordnung erfolgt über die konfigurierte Feld-ID oder den
+  normalisierten Feldnamen,
+- Korrespondentenerkennung und Dokumenttitel folgen derselben Konfiguration.
+
+`instance_field_configs` ist über `instance_id` mit `paperless_instances`
+verbunden. Der eindeutige Index auf `(instance_id, field_key)` verhindert
+Überschneidungen. Änderungen erzeugen einen Eintrag in `audit_entries` mit
+Administrator, Zeitpunkt, Mandant, Feldschlüssel sowie altem und neuem Wert.
+
 Der bisherige Webhook bleibt für die globale `.env`-Konfiguration
 rückwärtskompatibel:
 
