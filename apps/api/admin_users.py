@@ -12,6 +12,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from apps.api.ui import page_shell
 from core.db.session import get_db
 from core.models.admin_user import AdminUser
 from core.models.audit import AuditEntry
@@ -96,64 +97,60 @@ def create_admin_user(
     return _serialize(user)
 
 
-ADMIN_USERS_HTML = """<!doctype html>
-<html lang="de">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Administratoren | eZEUS-AI-2</title>
-  <style>
-    :root { color-scheme:dark; --bg:#0b1020; --panel:#141b2d; --soft:#1a2338;
-      --text:#f4f7ff; --muted:#9ca9c4; --accent:#65d6ad; --border:#2a3550;
-      --error:#ff7b86; } * { box-sizing:border-box; }
-    body { margin:0; background:var(--bg); color:var(--text);
-      font:15px/1.5 Inter,system-ui,sans-serif; }
-    header { padding:1rem clamp(1rem,4vw,3rem); border-bottom:1px solid var(--border);
-      display:flex; justify-content:space-between; } a { color:var(--accent); }
-    main { width:min(1050px,calc(100% - 2rem)); margin:2rem auto; }
-    .panel { background:var(--panel); border:1px solid var(--border); border-radius:1rem;
-      padding:1.2rem; margin-bottom:1rem; } .grid { display:grid;
-      grid-template-columns:repeat(2,minmax(0,1fr)); gap:1rem; }
-    label { display:block; color:var(--muted); } input,select,button {
-      width:100%; padding:.65rem; border:1px solid var(--border); border-radius:.55rem;
-      background:var(--soft); color:var(--text); font:inherit; }
-    button { cursor:pointer; } button.primary { background:var(--accent); color:#08111b;
-      font-weight:700; } .user { display:grid; grid-template-columns:1fr 150px 100px 130px;
-      gap:1rem; align-items:center; padding:.8rem 0; border-bottom:1px solid var(--border); }
-    #message { color:var(--accent); min-height:1.5rem; } #message.error { color:var(--error); }
-    @media(max-width:700px) { .grid,.user { grid-template-columns:1fr; } }
-  </style>
-</head>
-<body>
-<header><strong>Administratorkonten</strong><a href="/admin/instances">Instanzen</a></header>
-<main>
+@router.get("/page", response_class=HTMLResponse, include_in_schema=False)
+def admin_users_page() -> str:
+    content = """
+<div class="grid sidebar-layout">
+  <div class="content-stack">
+    <section class="panel">
+      <div class="section-heading">
+        <div>
+          <h2>Neues Administratorkonto</h2>
+          <p class="section-copy">Persönliche Zugänge mit passender Berechtigungsrolle anlegen.</p>
+        </div>
+      </div>
+      <div class="form-grid">
+        <div><label for="new-user">Benutzername</label>
+          <input id="new-user" autocomplete="off" maxlength="64"></div>
+        <div><label for="new-role">Rolle</label><select id="new-role">
+          <option value="admin">Administrator</option>
+          <option value="viewer">Nur lesen</option>
+        </select></div>
+        <div class="full"><label for="new-password">Passwort</label>
+          <input id="new-password" type="password" minlength="12" autocomplete="new-password">
+          <p class="help-text">Mindestens 12 Zeichen.</p></div>
+      </div>
+      <div class="form-actions">
+        <button id="create" class="primary" type="button">Konto anlegen</button>
+      </div>
+      <div id="message" class="notice" role="status" hidden></div>
+    </section>
+    <details class="panel auth-panel">
+      <summary>Alternative API-Anmeldung</summary>
+      <p class="section-copy">Nur erforderlich, wenn der vorgeschaltete eZEUS-Zugang
+        nicht verwendet wird.</p>
+      <div class="form-grid auth-fields">
+        <div><label for="login-user">Benutzername</label>
+          <input id="login-user" autocomplete="username"></div>
+        <div><label for="login-password">Passwort</label>
+          <input id="login-password" type="password" autocomplete="current-password"></div>
+        <div class="full"><label for="legacy-secret">Bootstrap-Admin-Secret</label>
+          <input id="legacy-secret" type="password"></div>
+      </div>
+      <div class="form-actions"><button id="load" type="button">Konten neu laden</button></div>
+    </details>
+  </div>
   <section class="panel">
-    <h1>Anmeldung</h1>
-    <div class="grid">
-      <div><label for="login-user">Benutzername</label>
-        <input id="login-user" autocomplete="username"></div>
-      <div><label for="login-password">Passwort</label>
-        <input id="login-password" type="password" autocomplete="current-password"></div>
-      <div><label for="legacy-secret">Bootstrap-Admin-Secret</label>
-        <input id="legacy-secret" type="password"></div>
-      <div><button id="load" type="button">Konten laden</button></div>
+    <div class="section-heading">
+      <div><h2>Konten und Rollen</h2>
+        <p class="section-copy">Aktive Konten und ihre Zugriffsrechte verwalten.</p></div>
+      <span class="status-badge success" id="user-count">Wird geladen</span>
     </div>
-    <div id="message"></div>
+    <div id="users" class="loading-state" role="status">Konten werden geladen</div>
   </section>
-  <section class="panel">
-    <h2>Neues Konto</h2>
-    <div class="grid">
-      <div><label for="new-user">Benutzername</label><input id="new-user"></div>
-      <div><label for="new-password">Passwort, mindestens 12 Zeichen</label>
-        <input id="new-password" type="password" autocomplete="new-password"></div>
-      <div><label for="new-role">Rolle</label><select id="new-role">
-        <option value="admin">Administrator</option><option value="viewer">Nur Lesen</option>
-      </select></div>
-      <div><button id="create" class="primary" type="button">Konto anlegen</button></div>
-    </div>
-  </section>
-  <section class="panel"><h2>Konten</h2><div id="users"></div></section>
-</main>
+</div>
+"""
+    script = """
 <script>
   const message=document.getElementById("message");
   const usersRoot=document.getElementById("users");
@@ -164,53 +161,107 @@ ADMIN_USERS_HTML = """<!doctype html>
     if(username&&password) {
       result["X-EZEUS-Admin-User"]=username;
       result["X-EZEUS-Admin-Password"]=password;
+    } else {
+      const secret=document.getElementById("legacy-secret").value;
+      if(secret) result["X-EZEUS-Admin-Secret"]=secret;
     }
-    else result["X-EZEUS-Admin-Secret"]=document.getElementById("legacy-secret").value;
     if(json) result["Content-Type"]="application/json";
     return result;
   }
-  function show(text,error=false){message.textContent=text;message.classList.toggle("error",error);}
+  function show(text,error=false) {
+    window.ezeusUI?.announce(message,text,error?"error":"success");
+  }
   async function load() {
-    const response=await fetch("/api/admin-users",{headers:headers()});
-    const body=await response.json(); if(!response.ok){show(body.detail||`HTTP ${response.status}`,
-      true);return;} usersRoot.replaceChildren();
-    body.users.forEach(user=>{
-      const row=document.createElement("div"); row.className="user";
-      const name=document.createElement("div"); name.textContent=
-        `${user.username} (${user.enabled?"aktiv":"deaktiviert"})`;
-      const role=document.createElement("select");
-      role.add(new Option("Administrator","admin")); role.add(new Option("Nur Lesen","viewer"));
-      role.value=user.role;
-      const enabled=document.createElement("input"); enabled.type="checkbox"; enabled.checked=user.enabled;
-      const save=document.createElement("button"); save.textContent="Änderung speichern";
-      save.addEventListener("click",async()=>{
-        const result=await fetch(`/api/admin-users/${user.id}`,{method:"PATCH",headers:headers(true),
-          body:JSON.stringify({role:role.value,enabled:enabled.checked})});
-        const body=await result.json(); show(body.detail||
-          (result.ok?"Konto aktualisiert.":`HTTP ${result.status}`),!result.ok); if(result.ok)load();
+    usersRoot.className="loading-state"; usersRoot.textContent="Konten werden geladen";
+    try {
+      const response=await fetch("/api/admin-users",{headers:headers()});
+      const body=await response.json();
+      if(!response.ok) throw new Error(body.detail||`HTTP ${response.status}`);
+      usersRoot.replaceChildren(); usersRoot.className="user-list";
+      document.getElementById("user-count").textContent=
+        `${body.users.length} ${body.users.length===1?"Konto":"Konten"}`;
+      if(!body.users.length) {
+        usersRoot.className="empty-state"; usersRoot.textContent="Noch keine Konten vorhanden.";
+        return;
+      }
+      body.users.forEach(user=>{
+        const card=document.createElement("article"); card.className="user-card";
+        const info=document.createElement("div");
+        const heading=document.createElement("div"); heading.className="user-title";
+        const name=document.createElement("h3"); name.textContent=user.username;
+        const badge=document.createElement("span");
+        badge.className=`status-badge ${user.enabled?"success":"danger"}`;
+        badge.textContent=user.enabled?"Aktiv":"Deaktiviert"; heading.append(name,badge);
+        const meta=document.createElement("div"); meta.className="user-meta";
+        const roleText=document.createElement("span");
+        roleText.textContent=user.role==="admin"?"Vollzugriff":"Nur lesender Zugriff";
+        const login=document.createElement("span");
+        login.textContent=user.last_login_at?
+          `Letzte Anmeldung: ${new Date(user.last_login_at).toLocaleString("de-DE")}`:
+          "Noch keine Anmeldung";
+        meta.append(roleText,login); info.append(heading,meta);
+        const actions=document.createElement("div"); actions.className="user-actions";
+        const role=document.createElement("select"); role.setAttribute("aria-label",`Rolle für ${user.username}`);
+        role.add(new Option("Administrator","admin")); role.add(new Option("Nur lesen","viewer"));
+        role.value=user.role;
+        const enabledLabel=document.createElement("label"); enabledLabel.className="toggle-label";
+        const enabled=document.createElement("input"); enabled.type="checkbox"; enabled.checked=user.enabled;
+        enabled.setAttribute("aria-label",`${user.username} aktiv`);
+        enabledLabel.append(enabled,document.createTextNode(" Aktiv"));
+        const save=document.createElement("button"); save.className="small primary";
+        save.textContent="Speichern";
+        save.addEventListener("click",async()=>{
+          if(user.enabled&&!enabled.checked&&!confirm(`Konto „${user.username}“ deaktivieren?`)) {
+            enabled.checked=true; return;
+          }
+          window.ezeusUI?.setBusy(save,true,"Speichert …");
+          try {
+            const result=await fetch(`/api/admin-users/${user.id}`,{
+              method:"PATCH",headers:headers(true),
+              body:JSON.stringify({role:role.value,enabled:enabled.checked})});
+            const body=await result.json();
+            show(body.detail||(result.ok?"Konto aktualisiert.":`HTTP ${result.status}`),!result.ok);
+            if(result.ok) await load();
+          } finally { window.ezeusUI?.setBusy(save,false); }
+        });
+        actions.append(role,enabledLabel,save); card.append(info,actions); usersRoot.append(card);
       });
-      row.append(name,role,enabled,save); usersRoot.append(row);
-    });
+    } catch(error) {
+      usersRoot.className="notice error"; usersRoot.textContent=`Laden fehlgeschlagen: ${error.message}`;
+      document.getElementById("user-count").textContent="Nicht verfügbar";
+    }
   }
   async function create() {
-    const response=await fetch("/api/admin-users",{method:"POST",headers:headers(true),
-      body:JSON.stringify({username:document.getElementById("new-user").value,
-        password:document.getElementById("new-password").value,
-        role:document.getElementById("new-role").value})});
-    const body=await response.json(); show(body.detail||
-      (response.ok?"Konto angelegt.":`HTTP ${response.status}`),!response.ok);
-    if(response.ok)load();
+    const button=document.getElementById("create"); window.ezeusUI?.setBusy(button,true,"Legt an …");
+    try {
+      const response=await fetch("/api/admin-users",{method:"POST",headers:headers(true),
+        body:JSON.stringify({username:document.getElementById("new-user").value,
+          password:document.getElementById("new-password").value,
+          role:document.getElementById("new-role").value})});
+      const body=await response.json();
+      show(body.detail||(response.ok?"Konto wurde angelegt.":`HTTP ${response.status}`),!response.ok);
+      if(response.ok) {
+        document.getElementById("new-user").value="";
+        document.getElementById("new-password").value="";
+        await load();
+      }
+    } finally { window.ezeusUI?.setBusy(button,false); }
   }
   document.getElementById("load").addEventListener("click",load);
   document.getElementById("create").addEventListener("click",create);
+  load();
 </script>
-</body>
-</html>"""
-
-
-@router.get("/page", response_class=HTMLResponse, include_in_schema=False)
-def admin_users_page() -> str:
-    return ADMIN_USERS_HTML
+"""
+    return page_shell(
+        title="Benutzerverwaltung",
+        description=(
+            "Persönliche Administrationskonten, Rollen und Aktivstatus "
+            "sicher verwalten."
+        ),
+        active="users",
+        content=content,
+        script=script,
+    )
 
 
 @router.patch("/{user_id}")

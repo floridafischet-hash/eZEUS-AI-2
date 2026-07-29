@@ -452,5 +452,5 @@ def test_field_configuration_page_loads_and_labels_paperless_fields_automaticall
     client, _, _ = field_config_client
     response = client.get("/admin/instances/kunde-a/fields")
     assert response.status_code == 200
-    assert 'source.textContent="Vorhandenes Paperless-Feld"' in response.text
+    assert 'source.textContent="Paperless-Feld"' in response.text
     assert "  load();" in response.text
