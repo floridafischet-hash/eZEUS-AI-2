@@ -16,8 +16,9 @@ from connectors.paperless.connector import PaperlessConnector
 from core.config.settings import get_settings
 from core.db.session import get_db
 from core.field_config.service import FieldConfigurationService
+from core.models.audit import AuditEntry
 from core.models.paperless_instance import PaperlessInstance
-from core.security.admin_auth import require_admin_secret
+from core.security.admin_auth import AdminPrincipal, require_admin_secret
 from core.security.credentials import (
     CredentialEncryptionError,
     decrypt_credential,
@@ -128,17 +129,25 @@ def create_instance(
 
 @router.patch(
     "/api/paperless-instances/{instance_id}",
-    dependencies=[Depends(require_admin_secret)],
 )
 def update_instance(
     instance_id: UUID,
     payload: InstanceUpdate,
     db: Annotated[Session, Depends(get_db)],
+    principal: Annotated[AdminPrincipal, Depends(require_admin_secret)],
 ) -> dict[str, object]:
     instance = db.get(PaperlessInstance, instance_id)
     if instance is None:
         raise HTTPException(status_code=404, detail="Paperless-Instanz nicht gefunden")
     changes = payload.model_dump(exclude_unset=True)
+    old_value = {
+        "name": instance.name,
+        "base_url": instance.base_url,
+        "verify_tls": instance.verify_tls,
+        "enabled": instance.enabled,
+        "has_api_token": bool(instance.api_token_encrypted),
+        "has_webhook_secret": bool(instance.webhook_secret_encrypted),
+    }
     if "name" in changes:
         instance.name = str(changes["name"]).strip()
     if "base_url" in changes:
@@ -151,6 +160,28 @@ def update_instance(
         instance.verify_tls = bool(changes["verify_tls"])
     if "enabled" in changes:
         instance.enabled = bool(changes["enabled"])
+    new_value = {
+        "name": instance.name,
+        "base_url": instance.base_url,
+        "verify_tls": instance.verify_tls,
+        "enabled": instance.enabled,
+        "has_api_token": bool(instance.api_token_encrypted),
+        "has_webhook_secret": bool(instance.webhook_secret_encrypted),
+        "api_token_replaced": "api_token" in changes,
+        "webhook_secret_replaced": "webhook_secret" in changes,
+    }
+    db.add(
+        AuditEntry(
+            actor=principal.username,
+            action="UPDATE_PAPERLESS_INSTANCE",
+            entity_type="paperless_instance",
+            entity_id=str(instance.id),
+            instance_id=instance.id,
+            target_system="paperless",
+            old_value=old_value,
+            new_value=new_value,
+        )
+    )
     db.commit()
     db.refresh(instance)
     return _serialize(instance)
@@ -235,11 +266,52 @@ def instance_admin_page() -> str:
     <div id="instances" class="loading-state" role="status">Instanzen werden geladen</div>
   </section>
 </div>
+<dialog id="edit-instance-dialog" class="edit-dialog" aria-labelledby="edit-instance-title">
+  <form id="edit-instance-form" method="dialog">
+    <div class="dialog-heading">
+      <div>
+        <p class="eyebrow">Instanzkonfiguration</p>
+        <h2 id="edit-instance-title">Paperless-Instanz bearbeiten</h2>
+        <p class="section-copy">Zugangsdaten werden nur ersetzt, wenn ein neuer Wert
+          eingegeben wird.</p>
+      </div>
+      <button id="close-edit-dialog" class="icon-button" type="button"
+        aria-label="Dialog schließen">×</button>
+    </div>
+    <div class="form-grid">
+      <div class="full"><label for="edit-name">Bezeichnung</label>
+        <input id="edit-name" required maxlength="255"></div>
+      <div class="full"><label for="edit-base-url">Paperless-URL</label>
+        <input id="edit-base-url" type="url" required></div>
+      <div><label for="edit-api-token">Neuer API-Token</label>
+        <input id="edit-api-token" type="password" autocomplete="new-password"
+          placeholder="Unverändert lassen">
+        <p class="help-text">Leer lassen, um den gespeicherten Token beizubehalten.</p></div>
+      <div><label for="edit-webhook-secret">Neues Webhook-Secret</label>
+        <input id="edit-webhook-secret" type="password" minlength="16"
+          autocomplete="new-password" placeholder="Unverändert lassen">
+        <p class="help-text">Leer lassen, um das gespeicherte Secret beizubehalten.</p></div>
+      <div class="full">
+        <label class="toggle-label" for="edit-verify-tls">
+          <input id="edit-verify-tls" type="checkbox"> TLS-Zertifikat prüfen
+        </label>
+      </div>
+    </div>
+    <div id="edit-message" class="notice" role="status" hidden></div>
+    <div class="form-actions dialog-actions">
+      <button id="cancel-edit-instance" type="button">Abbrechen</button>
+      <button id="save-edit-instance" class="primary" type="submit">Änderungen speichern</button>
+    </div>
+  </form>
+</dialog>
 """
     script = """
 <script>
   const message=document.getElementById("message");
   const instances=document.getElementById("instances");
+  const editDialog=document.getElementById("edit-instance-dialog");
+  const editMessage=document.getElementById("edit-message");
+  let editingInstance=null;
   function headers(json=false) {
     const username=document.getElementById("admin-username").value;
     const password=document.getElementById("admin-password").value;
@@ -256,6 +328,23 @@ def instance_admin_page() -> str:
   }
   function showMessage(text,error=false) {
     window.ezeusUI?.announce(message,text,error?"error":"success");
+  }
+  function showEditMessage(text,error=false) {
+    window.ezeusUI?.announce(editMessage,text,error?"error":"success");
+  }
+  function openEditDialog(item) {
+    editingInstance=item;
+    document.getElementById("edit-name").value=item.name;
+    document.getElementById("edit-base-url").value=item.base_url;
+    document.getElementById("edit-api-token").value="";
+    document.getElementById("edit-webhook-secret").value="";
+    document.getElementById("edit-verify-tls").checked=item.verify_tls;
+    editMessage.hidden=true;
+    editDialog.showModal();
+    document.getElementById("edit-name").focus();
+  }
+  function closeEditDialog() {
+    editDialog.close(); editingInstance=null;
   }
   function webhookUrl(path) { return `${location.protocol}//${location.host}${path}`; }
   function actionButton(label,className,handler) {
@@ -291,6 +380,7 @@ def instance_admin_page() -> str:
         meta.append(url,webhook); info.append(heading,meta);
         const actions=document.createElement("div"); actions.className="instance-actions";
         actions.append(
+          actionButton("Bearbeiten","",()=>openEditDialog(item)),
           actionButton("Felder","primary",()=>{
             location.href=`/admin/instances/${encodeURIComponent(item.slug)}/fields`;
           }),
@@ -340,6 +430,39 @@ def instance_admin_page() -> str:
         return;
       }
       event.target.reset(); showMessage("Instanz wurde vollständig gespeichert.");
+      await loadInstances();
+    } finally { window.ezeusUI?.setBusy(button,false); }
+  });
+  document.getElementById("close-edit-dialog").addEventListener("click",closeEditDialog);
+  document.getElementById("cancel-edit-instance").addEventListener("click",closeEditDialog);
+  editDialog.addEventListener("click",(event)=>{
+    if(event.target===editDialog) closeEditDialog();
+  });
+  document.getElementById("edit-instance-form").addEventListener("submit",async(event)=>{
+    event.preventDefault();
+    if(!editingInstance) return;
+    const button=document.getElementById("save-edit-instance");
+    const apiToken=document.getElementById("edit-api-token").value;
+    const webhookSecret=document.getElementById("edit-webhook-secret").value;
+    const payload={
+      name:document.getElementById("edit-name").value,
+      base_url:document.getElementById("edit-base-url").value,
+      verify_tls:document.getElementById("edit-verify-tls").checked
+    };
+    if(apiToken) payload.api_token=apiToken;
+    if(webhookSecret) payload.webhook_secret=webhookSecret;
+    window.ezeusUI?.setBusy(button,true,"Speichert …");
+    try {
+      const response=await fetch(`/api/paperless-instances/${editingInstance.id}`,{
+        method:"PATCH",headers:headers(true),body:JSON.stringify(payload)
+      });
+      const body=await response.json();
+      if(!response.ok) {
+        showEditMessage(body.detail||`Speichern fehlgeschlagen: HTTP ${response.status}`,true);
+        return;
+      }
+      closeEditDialog();
+      showMessage(`Instanz „${body.name}“ wurde aktualisiert.`);
       await loadInstances();
     } finally { window.ezeusUI?.setBusy(button,false); }
   });
