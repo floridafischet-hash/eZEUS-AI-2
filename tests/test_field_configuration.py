@@ -13,9 +13,11 @@ from core.config.settings import get_settings
 from core.db.base import Base
 from core.db.session import get_db
 from core.field_config.service import FieldConfigurationService
+from core.models.admin_user import AdminUser
 from core.models.audit import AuditEntry
 from core.models.instance_field_config import InstanceFieldConfig
 from core.models.paperless_instance import PaperlessInstance
+from core.security.passwords import hash_password
 from plugins.extraction.regex import RegexExtractionProvider
 
 
@@ -121,6 +123,39 @@ def basic_headers(username: str, password: str) -> dict[str, str]:
         "X-EZEUS-Admin-User": username,
         "X-EZEUS-Admin-Password": password,
     }
+
+
+def test_trusted_proxy_user_uses_existing_role(field_config_client, monkeypatch) -> None:
+    client, session_factory, _ = field_config_client
+    monkeypatch.setenv("PROXY_AUTH_SECRET", "trusted-proxy-secret")
+    get_settings.cache_clear()
+    with session_factory.begin() as db:
+        db.add(
+            AdminUser(
+                username="florian",
+                password_hash=hash_password("unused-random-password"),
+                role="admin",
+                enabled=True,
+            )
+        )
+
+    response = client.get(
+        "/api/admin/users",
+        headers={
+            "X-EZEUS-Proxy-User": "florian",
+            "X-EZEUS-Proxy-Secret": "trusted-proxy-secret",
+        },
+    )
+    assert response.status_code == 200
+
+    spoofed = client.get(
+        "/api/admin/users",
+        headers={
+            "X-EZEUS-Proxy-User": "florian",
+            "X-EZEUS-Proxy-Secret": "wrong-secret",
+        },
+    )
+    assert spoofed.status_code == 401
 
 
 def test_url_slug_selects_tenant_and_requires_administrator(

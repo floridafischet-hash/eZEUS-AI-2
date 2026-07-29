@@ -35,12 +35,24 @@ def _valid_legacy_secret(provided: str | None) -> bool:
     )
 
 
+def _valid_proxy_secret(provided: str | None) -> bool:
+    expected = get_settings().proxy_auth_secret
+    if not expected or not provided:
+        return False
+    return hmac.compare_digest(
+        hashlib.sha256(provided.encode()).digest(),
+        hashlib.sha256(expected.encode()).digest(),
+    )
+
+
 def require_admin_user(
     db: Annotated[Session, Depends(get_db)],
     credentials: Annotated[HTTPBasicCredentials | None, Depends(basic_auth)],
     x_ezeus_admin_secret: str | None = Header(default=None),
     x_ezeus_admin_user: str | None = Header(default=None),
     x_ezeus_admin_password: str | None = Header(default=None),
+    x_ezeus_proxy_user: str | None = Header(default=None),
+    x_ezeus_proxy_secret: str | None = Header(default=None),
 ) -> AdminPrincipal:
     if _valid_legacy_secret(x_ezeus_admin_secret):
         active_admin = db.scalar(
@@ -51,6 +63,16 @@ def require_admin_user(
         )
         if active_admin is None:
             return AdminPrincipal(None, "system-admin", "admin", legacy=True)
+    if x_ezeus_proxy_user and _valid_proxy_secret(x_ezeus_proxy_secret):
+        proxy_user = db.scalar(
+            select(AdminUser).where(
+                AdminUser.username == x_ezeus_proxy_user,
+                AdminUser.enabled.is_(True),
+            )
+        )
+        if proxy_user is None:
+            raise HTTPException(status_code=403, detail="Proxy user is not authorized")
+        return AdminPrincipal(proxy_user.id, proxy_user.username, proxy_user.role)
     username = x_ezeus_admin_user or (credentials.username if credentials else None)
     password = x_ezeus_admin_password or (credentials.password if credentials else None)
     if not username or not password:
