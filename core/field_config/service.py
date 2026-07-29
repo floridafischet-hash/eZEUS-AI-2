@@ -1,5 +1,6 @@
 import re
 import unicodedata
+from hashlib import sha256
 from dataclasses import dataclass
 from typing import cast
 from uuid import UUID, uuid4
@@ -93,6 +94,29 @@ PAPERLESS_FIELD_TYPES = {
     "boolean": "boolean",
     "select": "select",
     "textarea": "longtext",
+}
+
+PAPERLESS_COMPATIBLE_TYPES: dict[str, frozenset[str]] = {
+    "text": frozenset({"string", "url", "documentlink"}),
+    "number": frozenset({"float", "integer"}),
+    "money": frozenset({"monetary"}),
+    "date": frozenset({"date"}),
+    "boolean": frozenset({"boolean"}),
+    "select": frozenset({"select"}),
+    "textarea": frozenset({"longtext", "string"}),
+}
+
+FIELD_TYPE_BY_PAPERLESS_TYPE = {
+    "string": "text",
+    "url": "text",
+    "documentlink": "text",
+    "integer": "number",
+    "float": "number",
+    "monetary": "money",
+    "date": "date",
+    "boolean": "boolean",
+    "select": "select",
+    "longtext": "textarea",
 }
 
 
@@ -240,6 +264,91 @@ class FieldConfigurationService:
         self.db.commit()
         return self.list_fields(instance.id)
 
+    async def import_paperless_fields(
+        self,
+        instance: PaperlessInstance,
+        connector: DocumentConnector,
+        *,
+        actor: str,
+    ) -> list[InstanceFieldConfig]:
+        remote_fields = await connector.list_custom_fields()
+        configured = self.ensure_defaults(instance)
+        by_external_id = {
+            field.external_field_id: field
+            for field in configured
+            if field.external_field_id is not None
+        }
+        by_name = {normalized_name(field.label): field for field in configured}
+        used_keys = {field.field_key for field in configured}
+        next_sort_order = max((field.sort_order for field in configured), default=0) + 10
+
+        for remote in remote_fields:
+            field = by_external_id.get(remote.external_id)
+            if field is None:
+                field = by_name.get(normalized_name(remote.name))
+            if field is not None:
+                if field.external_field_id is None:
+                    field.external_field_id = remote.external_id
+                    self.db.add(
+                        AuditEntry(
+                            actor=actor,
+                            action="LINK_PAPERLESS_CUSTOM_FIELD",
+                            entity_type="instance_field_config",
+                            entity_id=str(field.id),
+                            instance_id=instance.id,
+                            target_system="paperless",
+                            field=field.field_key,
+                            old_value=None,
+                            new_value=remote.external_id,
+                            details={"tenant_slug": instance.slug, "source": "paperless_import"},
+                        )
+                    )
+                continue
+
+            field_key = self._paperless_field_key(remote.external_id, used_keys)
+            options = self._paperless_options(remote)
+            field = InstanceFieldConfig(
+                instance_id=instance.id,
+                field_key=field_key,
+                label=remote.name,
+                field_type=FIELD_TYPE_BY_PAPERLESS_TYPE.get(remote.data_type, "text"),
+                sort_order=next_sort_order,
+                is_standard=False,
+                enabled=False,
+                required=False,
+                ocr_enabled=True,
+                ai_enabled=False,
+                external_field_id=remote.external_id,
+                options=options,
+                extraction_instructions=None,
+            )
+            self.db.add(field)
+            self.db.flush()
+            self.db.add(
+                AuditEntry(
+                    actor=actor,
+                    action="IMPORT_PAPERLESS_CUSTOM_FIELD",
+                    entity_type="instance_field_config",
+                    entity_id=str(field.id),
+                    instance_id=instance.id,
+                    target_system="paperless",
+                    field=field.field_key,
+                    old_value=None,
+                    new_value=self.serialize(field),
+                    details={
+                        "tenant_slug": instance.slug,
+                        "paperless_data_type": remote.data_type,
+                    },
+                )
+            )
+            by_external_id[remote.external_id] = field
+            by_name[normalized_name(remote.name)] = field
+            used_keys.add(field_key)
+            next_sort_order += 10
+
+        self.db.commit()
+        return self.list_fields(instance.id)
+
     def runtime_config(
         self,
         instance: PaperlessInstance,
@@ -338,7 +447,8 @@ class FieldConfigurationService:
                 )
             if remote is None:
                 remote = remote_by_name.get(normalized_name(field.label))
-            if remote is not None and remote.data_type != expected_type:
+            compatible_types = PAPERLESS_COMPATIBLE_TYPES[field.field_type]
+            if remote is not None and remote.data_type not in compatible_types:
                 raise ValueError(
                     f"Paperless field '{field.label}' has type {remote.data_type}, "
                     f"expected {expected_type}"
@@ -377,6 +487,28 @@ class FieldConfigurationService:
                 )
         self.db.commit()
         return self.list_fields(instance.id)
+
+    @staticmethod
+    def _paperless_field_key(external_id: str, used_keys: set[str]) -> str:
+        safe_id = re.sub(r"[^a-z0-9]+", "_", external_id.casefold()).strip("_")
+        base = f"paperless_{safe_id[:40]}" if safe_id else "paperless_field"
+        if base not in used_keys:
+            return base
+        suffix = sha256(external_id.encode()).hexdigest()[:10]
+        return f"{base[:53]}_{suffix}"
+
+    @staticmethod
+    def _paperless_options(field: ConnectorCustomField) -> list[str]:
+        if field.data_type != "select":
+            return []
+        options = field.extra_data.get("select_options", [])
+        if not isinstance(options, list):
+            return []
+        return [
+            str(option["label"])
+            for option in options
+            if isinstance(option, dict) and option.get("label") is not None
+        ]
 
     @staticmethod
     def _target_id(

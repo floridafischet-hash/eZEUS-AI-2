@@ -29,7 +29,17 @@ class FakeCustomFieldConnector:
             ConnectorCustomField("16", "Rechnungsdatum", "date"),
             ConnectorCustomField("17", "Kundennummer", "string"),
             ConnectorCustomField("88", "Baustellennummer", "string"),
-            ConnectorCustomField("77", "Projektcode", "select"),
+            ConnectorCustomField(
+                "77",
+                "Projektcode",
+                "select",
+                {
+                    "select_options": [
+                        {"id": "1", "label": "Nord"},
+                        {"id": "2", "label": "Süd"},
+                    ]
+                },
+            ),
         ]
 
     async def list_custom_fields(self) -> list[ConnectorCustomField]:
@@ -194,17 +204,13 @@ def test_configuration_is_saved_reloaded_and_isolated_with_audit(
         if field["field_key"] == "invoice_amount":
             field["enabled"] = False
             field["required"] = False
-    fields.append(
+    project_code = next(field for field in fields if field["label"] == "Projektcode")
+    project_code.update(
         {
-            "field_key": None,
-            "label": "Projektcode",
-            "field_type": "select",
-            "sort_order": 70,
             "enabled": True,
             "required": True,
             "ocr_enabled": True,
             "ai_enabled": True,
-            "external_field_id": "77",
             "options": ["Nord", "Süd"],
             "extraction_instructions": "Nur den ausdrücklich genannten Projektcode verwenden.",
         }
@@ -214,7 +220,7 @@ def test_configuration_is_saved_reloaded_and_isolated_with_audit(
     assert saved.status_code == 200
     saved_fields = saved.json()["fields"]
     custom = next(field for field in saved_fields if field["label"] == "Projektcode")
-    assert custom["field_key"].startswith("custom_")
+    assert custom["field_key"] == "paperless_77"
     assert custom["required"] is True
 
     reloaded = client.get(endpoint, headers=admin_headers()).json()["fields"]
@@ -229,7 +235,10 @@ def test_configuration_is_saved_reloaded_and_isolated_with_audit(
     assert next(
         field for field in second_fields if field["field_key"] == "invoice_amount"
     )["enabled"] is True
-    assert all(field["label"] != "Projektcode" for field in second_fields)
+    second_project_code = next(
+        field for field in second_fields if field["label"] == "Projektcode"
+    )
+    assert second_project_code["enabled"] is False
 
     with session_factory() as db:
         first_instance = db.scalar(
@@ -397,3 +406,41 @@ def test_missing_paperless_custom_field_is_created_and_linked(
     assert created.data_type == "longtext"
     linked = next(field for field in saved.json()["fields"] if field["label"] == "Neue Referenz")
     assert linked["external_field_id"] == created.external_id
+
+
+def test_existing_paperless_fields_are_imported_without_changing_paperless(
+    field_config_client,
+) -> None:
+    client, session_factory, connector = field_config_client
+    instance_data = create_instance(client, "Kunde A", "kunde-a.example.test")
+    endpoint = f"/api/instances/{instance_data['slug']}/field-config"
+
+    response = client.get(endpoint, headers=admin_headers())
+    assert response.status_code == 200
+    imported = next(
+        field for field in response.json()["fields"] if field["external_field_id"] == "77"
+    )
+    assert imported["label"] == "Projektcode"
+    assert imported["field_type"] == "select"
+    assert imported["enabled"] is False
+    assert imported["ocr_enabled"] is True
+
+    remote_before = list(connector.fields)
+    saved = client.put(
+        endpoint,
+        headers=admin_headers(),
+        json={"fields": response.json()["fields"]},
+    )
+    assert saved.status_code == 200
+    assert connector.fields == remote_before
+
+    with session_factory() as db:
+        instance = db.scalar(
+            select(PaperlessInstance).where(
+                PaperlessInstance.slug == instance_data["slug"]
+            )
+        )
+        assert instance is not None
+        runtime = FieldConfigurationService(db).runtime_config(instance, connector.fields)
+        assert imported["field_key"] not in runtime.enabled_keys
+        assert imported["field_key"] not in runtime.template.fields
