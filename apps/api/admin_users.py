@@ -161,7 +161,10 @@ ADMIN_USERS_HTML = """<!doctype html>
     const username=document.getElementById("login-user").value;
     const password=document.getElementById("login-password").value;
     const result={};
-    if(username&&password) result.Authorization=`Basic ${btoa(`${username}:${password}`)}`;
+    if(username&&password) {
+      result["X-EZEUS-Admin-User"]=username;
+      result["X-EZEUS-Admin-Password"]=password;
+    }
     else result["X-EZEUS-Admin-Secret"]=document.getElementById("legacy-secret").value;
     if(json) result["Content-Type"]="application/json";
     return result;

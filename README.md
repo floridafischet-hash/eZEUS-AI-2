@@ -435,7 +435,8 @@ Weitere Informationen stehen in [docs/testing.md](docs/testing.md).
 - Der Webhook meldet HTTP 401: Header und `PAPERLESS_WEBHOOK_SECRET` müssen
   übereinstimmen.
 - Administrative Endpunkte melden HTTP 401: mit einem aktiven persönlichen
-  Konto per HTTP Basic anmelden. Nur vor dem ersten Konto kann
+  Konto über die Verwaltungsoberfläche oder die Header
+  `X-EZEUS-Admin-User` und `X-EZEUS-Admin-Password` anmelden. Nur vor dem ersten Konto kann
   `ADMIN_API_SECRET` als `X-EZEUS-Admin-Secret` verwendet werden.
 - PaddleOCR ist nicht installiert: das Extra `ocr-paddle` installieren oder
   `Dockerfile.paddle` verwenden.

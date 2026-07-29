@@ -283,7 +283,8 @@ INSTANCE_ADMIN_HTML = """<!doctype html>
       const password = document.getElementById("admin-password").value;
       const result = {};
       if (username && password) {
-        result["Authorization"] = `Basic ${btoa(`${username}:${password}`)}`;
+        result["X-EZEUS-Admin-User"] = username;
+        result["X-EZEUS-Admin-Password"] = password;
       } else {
         result["X-EZEUS-Admin-Secret"] = document.getElementById("admin-secret").value;
       }

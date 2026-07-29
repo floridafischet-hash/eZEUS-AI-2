@@ -3,7 +3,10 @@
 ## Feldadministration und Mandantentrennung
 
 Persönliche Administratorkonten werden mit Scrypt-gehashten Passwörtern
-gespeichert und verwenden HTTP Basic ausschließlich über TLS. `admin` darf
+gespeichert. Die Anwendung verwendet über TLS die dedizierten Header
+`X-EZEUS-Admin-User` und `X-EZEUS-Admin-Password`, damit die vorgelagerte
+Nginx-Basic-Authentication ihren eigenen `Authorization`-Header unabhängig
+verwenden kann. `admin` darf
 Konfigurationen und Konten ändern; `viewer` darf Konfigurationen nur lesen und
 Vorschauen ausführen. Das bestehende `ADMIN_API_SECRET` dient ausschließlich
 zum Bootstrap des ersten aktiven Administrators und wird anschließend für
