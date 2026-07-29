@@ -151,6 +151,9 @@ FIELD_CONFIG_HTML = """<!doctype html>
     .preview-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:1rem; }
     .preview-field input,.preview-field select,.preview-field textarea { width:100%; }
     .required::after { content:" *"; color:var(--error); }
+    .source { display:inline-block; margin-left:.35rem; padding:.05rem .4rem;
+      border:1px solid var(--accent); border-radius:999px; color:var(--accent);
+      font-size:.72rem; font-weight:600; }
     @media(max-width:900px) { .field { grid-template-columns:1fr 1fr; }
       .wide { grid-column:1/-1; } .preview-grid { grid-template-columns:1fr; } }
   </style>
@@ -232,7 +235,14 @@ FIELD_CONFIG_HTML = """<!doctype html>
             [fields[other].sort_order,fields[index].sort_order]; render(); }); move.append(button); });
       row.append(move);
       const name=document.createElement("input"); name.value=field.label; name.maxLength=255;
-      name.addEventListener("input",()=>field.label=name.value); row.append(control("Bezeichnung",name));
+      name.addEventListener("input",()=>field.label=name.value);
+      const nameControl=control("Bezeichnung",name);
+      if(!field.is_standard && field.external_field_id) {
+        const source=document.createElement("span"); source.className="source";
+        source.textContent="Vorhandenes Paperless-Feld";
+        nameControl.querySelector("label").append(source);
+      }
+      row.append(nameControl);
       const type=document.createElement("select"); types.forEach(([value,label])=>{
         const option=new Option(label,value); option.selected=field.field_type===value; type.add(option); });
       type.addEventListener("change",()=>{field.field_type=type.value;
@@ -297,6 +307,7 @@ FIELD_CONFIG_HTML = """<!doctype html>
     label:"Neues Feld",field_type:"text",sort_order:(fields.length+1)*10,is_standard:false,
     enabled:true,required:false,ocr_enabled:true,ai_enabled:false,external_field_id:null,
     options:[],extraction_instructions:null});render();});
+  load();
 </script>
 </body>
 </html>"""

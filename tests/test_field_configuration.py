@@ -444,3 +444,13 @@ def test_existing_paperless_fields_are_imported_without_changing_paperless(
         runtime = FieldConfigurationService(db).runtime_config(instance, connector.fields)
         assert imported["field_key"] not in runtime.enabled_keys
         assert imported["field_key"] not in runtime.template.fields
+
+
+def test_field_configuration_page_loads_and_labels_paperless_fields_automatically(
+    field_config_client,
+) -> None:
+    client, _, _ = field_config_client
+    response = client.get("/admin/instances/kunde-a/fields")
+    assert response.status_code == 200
+    assert 'source.textContent="Vorhandenes Paperless-Feld"' in response.text
+    assert "  load();" in response.text
