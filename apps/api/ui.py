@@ -1,3 +1,5 @@
+# ruff: noqa: E501
+
 from html import escape
 
 NAVIGATION = (

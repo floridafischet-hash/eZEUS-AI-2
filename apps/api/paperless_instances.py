@@ -308,7 +308,10 @@ def instance_admin_page() -> str:
             const result=await fetch(`/api/paperless-instances/${item.id}`,{
               method:"PATCH",headers:headers(true),body:JSON.stringify({enabled:!item.enabled})
             });
-            if(!result.ok) { showMessage(`Änderung fehlgeschlagen: HTTP ${result.status}`,true); return; }
+            if(!result.ok) {
+              showMessage(`Änderung fehlgeschlagen: HTTP ${result.status}`,true);
+              return;
+            }
             showMessage(`Instanz wurde ${item.enabled?"deaktiviert":"aktiviert"}.`);
             await loadInstances();
           })
@@ -316,7 +319,8 @@ def instance_admin_page() -> str:
         card.append(info,actions); instances.append(card);
       });
     } catch(error) {
-      instances.className="notice error"; instances.textContent=`Laden fehlgeschlagen: ${error.message}`;
+      instances.className="notice error";
+      instances.textContent=`Laden fehlgeschlagen: ${error.message}`;
       document.getElementById("instance-count").textContent="Nicht verfügbar";
     }
   }
@@ -331,7 +335,10 @@ def instance_admin_page() -> str:
       const response=await fetch("/api/paperless-instances",{
         method:"POST",headers:headers(true),body:JSON.stringify(payload)});
       const body=await response.json();
-      if(!response.ok) { showMessage(body.detail||`Speichern fehlgeschlagen: HTTP ${response.status}`,true); return; }
+      if(!response.ok) {
+        showMessage(body.detail||`Speichern fehlgeschlagen: HTTP ${response.status}`,true);
+        return;
+      }
       event.target.reset(); showMessage("Instanz wurde vollständig gespeichert.");
       await loadInstances();
     } finally { window.ezeusUI?.setBusy(button,false); }
