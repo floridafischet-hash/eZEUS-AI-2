@@ -211,6 +211,45 @@ async def test_invoice_label_does_not_consume_value_from_next_ocr_line() -> None
 
 
 @pytest.mark.asyncio
+async def test_document_371_rejects_header_and_uses_actual_invoice_number() -> None:
+    config = config_from_custom_fields([ConnectorCustomField("93", "Rechnungsnummer", "string")])
+    assert config is not None
+    provider = config.fields["invoice_number"].providers[0]
+    text = (
+        "Rechnungs-Nr.\n"
+        "Rechnungsdatum\n"
+        "Lieferdatum\n"
+        "\n"
+        "1001\n"
+        "30.11.2025\n"
+        "30.11.2025\n"
+        "\n"
+        "30.11.2025\n"
+        "Rechnung Nr. 1001\n"
+    )
+
+    candidates = await RegexExtractionProvider().extract(
+        text, provider.model_dump(exclude={"type"})
+    )
+
+    assert [candidate.value for candidate in candidates] == ["1001"]
+
+
+@pytest.mark.asyncio
+async def test_invoice_number_must_contain_a_digit() -> None:
+    config = config_from_custom_fields([ConnectorCustomField("93", "Rechnungsnummer", "string")])
+    assert config is not None
+    provider = config.fields["invoice_number"].providers[0]
+
+    candidates = await RegexExtractionProvider().extract(
+        "Rechnungsnummer: Rechnungsdatum",
+        provider.model_dump(exclude={"type"}),
+    )
+
+    assert candidates == []
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("text", "expected"),
     [
