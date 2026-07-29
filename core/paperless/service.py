@@ -9,6 +9,10 @@ from webhooks.paperless.security import verify_shared_secret
 CONNECTOR_PREFIX = "paperless:"
 
 
+class AmbiguousWebhookSecretError(ValueError):
+    """Raised when an unscoped webhook secret identifies multiple instances."""
+
+
 def connector_name(slug: str) -> str:
     return f"{CONNECTOR_PREFIX}{slug}"
 
@@ -36,12 +40,17 @@ def find_enabled_instance_by_webhook_secret(
     instances = db.scalars(
         select(PaperlessInstance).where(PaperlessInstance.enabled.is_(True))
     )
+    matching_instance: PaperlessInstance | None = None
     for instance in instances:
         if verify_shared_secret(
             provided_secret, decrypt_credential(instance.webhook_secret_encrypted)
         ):
-            return instance
-    return None
+            if matching_instance is not None:
+                raise AmbiguousWebhookSecretError(
+                    "Webhook secret matches multiple Paperless instances"
+                )
+            matching_instance = instance
+    return matching_instance
 
 
 def connector_for_document(db: Session, connector: str) -> PaperlessConnector:

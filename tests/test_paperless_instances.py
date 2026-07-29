@@ -113,3 +113,59 @@ def test_instance_admin_page_is_available() -> None:
     assert 'id="api-token"' in response.text
     assert 'id="webhook-secret"' in response.text
     assert "Instanz vollständig speichern" in response.text
+
+
+def test_unscoped_webhook_rejects_secret_shared_by_multiple_instances(
+    monkeypatch,
+) -> None:
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    session_factory = sessionmaker(bind=engine, class_=Session)
+
+    def database() -> Generator[Session, None, None]:
+        with session_factory() as session:
+            yield session
+
+    monkeypatch.setenv("CREDENTIAL_ENCRYPTION_KEY", Fernet.generate_key().decode())
+    get_settings.cache_clear()
+    monkeypatch.setattr(
+        QueueAdapter,
+        "enqueue_document_job",
+        lambda *_args, **_kwargs: None,
+    )
+    app.dependency_overrides[get_db] = database
+    try:
+        client = TestClient(app)
+        shared_secret = "shared-webhook-secret"
+        for name, base_url in (
+            ("Paperless A", "https://paperless-a.example.test"),
+            ("Paperless B", "https://paperless-b.example.test"),
+        ):
+            response = client.post(
+                "/api/paperless-instances",
+                json={
+                    "name": name,
+                    "base_url": base_url,
+                    "api_token": f"{name}-api-token",
+                    "webhook_secret": shared_secret,
+                },
+            )
+            assert response.status_code == 201
+
+        response = client.post(
+            "/webhooks/paperless",
+            headers={"X-EZEUS-Webhook-Secret": shared_secret},
+            json={"document_id": 42, "event_id": "created-42"},
+        )
+
+        assert response.status_code == 409
+        assert "instance-specific webhook URL" in response.json()["detail"]
+        with session_factory() as db:
+            assert db.scalar(select(Document)) is None
+    finally:
+        app.dependency_overrides.clear()
+        get_settings.cache_clear()
