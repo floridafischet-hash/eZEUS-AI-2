@@ -273,6 +273,9 @@ authentifiziert sich mit einem automatisch erzeugten instanzbezogenen
 Webhook-Secret. Ein erneuter
 Aufruf über `Workflow einrichten` repariert den verwalteten Workflow
 idempotent, ohne benutzerdefinierte Workflows zu verändern.
+Für Paperless 2.20.x wird die Dokument-ID kompatibel aus der von Paperless
+bereitgestellten Dokument-URL ermittelt, da diese Version den dokumentierten
+Workflow-Platzhalter `doc_id` noch nicht an Webhook-Templates übergibt.
 
 URL, API-Token und Webhook-Secret werden pro Instanz verwaltet. API-Token und
 Webhook-Secret liegen verschlüsselt in der Datenbank und werden über API und

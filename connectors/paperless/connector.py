@@ -100,9 +100,15 @@ class PaperlessConnector(DocumentConnector):
                     "type": 4,
                     "webhook": {
                         "url": webhook_url,
-                        "use_params": False,
+                        "use_params": True,
                         "as_json": True,
-                        "body": '{"document_id": "{{ doc_id }}"}',
+                        # Paperless 2.20.x documents ``doc_id`` but does not
+                        # expose it to the workflow template context.  The
+                        # stable document URL does contain the same id.
+                        "params": {
+                            "document_id": '{{ doc_url.split("/")[-2] }}',
+                        },
+                        "body": None,
                         "headers": {
                             "X-EZEUS-Webhook-Secret": webhook_secret,
                             "Content-Type": "application/json",
