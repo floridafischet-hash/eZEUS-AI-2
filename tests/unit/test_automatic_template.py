@@ -256,6 +256,7 @@ async def test_invoice_number_must_contain_a_digit() -> None:
         ("Rechnung R1803", "R1803"),
         ("Rechnung 184084", "184084"),
         ("Bon-Nr.: 300007321", "300007321"),
+        ("Beleg-Nr. 32002", "32002"),
     ],
 )
 async def test_additional_invoice_identifier_formats(text: str, expected: str) -> None:
@@ -305,6 +306,11 @@ async def test_plain_invoice_heading_is_not_an_identifier() -> None:
         ("ZWISCHENSUMME netto 3.455,00 €\nENDSUMME brutto 4.111,45 €", "4.111,45"),
         ("ENDSUMME brutto\n3.867,50 €", "3.867,50"),
         ("Gesamtbetrag brutto: 28.441,00 EUR", "28.441,00"),
+        (
+            "Gesamtnetto 97,45 €\nzzgl. 19 % MwSt 18,52 €\n"
+            "Gesamtrechnungsbetrag 115,97 €",
+            "115,97",
+        ),
         (
             "Zahlungsbedingung Zahlbar sofort rein netto. Netto 320,70 €\n"
             "Bindung Es gelten die AGB des Lieferanten Brutto 381,63 €",

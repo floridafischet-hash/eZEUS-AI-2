@@ -30,6 +30,8 @@ FIELD_DEFINITIONS: dict[str, dict[str, object]] = {
             r"([A-Z0-9][A-Z0-9./_-]*)\s*$",
             r"(?im)^\s*Bon[\s.-]*(?:Nr|Nummer)\.?\s*:\s*"
             r"([A-Z0-9][A-Z0-9./_-]*)\s*$",
+            r"(?im)^\s*Beleg[\s.-]*(?:Nr|Nummer)\.?\s*:?\s*"
+            r"([A-Z0-9][A-Z0-9./_-]*)\s*$",
             r"(?i)(?:"
             r"BV(?:[\s.-]*(?:Nr|Nummer))?\.?|"
             r"Baustellen?(?:[\s.-]*(?:Nr|Nummer))\.?"
@@ -60,6 +62,7 @@ FIELD_DEFINITIONS: dict[str, dict[str, object]] = {
             r"Gesamtbetrag|"
             r"Gesamtbetrag\s+brutto|"
             r"Gesamtsumme|"
+            r"Gesamtrechnungsbetrag|"
             r"Rechnungswert\s*\(\s*brutto\s*\)|"
             r"Zahlbetrag|"
             r"Endbetrag|"
