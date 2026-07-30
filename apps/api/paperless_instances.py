@@ -1,4 +1,5 @@
 import re
+import secrets
 from typing import Annotated
 from urllib.parse import urlparse
 from uuid import UUID
@@ -33,7 +34,7 @@ class InstanceCreate(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     base_url: AnyHttpUrl
     api_token: str = Field(min_length=1, max_length=4096)
-    webhook_secret: str = Field(min_length=16, max_length=4096)
+    webhook_secret: str | None = Field(default=None, min_length=16, max_length=4096)
 
 
 class InstanceUpdate(BaseModel):
@@ -87,6 +88,27 @@ def _serialize(instance: PaperlessInstance) -> dict[str, object]:
     }
 
 
+def _workflow_url(instance: PaperlessInstance) -> str:
+    public_base_url = get_settings().public_webhook_base_url.rstrip("/")
+    if not public_base_url:
+        raise ConnectorError("PUBLIC_WEBHOOK_BASE_URL ist nicht konfiguriert")
+    return f"{public_base_url}/webhooks/paperless/{instance.slug}"
+
+
+async def _provision_workflow(instance: PaperlessInstance) -> dict[str, object]:
+    connector = PaperlessConnector(
+        base_url=instance.base_url,
+        api_token=decrypt_credential(instance.api_token_encrypted),
+        verify_tls=instance.verify_tls,
+    )
+    if not await connector.health_check():
+        raise ConnectorError("Paperless-Verbindung ist nicht erreichbar")
+    return await connector.ensure_ezeus_workflow(
+        webhook_url=_workflow_url(instance),
+        webhook_secret=decrypt_credential(instance.webhook_secret_encrypted),
+    )
+
+
 @router.get(
     "/api/paperless-instances",
     dependencies=[Depends(require_admin_secret)],
@@ -101,18 +123,19 @@ def list_instances(db: Annotated[Session, Depends(get_db)]) -> dict[str, object]
     status_code=status.HTTP_201_CREATED,
     dependencies=[Depends(require_admin_secret)],
 )
-def create_instance(
+async def create_instance(
     payload: InstanceCreate,
     db: Annotated[Session, Depends(get_db)],
 ) -> dict[str, object]:
     base_url = str(payload.base_url).rstrip("/")
     slug = _instance_slug(base_url, db)
+    webhook_secret = payload.webhook_secret or secrets.token_urlsafe(32)
     instance = PaperlessInstance(
         name=payload.name.strip(),
         slug=slug,
         base_url=base_url,
         api_token_encrypted=encrypt_credential(payload.api_token),
-        webhook_secret_encrypted=encrypt_credential(payload.webhook_secret),
+        webhook_secret_encrypted=encrypt_credential(webhook_secret),
         verify_tls=True,
         enabled=True,
     )
@@ -124,7 +147,21 @@ def create_instance(
         raise HTTPException(status_code=409, detail="Kennung ist bereits vergeben") from exc
     db.refresh(instance)
     FieldConfigurationService(db).ensure_defaults(instance)
-    return _serialize(instance)
+    result = _serialize(instance)
+    if get_settings().public_webhook_base_url:
+        try:
+            result["workflow"] = await _provision_workflow(instance)
+        except (ConnectorError, CredentialEncryptionError) as exc:
+            db.delete(instance)
+            db.commit()
+            raise HTTPException(
+                status_code=502,
+                detail=(
+                    "Instanz nicht angelegt: Paperless-Workflow konnte nicht "
+                    f"eingerichtet werden: {exc}"
+                ),
+            ) from exc
+    return result
 
 
 @router.patch(
@@ -210,6 +247,30 @@ async def test_instance(
     return {"reachable": reachable, "detail": "Verbindung erfolgreich"}
 
 
+@router.post(
+    "/api/paperless-instances/{instance_id}/provision-workflow",
+    dependencies=[Depends(require_admin_secret)],
+)
+async def provision_instance_workflow(
+    instance_id: UUID,
+    db: Annotated[Session, Depends(get_db)],
+) -> dict[str, object]:
+    instance = db.get(PaperlessInstance, instance_id)
+    if instance is None:
+        raise HTTPException(status_code=404, detail="Paperless-Instanz nicht gefunden")
+    try:
+        workflow = await _provision_workflow(instance)
+    except (ConnectorError, CredentialEncryptionError) as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Paperless-Workflow konnte nicht eingerichtet werden: {exc}",
+        ) from exc
+    return {
+        **workflow,
+        "detail": "Paperless-Workflow wurde geprüft und vollständig eingerichtet.",
+    }
+
+
 @router.get("/admin/instances", response_class=HTMLResponse, include_in_schema=False)
 def instance_admin_page() -> str:
     content = """
@@ -230,10 +291,9 @@ def instance_admin_page() -> str:
             <input id="base-url" type="url" required placeholder="https://paperless.example.de"></div>
           <div><label for="api-token">API-Token</label>
             <input id="api-token" type="password" required autocomplete="new-password"></div>
-          <div><label for="webhook-secret">Webhook-Secret</label>
-            <input id="webhook-secret" type="password" required minlength="16"
-              autocomplete="new-password">
-            <p class="help-text">Mindestens 16 Zeichen.</p></div>
+          <div><label>Webhook-Authentifizierung</label>
+            <p class="help-text">eZEUS erzeugt das Secret sicher und richtet den
+              Paperless-Workflow automatisch ein.</p></div>
         </div>
         <div class="form-actions">
           <button class="primary" id="save-instance" type="submit">Instanz speichern</button>
@@ -393,6 +453,16 @@ def instance_admin_page() -> str:
               showMessage(body.detail||`HTTP ${result.status}`,!body.reachable);
             } finally { window.ezeusUI?.setBusy(button,false); }
           }),
+          actionButton("Workflow einrichten","",async(event)=>{
+            const button=event.currentTarget; window.ezeusUI?.setBusy(button,true,"Einrichtung …");
+            try {
+              const result=await fetch(
+                `/api/paperless-instances/${item.id}/provision-workflow`,
+                {method:"POST",headers:headers()});
+              const body=await result.json();
+              showMessage(body.detail||`HTTP ${result.status}`,!result.ok);
+            } finally { window.ezeusUI?.setBusy(button,false); }
+          }),
           actionButton(item.enabled?"Deaktivieren":"Aktivieren",item.enabled?"danger":"",async()=>{
             if(item.enabled&&!confirm(`Instanz „${item.name}“ wirklich deaktivieren?`)) return;
             const result=await fetch(`/api/paperless-instances/${item.id}`,{
@@ -419,8 +489,7 @@ def instance_admin_page() -> str:
     window.ezeusUI?.setBusy(button,true,"Speichert …");
     const payload={name:document.getElementById("name").value,
       base_url:document.getElementById("base-url").value,
-      api_token:document.getElementById("api-token").value,
-      webhook_secret:document.getElementById("webhook-secret").value};
+      api_token:document.getElementById("api-token").value};
     try {
       const response=await fetch("/api/paperless-instances",{
         method:"POST",headers:headers(true),body:JSON.stringify(payload)});
@@ -429,7 +498,8 @@ def instance_admin_page() -> str:
         showMessage(body.detail||`Speichern fehlgeschlagen: HTTP ${response.status}`,true);
         return;
       }
-      event.target.reset(); showMessage("Instanz wurde vollständig gespeichert.");
+      event.target.reset();
+      showMessage("Instanz und Paperless-Workflow wurden vollständig eingerichtet.");
       await loadInstances();
     } finally { window.ezeusUI?.setBusy(button,false); }
   });

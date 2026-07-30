@@ -120,7 +120,7 @@ def test_instance_admin_page_is_available() -> None:
     assert 'id="name"' in response.text
     assert 'id="base-url"' in response.text
     assert 'id="api-token"' in response.text
-    assert 'id="webhook-secret"' in response.text
+    assert "eZEUS erzeugt das Secret sicher" in response.text
     assert "Instanz speichern" in response.text
     assert 'id="edit-instance-dialog"' in response.text
     assert 'id="edit-name"' in response.text
