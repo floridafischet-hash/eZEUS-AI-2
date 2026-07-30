@@ -265,6 +265,15 @@ Für jede angelegte Instanz zeigt die Verwaltungsseite eine eigene Webhook-URL:
 https://<ezeus-host>/webhooks/paperless/<instanzkennung>
 ```
 
+Beim Anlegen einer Instanz prüft eZEUS die API-Verbindung und erstellt in
+Paperless automatisch den verwalteten Workflow
+`eZEUS-AI-2 – automatische Dokumentverarbeitung`. Er reagiert auf neu
+hinzugefügte und aktualisierte Dokumente, sendet die Dokument-ID als JSON und
+authentifiziert sich mit einem automatisch erzeugten instanzbezogenen
+Webhook-Secret. Ein erneuter
+Aufruf über `Workflow einrichten` repariert den verwalteten Workflow
+idempotent, ohne benutzerdefinierte Workflows zu verändern.
+
 URL, API-Token und Webhook-Secret werden pro Instanz verwaltet. API-Token und
 Webhook-Secret liegen verschlüsselt in der Datenbank und werden über API und
 Oberfläche nicht im Klartext ausgegeben. Die Instanzkennung trennt Dokumente

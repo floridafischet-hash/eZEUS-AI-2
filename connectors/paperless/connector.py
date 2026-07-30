@@ -75,6 +75,79 @@ class PaperlessConnector(DocumentConnector):
         response = await self._request("GET", "/api/documents/?page_size=1")
         return response.status_code == 200
 
+    async def ensure_ezeus_workflow(
+        self,
+        *,
+        webhook_url: str,
+        webhook_secret: str,
+    ) -> dict[str, object]:
+        """Create or repair the workflow managed by eZEUS.
+
+        The stable workflow name makes this operation idempotent.  User-created
+        workflows are never modified.
+        """
+        workflow_name = "eZEUS-AI-2 – automatische Dokumentverarbeitung"
+        payload: dict[str, object] = {
+            "name": workflow_name,
+            "order": 0,
+            "enabled": True,
+            "triggers": [
+                {"type": 2},  # Document added
+                {"type": 3},  # Document updated
+            ],
+            "actions": [
+                {
+                    "type": 4,
+                    "webhook": {
+                        "url": webhook_url,
+                        "use_params": False,
+                        "as_json": True,
+                        "body": '{"document_id": "{{ doc_id }}"}',
+                        "headers": {
+                            "X-EZEUS-Webhook-Secret": webhook_secret,
+                            "Content-Type": "application/json",
+                        },
+                        "include_document": False,
+                    },
+                }
+            ],
+        }
+        response = await self._request("GET", "/api/workflows/?page_size=100")
+        workflows = response.json().get("results", [])
+        managed = next(
+            (
+                item
+                for item in workflows
+                if isinstance(item, dict) and item.get("name") == workflow_name
+            ),
+            None,
+        )
+        if managed is None:
+            result = await self._request("POST", "/api/workflows/", json=payload)
+            workflow = result.json()
+            return {
+                "configured": True,
+                "created": True,
+                "workflow_id": workflow.get("id"),
+                "workflow_name": workflow_name,
+            }
+
+        workflow_id = managed.get("id")
+        if workflow_id is None:
+            raise ValidationError("Paperless workflow has no id")
+        result = await self._request(
+            "PUT",
+            f"/api/workflows/{workflow_id}/",
+            json=payload,
+        )
+        workflow = result.json()
+        return {
+            "configured": True,
+            "created": False,
+            "workflow_id": workflow.get("id", workflow_id),
+            "workflow_name": workflow_name,
+        }
+
     async def get_document(self, external_document_id: str) -> ConnectorDocument:
         response = await self._request("GET", f"/api/documents/{external_document_id}/")
         data = response.json()
