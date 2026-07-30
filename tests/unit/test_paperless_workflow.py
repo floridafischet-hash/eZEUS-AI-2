@@ -50,7 +50,11 @@ async def test_ezeus_workflow_is_created_with_safe_public_webhook(monkeypatch) -
     assert payload["actions"][0]["type"] == 4
     webhook = payload["actions"][0]["webhook"]
     assert webhook["as_json"] is True
-    assert webhook["body"] == '{"document_id": "{{ doc_id }}"}'
+    assert webhook["use_params"] is True
+    assert webhook["params"] == {
+        "document_id": '{{ doc_url.split("/")[-2] }}',
+    }
+    assert webhook["body"] is None
     assert webhook["headers"]["X-EZEUS-Webhook-Secret"] == "long-secret-value"
 
 
