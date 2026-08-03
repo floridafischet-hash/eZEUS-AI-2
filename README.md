@@ -1,8 +1,283 @@
 # eZEUS-AI-2
 
-Der verifizierte produktive Stand, der aktuelle Verarbeitungsablauf, die
-unterstützten Schlüsselbegriffe und die offenen fachlichen Entscheidungen sind
-in [docs/CURRENT_STATE.md](docs/CURRENT_STATE.md) dokumentiert.
+> **Wichtige Klarstellung zum Betriebsort von Qwen3:4b (Stand 03.08.2026)**
+>
+> Die produktive eZEUS-AI-2-Instanz verwendet **nicht** das Ollama auf dem
+> Windows-PC des Betreibers. Sie verwendet einen eigenen Ollama-Container auf
+> dem STRATO-Server `212.227.20.171`. `qwen3:4b` ist auf dem Windows-PC zwar in
+> Ollama installiert, war bei der Prüfung am 03.08.2026 aber nicht geladen
+> (`ollama ps` ohne Eintrag). Es existiert derzeit kein von eZEUS-AI-2 genutzter
+> Netzwerkpfad vom Server zum PC.
+>
+> In älteren Texten bedeutete „lokal“ teilweise nur „nicht über einen
+> Cloud-KI-Anbieter“, „im privaten Docker-Netz“ oder „Self-hosted“. Das ist für
+> die Anforderung „das Modell läuft auf meinem PC“ falsch bzw. irreführend.
+> Diese README verwendet deshalb die eindeutigen Begriffe **Windows-PC**,
+> **STRATO-Server** und **Ollama-Container**.
+
+## Verifizierter Ist-Zustand
+
+Diese Tabelle beschreibt den am 03.08.2026 direkt geprüften Zustand. Sie ist
+keine Beschreibung der ursprünglich gewünschten PC-Architektur.
+
+| Bestandteil | Tatsächlicher Ort | Zustand bei der Prüfung | Nachweis |
+| --- | --- | --- | --- |
+| Browser | Windows-PC oder anderer Client | Zugriff über HTTPS | `https://212.227.20.171:18794/` |
+| Nginx | STRATO-Server | aktiv | Reverse Proxy auf `127.0.0.1:8082` |
+| eZEUS API | STRATO-Server, Docker | healthy | `ezeus-ai-2-api-1` |
+| eZEUS Worker und PaddleOCR | STRATO-Server, Docker | healthy | `ezeus-ai-2-worker-1` |
+| PostgreSQL | STRATO-Server, Docker | healthy | `ezeus-ai-2-postgres-1` |
+| Redis / Celery-Broker | STRATO-Server, Docker | healthy | `ezeus-ai-2-redis-1` |
+| Produktiv verwendetes Ollama | **STRATO-Server, Docker** | healthy | `ezeus-ai-2-ollama-1` |
+| Produktiv verwendetes Modell | **STRATO-Server, Docker-Volume** | vorhanden | `qwen3:4b`, ID `359d7dd4bcda…` |
+| Ollama auf dem Windows-PC | Windows-PC | API erreichbar, Modell installiert, bei Prüfung nicht geladen | `ollama list` enthält das Modell; `ollama ps` war leer |
+| Verbindung eZEUS → PC-Ollama | nicht vorhanden | **nicht implementiert** | eZEUS nutzt den Docker-DNS-Namen `ollama` |
+| Cloud-KI | kein implementierter Produktivpfad | deaktiviert | `CLOUD_AI_GLOBALLY_ALLOWED=false` |
+
+Die produktive API und der Worker erhalten diese entscheidende Konfiguration:
+
+```text
+OLLAMA_ENABLED=true
+OLLAMA_BASE_URL=http://ollama:11434
+OLLAMA_MODEL=qwen3:4b
+LOCAL_ONLY=true
+CLOUD_AI_GLOBALLY_ALLOWED=false
+```
+
+`http://ollama:11434` ist **keine Adresse des Windows-PCs**. `ollama` ist der
+Service- und DNS-Name des Compose-Dienstes im privaten Docker-Netz des
+STRATO-Servers. `LOCAL_ONLY=true` ist nur ein Anwendungsschalter gegen
+Cloud-Verarbeitung; die Variable beweist nicht, dass auf dem Benutzer-PC
+gerechnet wird.
+
+### Ergebnis der technischen Prüfung vom 03.08.2026
+
+- Alle fünf produktiven Container liefen und waren healthy.
+- `/ready` meldete Datenbank, Redis, Paperless, OCR und Ollama als bereit.
+- `qwen3:4b` war im Server-Container vorhanden.
+- Ein echter `/api/chat`-Aufruf aus dem eZEUS-API-Container an
+  `http://ollama:11434` wurde vom Servermodell beantwortet.
+- Auf dem Windows-PC waren Ollama 0.32.5 und `qwen3:4b` installiert.
+- Auf dem Windows-PC lauschte Ollama ausschließlich auf `127.0.0.1:11434`.
+- `127.0.0.1` ist nur vom Windows-PC selbst erreichbar. Der STRATO-Server kann
+  diese Adresse nicht als PC-Adresse benutzen.
+- `ollama ps` zeigte auf dem Windows-PC kein geladenes Modell.
+- Der produktive Stack veröffentlicht den Server-Ollama-Port 11434 nicht auf
+  dem Server-Host. API und Worker erreichen ihn nur intern über Docker.
+
+## Soll/Ist-Abweichung
+
+Die vorgegebene Zielarchitektur lautete sinngemäß: **Qwen3:4b soll lokal auf
+dem Windows-PC laufen und eZEUS-AI-2 soll dieses Modell verwenden.**
+
+Das ist derzeit nicht umgesetzt. Der aktuelle Stand erfüllt nur die andere
+Anforderung „self-hosted, ohne Cloud-KI“, weil Modell und Anwendung gemeinsam
+auf dem STRATO-Server laufen.
+
+| Anforderung | Ist erfüllt? | Begründung |
+| --- | --- | --- |
+| Keine Dokumentdaten an einen Cloud-KI-Anbieter senden | ja, nach aktueller Konfiguration | Ollama läuft self-hosted; Cloud-KI ist deaktiviert |
+| Qwen3:4b ist auf dem PC installiert | ja | Modell ist in `ollama list` vorhanden |
+| Qwen3:4b rechnet auf dem PC | im geprüften Zustand nein | `ollama ps` war leer |
+| Produktives eZEUS verwendet das PC-Modell | **nein** | Basis-URL ist der Docker-Service `ollama` auf dem Server |
+| Verarbeitung funktioniert, wenn der PC ausgeschaltet ist | derzeit ja | die KI läuft auf dem Server |
+| Verarbeitung stoppt oder fällt zurück, wenn der PC nicht erreichbar ist | nein | der PC ist nicht Teil des Datenpfads |
+
+Eine Umstellung auf PC-Inferenz ist ein eigener Architektur- und
+Sicherheitsumbau. Dafür wären mindestens ein abgesicherter Netzwerkkanal
+(beispielsweise WireGuard oder Tailscale), eine nicht nur an
+`127.0.0.1` gebundene und authentifizierte Modell-API, Firewallregeln,
+TLS/Authentisierung, definiertes Ausfallverhalten und ein nachweisbarer
+End-to-End-Test nötig. Das darf nicht durch bloßes Ändern eines Modellnamens
+oder einer Dashboard-Anzeige als erledigt gelten.
+
+## Systemarchitektur
+
+```mermaid
+flowchart LR
+    U[Benutzerbrowser] -->|HTTPS :18794| N[Nginx auf STRATO]
+    N -->|HTTP 127.0.0.1:8082| A[eZEUS API-Container]
+    P[Paperless-ngx auf STRATO] -->|Webhook POST| A
+    A -->|Job speichern| D[(PostgreSQL auf STRATO)]
+    A -->|Celery-Task| R[(Redis auf STRATO)]
+    R --> W[eZEUS Worker auf STRATO]
+    W -->|Dokument und Metadaten| P
+    W -->|OCR auf CPU| O[PaddleOCR im Worker]
+    W -->|HTTP http://ollama:11434| L[Ollama-Container auf STRATO]
+    L -->|Docker-Volume| M[qwen3:4b auf STRATO]
+    W -->|nur erlaubte leere Werte| P
+    W -->|Phasen, Resultate, Audit| D
+    PC[Ollama/qwen3:4b auf Windows-PC] -. derzeit keine Verbindung .- W
+```
+
+### Öffentlicher und interner Netzwerkpfad
+
+1. Der Browser ruft `https://212.227.20.171:18794/` auf.
+2. Nginx terminiert TLS und schützt die Verwaltungsoberfläche mit Basic Auth.
+3. Nginx leitet intern an `127.0.0.1:8082` weiter.
+4. Dieser Loopback-Port führt zum API-Container-Port 8080.
+5. API, Worker, PostgreSQL, Redis und Ollama kommunizieren zusätzlich über
+   private Docker-Netze.
+6. Der Name `ollama` wird dort von Docker auf den Server-Ollama-Container
+   aufgelöst.
+7. Der Windows-PC und dessen `127.0.0.1:11434` sind nicht Teil dieses Pfads.
+
+### Produktionsdateien und persistente Daten
+
+| Zweck | Ort auf dem STRATO-Server |
+| --- | --- |
+| Git-Arbeitskopie | `/home/jarvis/jarvis-brain/projects/ezeus-ai-2` |
+| Produktive Compose-Datei | `/home/jarvis/jarvis-brain/projects/ezeus-ai-2/docker-compose.production.yml` |
+| Produktive Secrets und Umgebungswerte | `/home/jarvis/.config/ezeus-ai-2/env` |
+| Nginx-Site | `/etc/nginx/sites-available/ezeus-ai-2` |
+| Nginx-Aktivierung | `/etc/nginx/sites-enabled/ezeus-ai-2` |
+| eZEUS-Datenbankdaten | Docker-Volume `ezeus-ai-2_postgres_data` |
+| Redis-AOF und Queue-Daten | Docker-Volume `ezeus-ai-2_redis_data` |
+| PaddleOCR-Modelle | Docker-Volume `ezeus-ai-2_ocr_models` |
+| Qwen3/Ollama-Modelldateien auf dem Server | Docker-Volume `ezeus-ai-2_ollama_models` |
+| Privates eZEUS-Netz | Docker-Netz `ezeus-ai-2_backend` |
+
+Die Secret-Datei hat auf dem Server Modus 600. Ihre Werte gehören weder in
+diese README noch in Git, Screenshots, Tickets oder Präsentationen. Die
+Compose-Datei referenziert die Datei; Docker übergibt die Werte beim
+Containerstart als Umgebungsvariablen an API und Worker.
+
+Die lokale Repository-Datei `docker-compose.yml` ist primär für Entwicklung
+und Tests gedacht. Sie enthält einen Paperless-Mock und keinen Ollama-Dienst.
+Sie beschreibt daher **nicht** vollständig den produktiven STRATO-Stack.
+
+## Vollständiger Verarbeitungsablauf
+
+### 1. Dokumenteingang in Paperless
+
+Paperless importiert ein Dokument, führt seine eigene Verarbeitung aus und
+ordnet – abhängig von der Paperless-Konfiguration – Metadaten wie Dokumenttyp,
+Korrespondent oder Tags zu. eZEUS-AI-2 ersetzt diesen Importprozess nicht.
+
+### 2. Webhook an eZEUS-AI-2
+
+Ein Paperless-Workflow sendet nach dem vorgesehenen Ereignis einen
+authentifizierten POST an eZEUS. eZEUS normalisiert das Ereignis und legt anhand
+der Event-ID idempotent einen persistenten Job an. Ein wiederholtes identisches
+Ereignis soll keinen zweiten unabhängigen Job erzeugen.
+
+### 3. Persistenz und Queue
+
+Die API speichert Job und Dokumentreferenz in PostgreSQL. Danach wird eine
+Celery-Aufgabe über Redis in eine der Queues `high`, `normal` oder `low`
+gestellt. Die Dokumentverarbeitung erfolgt asynchron im Worker und nicht im
+Webhook-HTTP-Request.
+
+### 4. Dokument und Metadaten laden
+
+Der Worker lädt den aktuellen Paperless-Datensatz: Dokument-ID, Dateiname,
+MIME-Typ, Dokumenttyp, vorhandenen OCR-Inhalt und Custom Fields. Die passende
+Paperless-Instanz wird aus Connector und Instanzkonfiguration bestimmt.
+
+### 5. Textquelle bestimmen
+
+- Ist in Paperless bereits Text vorhanden, verwendet eZEUS diesen Text und
+  überspringt Download, PaddleOCR und das Zurückschreiben von OCR-Inhalt.
+- Ist kein Text vorhanden, lädt der Worker das Original in ein temporäres
+  Verzeichnis und führt PaddleOCR aus.
+- PaddleOCR läuft im Worker-Container auf dem STRATO-Server, aktuell auf CPU.
+- Der temporäre Originaldownload wird nach dem Job entfernt.
+
+### 6. Optionale Qwen-OCR-Nachbearbeitung
+
+Nur wenn Ollama und `OCR_QWEN_CLEANUP_ENABLED` aktiviert sind, kann der rohe
+PaddleOCR-Text an Qwen übergeben werden. Eine Nachbearbeitung wird nur
+akzeptiert, wenn die Schutzprüfungen des Codes sie erlauben; andernfalls bleibt
+der unveränderte PaddleOCR-Rohtext maßgeblich. Rohtext, bereinigter Text,
+Akzeptanz und Ablehnungsgrund werden als OCR-Artefakt protokolliert.
+
+### 7. Feldkonfiguration auswählen
+
+Bei einer konfigurierten Paperless-Instanz wird die mandantenbezogene
+Feldkonfiguration verwendet. Andernfalls versucht eZEUS zuerst eine aus
+Paperless-Custom-Fields abgeleitete Konfiguration und danach ein versioniertes
+Template für den bereits bekannten Paperless-Dokumenttyp.
+
+Wichtig: Qwen klassifiziert aktuell nicht automatisch den Dokumenttyp. Der
+Dokumenttyp kommt aus Paperless bzw. aus der vorhandenen Konfiguration.
+
+### 8. Felder extrahieren
+
+Jedes aktive Feld besitzt eine geordnete Liste von Providern:
+
+- `regex`: deterministische Extraktion über reguläre Ausdrücke;
+- `keyword`: deterministische Zuordnung über Schlüsselwörter;
+- `ollama`: strukturierte Extraktion über Qwen3:4b.
+
+Der Ollama-Provider sendet Text per `/api/chat` an das konfigurierte Modell. Er
+fordert JSON mit `found`, `value` und `confidence`, setzt Temperatur 0 und
+begrenzt die Eingabelänge. Ein Modellwert wird verworfen, wenn er nach
+Normalisierung nicht im Quelldokument vorkommt. Diese Grounding-Prüfung
+reduziert Halluzinationen, beweist aber keine fachliche Richtigkeit.
+
+### 9. Kandidaten validieren und auswählen
+
+Alle Kandidaten werden mit Feldvalidatoren geprüft und normalisiert. Werte
+unterhalb der Mindestkonfidenz werden nicht übernommen. Abhängig von der
+Konfiguration wird der erste, höchste oder eindeutig übereinstimmende Wert
+gewählt. Widersprüchliche valide Kandidaten werden nicht stillschweigend als
+eindeutiges Ergebnis behandelt.
+
+### 10. Metadaten vor dem Schreiben neu laden
+
+Der Worker lädt das Paperless-Dokument erneut. Das reduziert das Risiko,
+zwischenzeitliche Benutzeränderungen mit einem veralteten Stand zu
+überschreiben.
+
+### 11. Nach Paperless schreiben
+
+- Custom Fields werden nur geschrieben, wenn sie leer sind.
+- Bereits vorhandene Werte bleiben erhalten.
+- Eine Rechnungsnummer kann nach den Connector-Schutzregeln als Titel gesetzt
+  werden.
+- Ein Korrespondent wird nur gesetzt, wenn noch keiner vorhanden ist und die
+  Zuordnung ausreichend eindeutig ist.
+- Jede erfolgreiche Schreiboperation erzeugt einen Audit-Eintrag.
+
+### 12. Abschluss und Fehlerstatus
+
+Jede Phase wird mit Start, Ende, Status und Metadaten in PostgreSQL geführt.
+Der Job endet als `COMPLETED`, `COMPLETED_WITH_WARNINGS` oder `FAILED`.
+Fehler werden mit Typ und begrenzter Fehlermeldung gespeichert; Celery kann
+abhängig von Fehlerart und Retry-Konfiguration Wiederholungen ausführen.
+
+## Was „bereit“ und „funktioniert“ bedeuten darf
+
+`/health` beweist nur, dass der API-Prozess antwortet. `/ready` prüft mehrere
+Abhängigkeiten, beweist aber noch keine fachlich korrekte
+Dokumentverarbeitung.
+
+Eine Aussage „PC-Inferenz funktioniert produktiv“ ist künftig nur zulässig,
+wenn alle folgenden Punkte in derselben Prüfung nachgewiesen wurden:
+
+1. eZEUS zeigt auf eine eindeutig dem PC zuordenbare, geschützte Adresse –
+   nicht auf den Docker-Namen `ollama`.
+2. Der Server erreicht diese Adresse über den vorgesehenen sicheren Tunnel.
+3. Direkt vor dem Test ist `qwen3:4b` auf dem PC nicht geladen.
+4. Ein markiertes Testdokument wird über den echten Paperless-Webhook
+   verarbeitet.
+5. Während dieses Jobs zeigt `ollama ps` auf dem PC `qwen3:4b` als geladen.
+6. Server-Container und Server-Logs zeigen keinen serverlokalen Modellaufruf.
+7. Das erwartete Feld wird korrekt geschrieben und im Audit protokolliert.
+8. Ein Negativtest mit gestopptem PC-Ollama erzeugt das geplante Fehler- oder
+   Fallbackverhalten.
+9. Testdokumente und Testwerte werden kontrolliert entfernt.
+10. Zeitpunkt, Commit, Konfiguration ohne Secrets und Ergebnis werden
+    festgehalten.
+
+Unit-Tests mit Mock-Antworten, ein Modellname im Dashboard, ein vorhandener
+Modelldownload und ein grüner Containerstatus reichen **nicht** als Nachweis,
+dass auf dem Windows-PC gerechnet wird.
+
+Der ergänzende historische Projektstand steht in
+[docs/CURRENT_STATE.md](docs/CURRENT_STATE.md). Bei Widersprüchen hat der oben
+datierte, direkt verifizierte Ist-Zustand Vorrang; historische Aussagen müssen
+vor einer Präsentation erneut geprüft werden.
 
 ## Projektbeschreibung
 
@@ -17,11 +292,13 @@ freigegebene Produktionsversion.
 
 ## Ziel und Zweck
 
-Das Projekt automatisiert die lokale Nachbearbeitung importierter
+Das Projekt automatisiert die self-hosted Nachbearbeitung importierter
 Paperless-Dokumente. PostgreSQL speichert Aufträge, Verarbeitungsphasen,
 Templates, Extraktionsergebnisse und Auditdaten. Redis und Celery verteilen
 Aufträge an Worker. Dokumentdaten können mit PaddleOCR, regulären Ausdrücken,
-Schlüsselwörtern und optional einem lokalen Ollama-Modell verarbeitet werden.
+Schlüsselwörtern und optional einem erreichbaren Ollama-Modell verarbeitet
+werden. Der physische Modellstandort wird ausschließlich durch
+`OLLAMA_BASE_URL` bestimmt.
 
 ## Hauptfunktionen
 
@@ -67,7 +344,8 @@ Der dafür vorgesehene Container verwendet Python 3.12.
 - Celery und Redis
 - HTTPX
 - PaddleOCR als optionale OCR-Abhängigkeit
-- Ollama als optionaler lokaler LLM-Dienst
+- Ollama als optionaler self-hosted LLM-Dienst; der konkrete Rechner ergibt
+  sich aus `OLLAMA_BASE_URL`
 - Pytest, Ruff und mypy für Entwicklung und Prüfung
 - Docker und Docker Compose
 
@@ -135,6 +413,11 @@ Ollama ist im mitgelieferten Compose-Stack nicht als Dienst definiert.
 `OLLAMA_BASE_URL` muss daher auf eine separat betriebene und aus dem
 Anwendungsnetz erreichbare Instanz zeigen.
 
+Davon zu unterscheiden ist die produktive Server-Compose-Datei
+`docker-compose.production.yml`, die auf dem STRATO-Server liegt und dort einen
+eigenen Ollama-Dienst definiert. Diese produktive Datei ist bewusst nicht mit
+der Entwicklungsdatei `docker-compose.yml` gleichzusetzen.
+
 ## Umgebungsvariablen
 
 - `APP_ENV`: Laufzeitumgebung, beispielsweise `development`, `test` oder
@@ -155,14 +438,16 @@ Anwendungsnetz erreichbare Instanz zeigen.
 - `PUBLIC_WEBHOOK_BASE_URL`: öffentliche eZEUS-Adresse, die auf der
   Instanzverwaltungsseite für Webhook-URLs verwendet wird
 - `PAPERLESS_VERIFY_TLS`: TLS-Zertifikatsprüfung für Paperless
-- `LOCAL_ONLY`: kennzeichnet den ausschließlich lokalen Betriebsmodus
+- `LOCAL_ONLY`: verbietet bzw. kennzeichnet Cloud-KI-Nutzung; sagt **nichts**
+  darüber aus, ob das Modell auf dem Windows-PC oder auf dem STRATO-Server läuft
 - `CLOUD_AI_GLOBALLY_ALLOWED`: globale Freigabe für Cloud-AI; derzeit ist kein
   Cloud-Provider implementiert
 - `OLLAMA_ENABLED`: aktiviert Ollama für globale Legacy-Templates und die
   abgesicherte OCR-Nachbearbeitung; mandantenbezogene KI-Felder aktivieren
   Ollama unabhängig davon
 - `OLLAMA_BASE_URL`: Basisadresse der Ollama-API
-- `OLLAMA_MODEL`: Name des lokalen Ollama-Modells
+- `OLLAMA_MODEL`: Modellname auf der durch `OLLAMA_BASE_URL` bestimmten
+  Ollama-Instanz
 - `OLLAMA_TIMEOUT_SECONDS`: Zeitlimit eines Ollama-Aufrufs
 - `OLLAMA_MAX_INPUT_CHARS`: maximale OCR-Textlänge pro Ollama-Feldextraktion
 - `OLLAMA_KEEP_ALIVE`: Vorhaltezeit des Modells in Ollama
@@ -559,8 +844,9 @@ werden.
   weiterhin bei Bedarf über die API geladen.
 - Dashboard und Log-API sind innerhalb der Anwendung nicht authentifiziert.
 - PaddleOCR-Modelle können beim ersten Worker-Start heruntergeladen werden.
-- Die Dashboard-Karten nennen fest Qwen3:4b und PaddleOCR und spiegeln
-  abweichende Laufzeitkonfigurationen nicht dynamisch wider.
+- Das Dashboard zeigt den konfigurierten Modellnamen. Diese Anzeige beweist
+  weder den physischen Modellstandort noch, dass das Modell gerade geladen ist
+  oder für den letzten Job verwendet wurde.
 - Die Regex-Laufzeitprüfung kann einen einzelnen bereits laufenden regulären
   Ausdruck nicht unterbrechen.
 - Datenbankstatus und Celery-Nachricht werden nicht über eine gemeinsame
