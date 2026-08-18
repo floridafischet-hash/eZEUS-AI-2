@@ -151,9 +151,6 @@ curl http://localhost:8080/ready
 | `OLLAMA_MAX_INPUT_CHARS` | Wie viel Dokumenttext maximal an das Modell geschickt wird (längerer Text wird gekürzt) |
 | `JOB_MAX_RETRIES` | Wie oft ein fehlgeschlagener Job automatisch wiederholt wird |
 | `JOB_RETRY_DELAYS_SECONDS` | Wartezeiten zwischen den Wiederholungsversuchen, z. B. `30,120,600` |
-| `OCR_PROVIDER` | Aktuell `paddleocr` |
-| `OCR_LANGUAGE` | Sprache der Texterkennung, z. B. `de` |
-| `OCR_DEVICE` | `cpu` oder `gpu` |
 | `OCR_TIMEOUT_SECONDS` | Maximale Laufzeit der Texterkennung pro Dokument |
 | `MAX_DOCUMENT_BYTES` | Obergrenze für Dateigröße (Standard ca. 100 MB) |
 
