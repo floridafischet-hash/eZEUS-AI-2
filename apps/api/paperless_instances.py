@@ -243,8 +243,57 @@ async def test_instance(
         )
         reachable = await connector.health_check()
     except (ConnectorError, CredentialEncryptionError) as exc:
-        return {"reachable": False, "detail": str(exc)}
-    return {"reachable": reachable, "detail": "Verbindung erfolgreich"}
+        return {"reachable": False, "webhook_configured": False, "detail": str(exc)}
+
+    try:
+        webhook_url = _workflow_url(instance)
+        workflow = await connector.find_webhook_workflow(webhook_url)
+    except (ConnectorError, CredentialEncryptionError) as exc:
+        return {
+            "reachable": reachable,
+            "webhook_configured": False,
+            "detail": f"Verbindung erfolgreich, Workflow-Prüfung fehlgeschlagen: {exc}",
+        }
+
+    if workflow is None:
+        return {
+            "reachable": reachable,
+            "webhook_configured": False,
+            "detail": (
+                "Verbindung erfolgreich, aber kein Workflow in Paperless gefunden, "
+                f"dessen Webhook-Ziel auf {webhook_url} zeigt. Lege dort einen "
+                "Workflow mit Webhook-Aktion auf genau diese Adresse an, "
+                "ausgelöst nur durch „Dokument hinzugefügt“."
+            ),
+        }
+
+    trigger_types = workflow["trigger_types"]
+    has_update_trigger = isinstance(trigger_types, list) and 3 in trigger_types
+    workflow_name = workflow["workflow_name"]
+    problems: list[str] = []
+    if not workflow["enabled"]:
+        problems.append("der Workflow ist deaktiviert")
+    if has_update_trigger:
+        problems.append(
+            "der Workflow reagiert auch auf „Dokument geändert“ – das kann eine "
+            "Endlosschleife auslösen, weil eZEUS' eigenes Zurückschreiben der "
+            "erkannten Felder selbst als Änderung zählt. Nur „Dokument "
+            "hinzugefügt“ auswählen."
+        )
+    webhook_configured = bool(workflow["enabled"]) and not has_update_trigger
+    if problems:
+        detail = f"Workflow „{workflow_name}“ gefunden, aber: " + "; ".join(problems)
+    else:
+        detail = f"Verbindung erfolgreich, Workflow „{workflow_name}“ korrekt eingerichtet."
+    return {
+        "reachable": reachable,
+        "webhook_configured": webhook_configured,
+        "workflow_id": workflow["workflow_id"],
+        "workflow_name": workflow["workflow_name"],
+        "workflow_enabled": workflow["enabled"],
+        "has_update_trigger_warning": has_update_trigger,
+        "detail": detail,
+    }
 
 
 @router.post(
@@ -450,7 +499,8 @@ def instance_admin_page() -> str:
               const result=await fetch(`/api/paperless-instances/${item.id}/test`,
                 {method:"POST",headers:headers()});
               const body=await result.json();
-              showMessage(body.detail||`HTTP ${result.status}`,!body.reachable);
+              const ok=body.reachable&&body.webhook_configured;
+              showMessage(body.detail||`HTTP ${result.status}`,!ok);
             } finally { window.ezeusUI?.setBusy(button,false); }
           }),
           actionButton("Workflow einrichten","",async(event)=>{

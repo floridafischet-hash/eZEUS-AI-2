@@ -371,6 +371,42 @@ eZEUS kann mehrere Paperless-ngx-Installationen gleichzeitig bedienen. Jede ange
 - Zugriff erfolgt über persönliche Admin- bzw. Viewer-Konten (`/api/admin-users/page`). Die Rolle `admin` darf ändern, `viewer` darf nur lesen. Das Bootstrap-Secret (`ADMIN_API_SECRET`) funktioniert nur so lange, bis das erste persönliche Konto angelegt wurde.
 - Der bisherige globale Webhook (`/webhooks/paperless`, ohne Instanzkennung) bleibt für eine einzelne, über `.env` konfigurierte Instanz rückwärtskompatibel.
 
+### Workflow manuell in Paperless anlegen
+
+Der automatische Workflow (Button „Workflow einrichten“) ist optional. Wer den
+Workflow lieber selbst in Paperless-ngx pflegt, legt dort eine Webhook-Aktion
+mit exakt der oben gezeigten instanzspezifischen URL an. Dabei unbedingt
+beachten:
+
+- **Nur den Trigger „Dokument hinzugefügt“ verwenden, nicht „Dokument
+  geändert“.** eZEUS schreibt erkannte Felder per API nach Paperless zurück —
+  das zählt selbst als Änderung. Ein Workflow, der auch auf „Dokument
+  geändert“ reagiert, löst sich dadurch bei jedem Durchlauf selbst erneut aus
+  und kann eine Endlosschleife aus Webhook-Aufrufen erzeugen (in einem
+  Vorfall führte das zu 66 Webhook-Aufrufen über 14 Dokumente aus einem
+  einzigen Testupload, bis Paperless mit HTTP-500-Fehlern reagierte).
+- Der Webhook-Body muss `document_id` enthalten (bei Paperless-ngx als
+  Template-Platzhalter aus der Dokument-URL ableitbar, siehe
+  `connectors/paperless/connector.py`), sowie den Header
+  `X-EZEUS-Webhook-Secret` mit dem in eZEUS hinterlegten Secret dieser
+  Instanz.
+
+„Verbindung testen“ prüft neben der reinen Paperless-Erreichbarkeit
+inzwischen auch, ob in Paperless ein aktivierter Workflow mit einer
+Webhook-Aktion existiert, deren Ziel-URL exakt auf die eZEUS-Webhook-Adresse
+dieser Instanz zeigt — unabhängig davon, ob der Workflow automatisch oder von
+Hand angelegt wurde. Meldungen:
+
+- „kein Workflow gefunden“ — keine passende Webhook-URL in Paperless
+  konfiguriert.
+- „Workflow … gefunden, aber: …“ — Workflow existiert, ist aber deaktiviert
+  und/oder reagiert zusätzlich auf „Dokument geändert“ (Endlosschleifen-Gefahr,
+  siehe oben).
+- „Workflow … korrekt eingerichtet“ — Webhook ist funktionsfähig verdrahtet.
+
+Der Test verändert dabei nichts in Paperless; das Anlegen/Reparieren bleibt
+dem Button „Workflow einrichten“ bzw. der manuellen Pflege vorbehalten.
+
 ## 12. Projektstruktur
 
 - `apps/api`: FastAPI-Anwendung, Administrationsendpunkte und Dashboard
@@ -435,6 +471,12 @@ Weitere Informationen stehen in [docs/testing.md](docs/testing.md).
 - Job endet mit Warnhinweis, Felder fehlen: Paperless hat keinen OCR-Text zum Dokument gespeichert — sicherstellen, dass Paperless-ngx OCR aktiviert hat und das Dokument korrekt verarbeitet wurde.
 - Das Ollama-Modell wird nicht als bereit erkannt: `OLLAMA_ENABLED`, `OLLAMA_BASE_URL` und `OLLAMA_MODEL` prüfen.
 - Portänderungen: `APP_PORT` in `.env` setzen und den Compose-Stack neu erstellen.
+- Ein einzelnes Dokument erzeugt auffällig viele Jobs/Webhook-Aufrufe
+  hintereinander: sehr wahrscheinlich reagiert der Paperless-Workflow dieser
+  Instanz zusätzlich auf „Dokument geändert“ und löst sich durch eZEUS'
+  eigenes Zurückschreiben der Felder selbst erneut aus. „Verbindung testen“
+  unter Abschnitt 11 zeigt diese Fehlkonfiguration an; Trigger in Paperless
+  auf „Dokument hinzugefügt“ beschränken.
 
 ## 15. Sicherheitshinweise
 
