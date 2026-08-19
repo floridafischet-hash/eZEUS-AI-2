@@ -75,6 +75,33 @@ class PaperlessConnector(DocumentConnector):
         response = await self._request("GET", "/api/documents/?page_size=1")
         return response.status_code == 200
 
+    async def find_webhook_workflow(self, webhook_url: str) -> dict[str, object] | None:
+        """Read-only lookup of a Paperless workflow whose webhook action targets
+        ``webhook_url``. Does not create or modify anything, so it is safe to call
+        for workflows the user configured by hand instead of via
+        :meth:`ensure_ezeus_workflow`.
+        """
+        response = await self._request("GET", "/api/workflows/?page_size=100")
+        workflows = response.json().get("results", [])
+        for item in workflows:
+            if not isinstance(item, dict):
+                continue
+            for action in item.get("actions") or []:
+                webhook = action.get("webhook") if isinstance(action, dict) else None
+                if isinstance(webhook, dict) and webhook.get("url") == webhook_url:
+                    trigger_types = [
+                        trigger.get("type")
+                        for trigger in item.get("triggers") or []
+                        if isinstance(trigger, dict)
+                    ]
+                    return {
+                        "workflow_id": item.get("id"),
+                        "workflow_name": item.get("name"),
+                        "enabled": bool(item.get("enabled")),
+                        "trigger_types": trigger_types,
+                    }
+        return None
+
     async def ensure_ezeus_workflow(
         self,
         *,
