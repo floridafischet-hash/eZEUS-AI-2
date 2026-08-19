@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from apps.api.main import app
+from connectors.paperless.connector import PaperlessConnector
 from core.config.settings import get_settings
 from core.db.base import Base
 from core.db.session import get_db
@@ -266,6 +267,124 @@ def test_unscoped_webhook_rejects_secret_shared_by_multiple_instances(
         assert "instance-specific webhook URL" in response.json()["detail"]
         with session_factory() as db:
             assert db.scalar(select(Document)) is None
+    finally:
+        app.dependency_overrides.clear()
+        get_settings.cache_clear()
+
+
+def _create_instance_for_test_connection(monkeypatch) -> tuple:
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    session_factory = sessionmaker(bind=engine, class_=Session)
+
+    def database() -> Generator[Session, None, None]:
+        with session_factory() as session:
+            yield session
+
+    monkeypatch.setenv("CREDENTIAL_ENCRYPTION_KEY", Fernet.generate_key().decode())
+    monkeypatch.setenv("ADMIN_API_SECRET", "test-admin-secret")
+    get_settings.cache_clear()
+    app.dependency_overrides[get_db] = database
+    client = TestClient(app)
+    created = client.post(
+        "/api/paperless-instances",
+        headers={"X-EZEUS-Admin-Secret": "test-admin-secret"},
+        json={
+            "name": "Verbindungstest",
+            "base_url": "https://paperless.example.test",
+            "api_token": "plain-api-token",
+            "webhook_secret": "plain-webhook-secret",
+        },
+    ).json()
+    # Enable PUBLIC_WEBHOOK_BASE_URL only after creation so the create-time
+    # auto-provisioning path (a separate feature) isn't exercised here.
+    monkeypatch.setenv("PUBLIC_WEBHOOK_BASE_URL", "https://ezeus.example.test")
+    get_settings.cache_clear()
+
+    async def fake_health_check(self) -> bool:
+        return True
+
+    monkeypatch.setattr(PaperlessConnector, "health_check", fake_health_check)
+    return client, created
+
+
+def test_test_connection_reports_missing_workflow(monkeypatch) -> None:
+    client, created = _create_instance_for_test_connection(monkeypatch)
+
+    async def fake_find(self, webhook_url: str) -> None:
+        return None
+
+    monkeypatch.setattr(PaperlessConnector, "find_webhook_workflow", fake_find)
+    try:
+        response = client.post(
+            f"/api/paperless-instances/{created['id']}/test",
+            headers={"X-EZEUS-Admin-Secret": "test-admin-secret"},
+        )
+        assert response.status_code == 200
+        body = response.json()
+        assert body["reachable"] is True
+        assert body["webhook_configured"] is False
+        assert "kein Workflow" in body["detail"]
+    finally:
+        app.dependency_overrides.clear()
+        get_settings.cache_clear()
+
+
+def test_test_connection_warns_about_update_trigger_loop(monkeypatch) -> None:
+    client, created = _create_instance_for_test_connection(monkeypatch)
+
+    async def fake_find(self, webhook_url: str) -> dict[str, object]:
+        return {
+            "workflow_id": 7,
+            "workflow_name": "eZEUS-AI-2 – automatische Dokumentverarbeitung",
+            "enabled": True,
+            "trigger_types": [2, 3],
+        }
+
+    monkeypatch.setattr(PaperlessConnector, "find_webhook_workflow", fake_find)
+    try:
+        response = client.post(
+            f"/api/paperless-instances/{created['id']}/test",
+            headers={"X-EZEUS-Admin-Secret": "test-admin-secret"},
+        )
+        assert response.status_code == 200
+        body = response.json()
+        assert body["reachable"] is True
+        assert body["webhook_configured"] is False
+        assert body["has_update_trigger_warning"] is True
+        assert "Endlosschleife" in body["detail"]
+    finally:
+        app.dependency_overrides.clear()
+        get_settings.cache_clear()
+
+
+def test_test_connection_confirms_correctly_configured_workflow(monkeypatch) -> None:
+    client, created = _create_instance_for_test_connection(monkeypatch)
+
+    async def fake_find(self, webhook_url: str) -> dict[str, object]:
+        return {
+            "workflow_id": 7,
+            "workflow_name": "eZEUS-AI-2 – automatische Dokumentverarbeitung",
+            "enabled": True,
+            "trigger_types": [2],
+        }
+
+    monkeypatch.setattr(PaperlessConnector, "find_webhook_workflow", fake_find)
+    try:
+        response = client.post(
+            f"/api/paperless-instances/{created['id']}/test",
+            headers={"X-EZEUS-Admin-Secret": "test-admin-secret"},
+        )
+        assert response.status_code == 200
+        body = response.json()
+        assert body["reachable"] is True
+        assert body["webhook_configured"] is True
+        assert body["has_update_trigger_warning"] is False
+        assert "korrekt eingerichtet" in body["detail"]
     finally:
         app.dependency_overrides.clear()
         get_settings.cache_clear()
