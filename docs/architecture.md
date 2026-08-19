@@ -37,14 +37,19 @@ Quelle für Status, Phasen, Ergebnisse und Auditdaten.
 Der Worker führt folgende Phasen aus:
 
 ```text
-LOAD_DOCUMENT -> DOWNLOAD_DOCUMENT -> RUN_OCR -> WRITE_OCR
--> SELECT_TEMPLATE -> EXTRACT_FIELDS -> VALIDATE_RESULTS
--> RELOAD_METADATA -> WRITE_METADATA -> CLEANUP -> COMPLETE
+LOAD_DOCUMENT -> DOWNLOAD_DOCUMENT (übersprungen) -> RUN_OCR (übersprungen)
+-> WRITE_OCR (übersprungen) -> SELECT_TEMPLATE -> EXTRACT_FIELDS
+-> VALIDATE_RESULTS -> RELOAD_METADATA -> WRITE_METADATA -> CLEANUP -> COMPLETE
 ```
 
-Der Orchestrator greift über `PaperlessConnector`, `OCRAdapter`,
-`TemplateService` und Provider-Schnittstellen auf technische Komponenten zu.
-Provider schreiben niemals direkt nach Paperless.
+Die Phasen `DOWNLOAD_DOCUMENT`, `RUN_OCR` und `WRITE_OCR` werden immer als
+übersprungen markiert. Die Texterkennung übernimmt vollständig Paperless-ngx;
+eZEUS liest den von Paperless bereitgestellten Text direkt aus den Metadaten.
+Liefert Paperless keinen Text, schließt der Job mit `COMPLETED_WITH_WARNINGS` ab.
+
+Der Orchestrator greift über `PaperlessConnector`, `TemplateService` und
+Provider-Schnittstellen auf technische Komponenten zu. Provider schreiben
+niemals direkt nach Paperless.
 
 Ein partieller eindeutiger Datenbankindex verhindert mehrere aktive Jobs je
 Dokument. `source_event_id` ist ebenfalls eindeutig. Vor jeder Schreiboperation

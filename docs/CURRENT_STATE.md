@@ -19,7 +19,7 @@ Die Anwendung läuft als Docker-Compose-Stack mit folgenden Diensten:
 - Redis
 - Ollama
 
-Der produktive Readiness-Endpunkt meldet Datenbank, Redis, Paperless, OCR und
+Der produktive Readiness-Endpunkt meldet Datenbank, Redis, Paperless und
 Ollama als bereit. Ollama bleibt Bestandteil des Stacks, wird bei der
 automatischen Feldzuordnung für verwaltete Paperless-Instanzen jedoch nicht
 verwendet.
@@ -47,11 +47,10 @@ Der derzeitige Standardablauf für verwaltete Paperless-Instanzen ist:
 
 1. Webhook authentifizieren und Instanz bestimmen.
 2. Dokumentmetadaten und vorhandenen Inhalt über die Paperless-API laden.
-3. Vorhandenen Paperless-OCR-Inhalt als primäre Textquelle verwenden.
-4. Originaldownload und PaddleOCR überspringen, wenn Paperless bereits Inhalt
-   bereitstellt.
-5. Nur bei fehlendem Paperless-Inhalt das Original laden und PaddleOCR
-   ausführen.
+3. Den von Paperless bereits erkannten OCR-Text als einzige Textquelle verwenden.
+4. Download, OCR und OCR-Schreiben werden immer übersprungen — eZEUS führt
+   keine eigene Texterkennung durch.
+5. Liefert Paperless keinen Text, schließt der Job mit einem Warnhinweis ab.
 6. Custom Fields der jeweiligen Paperless-Instanz laden und anhand ihrer Namen
    zuordnen.
 7. Werte mit deterministischen regulären Ausdrücken unmittelbar hinter
@@ -172,26 +171,8 @@ erneut verarbeitet:
 | 3477 | 1104 | 1233.88 | 0,556 s |
 
 In allen sechs Fällen wurde vorhandener Paperless-Inhalt verwendet. Download,
-PaddleOCR und Ollama wurden übersprungen. Rechnungsnummer und Bruttobetrag
+OCR-Phasen und Ollama wurden übersprungen. Rechnungsnummer und Bruttobetrag
 wurden vollständig geschrieben oder als bereits korrekt vorhanden erkannt.
-
-## Abgesicherte OCR-Nachbearbeitung
-
-Wenn Paperless keinen Text bereitstellt, erzeugt PaddleOCR weiterhin den
-maßgeblichen Rohtext. Optional bereinigt Qwen anschließend ausschließlich
-Darstellungsfehler wie Worttrennungen, Leerzeichen, Zeilenumbrüche und
-offensichtliche Buchstabenfehler.
-
-Zahlenhaltige Werte, darunter Beträge, Datumswerte, Rechnungsnummern und IBANs,
-müssen im Qwen-Vorschlag exakt und in gleicher Anzahl vorkommen. Entfernt,
-verändert oder ergänzt Qwen einen solchen Wert, wird der vollständige Vorschlag
-verworfen und der PaddleOCR-Rohtext nach Paperless geschrieben. Auch technische
-Fehler und Zeitüberschreitungen führen ohne Jobabbruch zum Rohtext-Fallback.
-
-Rohtext, Qwen-Vorschlag, Annahmestatus und Ablehnungsgrund werden getrennt in
-`ocr_artifacts` gespeichert. Die Feldextraktion verwendet unabhängig vom
-Annahmestatus immer den unveränderten PaddleOCR-Rohtext. Qwen bestimmt daher
-keine Rechnungsbeträge oder anderen fachlichen Feldwerte.
 
 ## Mehrseitige Rechnungen
 
@@ -252,7 +233,7 @@ beeinflusst den Betrieb nicht.
   Verwaltungsoberfläche.
 - Bereits gefüllte, aber fachlich falsche Werte werden wegen des Schreibschutzes
   nicht automatisch ersetzt.
-- PaddleOCR bleibt ein langsamer Rückfall, wenn Paperless keinen Inhalt liefert.
+- Liefert Paperless keinen OCR-Text, findet eZEUS keine Felder und schließt mit Warnhinweis ab. Eine eigene OCR-Komponente ist nicht vorhanden.
 - Das Datenmodell speichert frühere Phasen eines Wiederholungsversuchs, besitzt
   aber noch keine eigene persistente Versuchsentität.
 - Lasttests, Rollen- und Rechteverwaltung sowie ein vollständiges

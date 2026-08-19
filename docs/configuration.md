@@ -16,10 +16,7 @@ Alle Werte werden über Umgebungsvariablen gelesen.
 - `PUBLIC_WEBHOOK_BASE_URL`: optionale öffentliche Basisadresse für die auf der
   Verwaltungsseite angezeigten Webhook-URLs
 - `PAPERLESS_VERIFY_TLS`: standardmäßig `true`
-- `OCR_PROVIDER`: derzeit `paddleocr`
-- `OCR_LANGUAGE`, `OCR_DEVICE`: OCR-Konfiguration
-- `OCR_TIMEOUT_SECONDS`: Worker-Zeitlimit
-- `MAX_DOCUMENT_BYTES`: maximale Downloadgröße
+- `MAX_DOCUMENT_BYTES`: maximale Downloadgröße (wird nur für interne Größenprüfungen genutzt)
 - `JOB_MAX_RETRIES`, `JOB_RETRY_DELAYS_SECONDS`: technische Retries
 - `LOCAL_ONLY`: verhindert Cloud-Verarbeitung
 - `OLLAMA_ENABLED`: aktiviert den lokalen LLM-Extraktionsprovider
@@ -27,7 +24,7 @@ Alle Werte werden über Umgebungsvariablen gelesen.
   `http://ollama:11434`
 - `OLLAMA_MODEL`: lokales Modell, produktiv `qwen3:4b`
 - `OLLAMA_TIMEOUT_SECONDS`: Zeitlimit pro Modellaufruf
-- `OLLAMA_MAX_INPUT_CHARS`: maximale OCR-Textmenge pro Feldextraktion
+- `OLLAMA_MAX_INPUT_CHARS`: maximale Textmenge pro Feldextraktion (längerer Paperless-Text wird gekürzt)
 - `OLLAMA_KEEP_ALIVE`: Vorhaltezeit des geladenen Modells
 
 Secrets dürfen nicht in Images, Versionsverwaltung oder Logs abgelegt werden.
