@@ -25,10 +25,6 @@ build-backend = "setuptools.build_meta"
 include = ["apps*", "connectors*", "core*", "plugins*", "webhooks*"]
 
 [project.optional-dependencies]
-ocr-paddle = [
-  "paddleocr>=3.3,<4",
-  "paddlepaddle>=3.2,<4",
-]
 dev = [
   "pytest>=9.0.3,<10",
   "pytest-asyncio>=1.3,<2",

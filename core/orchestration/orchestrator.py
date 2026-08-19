@@ -1,14 +1,10 @@
 from datetime import UTC, datetime
 from decimal import Decimal
-from pathlib import Path
-from tempfile import TemporaryDirectory
-from time import monotonic
 from uuid import UUID
 
 from sqlalchemy.orm import Session
 
 from connectors.base.interface import DocumentConnector
-from core.config.settings import get_settings
 from core.correspondents.matcher import match_correspondent
 from core.field_config.service import FieldConfigurationService, RuntimeFieldConfiguration
 from core.models.audit import AuditEntry
@@ -16,7 +12,6 @@ from core.models.enums import JobPhase, JobStatus, PhaseStatus
 from core.models.extraction import ExtractionResult
 from core.models.job import Job
 from core.models.job_phase import JobPhaseEntry
-from core.models.ocr_artifact import OCRArtifact
 from core.paperless.service import (
     connector_for_document,
     get_enabled_instance,
@@ -30,8 +25,6 @@ from plugins.base.interfaces import ExtractionCandidate
 from plugins.extraction.keyword import KeywordExtractionProvider
 from plugins.extraction.regex import RegexExtractionProvider
 from plugins.llm.ollama import OllamaExtractionProvider
-from plugins.ocr.factory import create_ocr_adapter
-from plugins.ocr.qwen_cleanup import OCRCleanupResult, QwenOCRCleanup
 
 PROVIDERS = {
     "regex": RegexExtractionProvider,
@@ -44,8 +37,6 @@ class Orchestrator:
     def __init__(self, db: Session) -> None:
         self.db = db
         self.connector: DocumentConnector | None = None
-        self.ocr = create_ocr_adapter()
-        self.ocr_cleanup = QwenOCRCleanup()
         self.templates = TemplateService(db)
         self.validator = ValidationEngine()
 
@@ -102,371 +93,298 @@ class Orchestrator:
             )
 
             active_phase = self._start_phase(job, JobPhase.DOWNLOAD_DOCUMENT)
-            with TemporaryDirectory(prefix="ezeus-") as temp_dir:
-                paperless_text = (remote.content or "").strip()
-                if paperless_text:
-                    extraction_text = paperless_text
-                    extraction_source = "paperless_content"
-                    self._finish_phase(
-                        active_phase,
-                        metadata={
-                            "skipped": True,
-                            "reason": "Paperless OCR content is already available",
-                        },
-                    )
-                    active_phase = self._start_phase(job, JobPhase.RUN_OCR)
-                    self._finish_phase(
-                        active_phase,
-                        metadata={
-                            "skipped": True,
-                            "reason": "Existing Paperless OCR content is used",
-                        },
-                    )
-                    active_phase = self._start_phase(job, JobPhase.WRITE_OCR)
-                    self._finish_phase(
-                        active_phase,
-                        metadata={
-                            "skipped": True,
-                            "content_written": False,
-                            "reason": "Paperless content is not overwritten",
-                        },
-                    )
-                else:
-                    content = await connector.download_original(document.external_document_id)
-                    remote_filename = (document.filename or "").replace("\\", "/")
-                    safe_filename = Path(remote_filename).name
-                    if safe_filename in {"", ".", ".."}:
-                        safe_filename = "document.bin"
-                    original = Path(temp_dir) / safe_filename
-                    original.write_bytes(content)
-                    self._finish_phase(active_phase, metadata={"bytes": len(content)})
+            paperless_text = (remote.content or "").strip()
+            if paperless_text:
+                extraction_text = paperless_text
+                extraction_source = "paperless_content"
+                self._finish_phase(
+                    active_phase,
+                    metadata={
+                        "skipped": True,
+                        "reason": "Paperless OCR content is already available",
+                    },
+                )
+            else:
+                extraction_text = ""
+                extraction_source = "none"
+                self._finish_phase(
+                    active_phase,
+                    metadata={
+                        "skipped": True,
+                        "reason": "No Paperless OCR content available; OCR is handled by Paperless",
+                    },
+                )
 
-                    active_phase = self._start_phase(job, JobPhase.RUN_OCR)
-                    started = monotonic()
-                    ocr_result = self.ocr.recognize(original)
-                    runtime_ms = int((monotonic() - started) * 1000)
-                    document.page_count = len(ocr_result.pages)
-                    raw_text = ocr_result.text
-                    extraction_text = raw_text
-                    extraction_source = "paddleocr_raw"
-                    self._finish_phase(
-                        active_phase,
-                        metadata={
-                            "provider": ocr_result.provider,
-                            "runtime_ms": runtime_ms,
-                        },
-                    )
+            active_phase = self._start_phase(job, JobPhase.RUN_OCR)
+            self._finish_phase(
+                active_phase,
+                metadata={"skipped": True, "reason": "OCR is handled by Paperless"},
+            )
+            active_phase = self._start_phase(job, JobPhase.WRITE_OCR)
+            self._finish_phase(
+                active_phase,
+                metadata={"skipped": True, "content_written": False, "reason": "OCR is handled by Paperless"},
+            )
 
-                    active_phase = self._start_phase(job, JobPhase.WRITE_OCR)
-                    settings = get_settings()
-                    cleanup = OCRCleanupResult(
-                        text=None,
-                        accepted=False,
-                        reason="Qwen OCR cleanup is disabled",
-                        model=self.ocr_cleanup.model,
-                    )
-                    cleanup_attempted = (
-                        settings.ollama_enabled
-                        and settings.ocr_qwen_cleanup_enabled
-                        and bool(raw_text.strip())
-                    )
-                    if cleanup_attempted:
-                        cleanup = await self.ocr_cleanup.clean(raw_text)
-                    text_to_write = (
-                        cleanup.text if cleanup.accepted and cleanup.text is not None else raw_text
-                    )
-                    self.db.add(
-                        OCRArtifact(
-                            job_id=job.id,
-                            provider=ocr_result.provider,
-                            model=cleanup.model if cleanup_attempted else None,
-                            raw_text=raw_text,
-                            cleaned_text=cleanup.text if cleanup_attempted else None,
-                            cleanup_accepted=cleanup.accepted,
-                            rejection_reason=cleanup.reason,
-                        )
-                    )
+            active_phase = self._start_phase(job, JobPhase.SELECT_TEMPLATE)
+            paperless_fields = await connector.list_custom_fields()
+            runtime_fields: RuntimeFieldConfiguration | None = None
+            config: TemplateConfig | None
+            instance_slug = instance_slug_from_connector(document.connector)
+            instance = (
+                get_enabled_instance(self.db, instance_slug)
+                if instance_slug is not None
+                else None
+            )
+            if instance is not None:
+                runtime_fields = FieldConfigurationService(self.db).runtime_config(
+                    instance, paperless_fields
+                )
+                config = runtime_fields.template
+                self._finish_phase(
+                    active_phase,
+                    metadata={
+                        "selected": True,
+                        "source": "instance_field_configuration",
+                        "instance": instance.slug,
+                        "field_ids": [
+                            field.target_field_id for field in config.fields.values()
+                            if field.target_field_id is not None
+                        ],
+                    },
+                )
+            else:
+                config = config_from_custom_fields(paperless_fields)
+            if instance is None and config is not None:
+                self._finish_phase(
+                    active_phase,
+                    metadata={
+                        "selected": True,
+                        "source": "paperless_custom_fields",
+                        "field_ids": [
+                            field.target_field_id for field in config.fields.values()
+                            if field.target_field_id is not None
+                        ],
+                    },
+                )
+            elif instance is None:
+                selected = self.templates.select_for_document_type(
+                    document.document_type_external_id
+                )
+                if selected is None:
+                    self._finish_phase(active_phase, metadata={"selected": False})
+                    job.status = JobStatus.COMPLETED_WITH_WARNINGS
+                    job.finished_at = datetime.now(UTC)
                     self.db.commit()
-                    wrote_content = await connector.write_content(
-                        document.external_document_id, text_to_write
-                    )
-                    if wrote_content:
-                        self._audit(job, "WRITE_CONTENT", "content", None, "[OCR content]")
-                    self._finish_phase(
-                        active_phase,
-                        metadata={
-                            "content_written": wrote_content,
-                            "raw_characters": len(raw_text),
-                            "written_characters": len(text_to_write),
-                            "written_source": (
-                                "qwen_verified" if cleanup.accepted else "paddleocr_raw"
+                    return
+                template, config = selected
+                job.selected_template_id = template.id
+                job.selected_template_version = template.version
+                self._finish_phase(active_phase, metadata={"template_id": str(template.id)})
+            if config is None:
+                raise RuntimeError("Field configuration could not be resolved")
+
+            active_phase = self._start_phase(job, JobPhase.EXTRACT_FIELDS)
+            candidates_by_field: dict[
+                str, list[tuple[ExtractionCandidate, ExtractionResult]]
+            ] = {}
+            for field_key, field in config.fields.items():
+                persisted: list[tuple[ExtractionCandidate, ExtractionResult]] = []
+                for provider_config in field.providers:
+                    provider_data = provider_config.model_dump(exclude={"type"})
+                    for candidate in await PROVIDERS[provider_config.type]().extract(
+                        extraction_text, provider_data
+                    ):
+                        result = ExtractionResult(
+                            job_id=job.id,
+                            field_key=field_key,
+                            target_field_id=(
+                                str(field.target_field_id)
+                                if field.target_field_id is not None
+                                else field_key
                             ),
-                            "cleanup_attempted": cleanup_attempted,
-                            "cleanup_accepted": cleanup.accepted,
-                            "cleanup_reason": cleanup.reason,
-                            "cleanup_model": cleanup.model if cleanup_attempted else None,
-                        },
-                    )
+                            provider=candidate.provider,
+                            raw_value=candidate.value,
+                            normalized_value=None,
+                            confidence=candidate.confidence,
+                            accepted=False,
+                            validation_status="PENDING",
+                            metadata_json=candidate.metadata,
+                        )
+                        self.db.add(result)
+                        persisted.append((candidate, result))
+                candidates_by_field[field_key] = persisted
+            self.db.commit()
+            self._finish_phase(
+                active_phase,
+                metadata={
+                    "fields_configured": len(config.fields),
+                    "candidates_found": sum(
+                        len(items) for items in candidates_by_field.values()
+                    ),
+                    "text_source": extraction_source,
+                    "text_characters": len(extraction_text),
+                },
+            )
 
-                active_phase = self._start_phase(job, JobPhase.SELECT_TEMPLATE)
-                paperless_fields = await connector.list_custom_fields()
-                runtime_fields: RuntimeFieldConfiguration | None = None
-                config: TemplateConfig | None
-                instance_slug = instance_slug_from_connector(document.connector)
-                instance = (
-                    get_enabled_instance(self.db, instance_slug)
-                    if instance_slug is not None
-                    else None
-                )
-                if instance is not None:
-                    runtime_fields = FieldConfigurationService(self.db).runtime_config(
-                        instance, paperless_fields
+            active_phase = self._start_phase(job, JobPhase.VALIDATE_RESULTS)
+            extracted_values: dict[str, object] = {}
+            extracted_by_key: dict[str, object] = {}
+            for field_key, field in config.fields.items():
+                valid: list[tuple[float, object, ExtractionResult]] = []
+                validators = [item.model_dump() for item in field.validators]
+                for candidate, result in candidates_by_field[field_key]:
+                    accepted, normalized, reason = self.validator.validate(
+                        candidate, validators
                     )
-                    config = runtime_fields.template
-                    self._finish_phase(
-                        active_phase,
-                        metadata={
-                            "selected": True,
-                            "source": "instance_field_configuration",
-                            "instance": instance.slug,
-                            "field_ids": [
-                                field.target_field_id for field in config.fields.values()
-                                if field.target_field_id is not None
-                            ],
-                        },
-                    )
-                else:
-                    config = config_from_custom_fields(paperless_fields)
-                if instance is None and config is not None:
-                    self._finish_phase(
-                        active_phase,
-                        metadata={
-                            "selected": True,
-                            "source": "paperless_custom_fields",
-                            "field_ids": [
-                                field.target_field_id for field in config.fields.values()
-                                if field.target_field_id is not None
-                            ],
-                        },
-                    )
-                elif instance is None:
-                    selected = self.templates.select_for_document_type(
-                        document.document_type_external_id
-                    )
-                    if selected is None:
-                        self._finish_phase(active_phase, metadata={"selected": False})
-                        job.status = JobStatus.COMPLETED_WITH_WARNINGS
-                        job.finished_at = datetime.now(UTC)
-                        self.db.commit()
-                        return
-                    template, config = selected
-                    job.selected_template_id = template.id
-                    job.selected_template_version = template.version
-                    self._finish_phase(active_phase, metadata={"template_id": str(template.id)})
-                if config is None:
-                    raise RuntimeError("Field configuration could not be resolved")
-
-                active_phase = self._start_phase(job, JobPhase.EXTRACT_FIELDS)
-                candidates_by_field: dict[
-                    str, list[tuple[ExtractionCandidate, ExtractionResult]]
-                ] = {}
-                for field_key, field in config.fields.items():
-                    persisted: list[tuple[ExtractionCandidate, ExtractionResult]] = []
-                    for provider_config in field.providers:
-                        provider_data = provider_config.model_dump(exclude={"type"})
-                        for candidate in await PROVIDERS[provider_config.type]().extract(
-                            extraction_text, provider_data
-                        ):
-                            result = ExtractionResult(
-                                job_id=job.id,
-                                field_key=field_key,
-                                target_field_id=(
-                                    str(field.target_field_id)
-                                    if field.target_field_id is not None
-                                    else field_key
-                                ),
-                                provider=candidate.provider,
-                                raw_value=candidate.value,
-                                normalized_value=None,
-                                confidence=candidate.confidence,
-                                accepted=False,
-                                validation_status="PENDING",
-                                metadata_json=candidate.metadata,
-                            )
-                            self.db.add(result)
-                            persisted.append((candidate, result))
-                    candidates_by_field[field_key] = persisted
-                self.db.commit()
-                self._finish_phase(
-                    active_phase,
-                    metadata={
-                        "fields_configured": len(config.fields),
-                        "candidates_found": sum(
-                            len(items) for items in candidates_by_field.values()
+                    result.normalized_value = normalized
+                    result.validation_status = "VALID" if accepted else "INVALID"
+                    result.reason = reason
+                    if accepted and candidate.confidence >= field.minimum_confidence:
+                        valid.append((candidate.confidence, normalized, result))
+                distinct = {str(item[1]) for item in valid}
+                if valid and field.selection_strategy == "first":
+                    winner = valid[0]
+                    winner[2].accepted = True
+                    output_value = field.value_mapping.get(str(winner[1]), winner[1])
+                    extracted_by_key[field_key] = output_value
+                    if field.target_field_id is not None:
+                        extracted_values[str(field.target_field_id)] = output_value
+                    for _, _, result in valid[1:]:
+                        result.reason = "Lower-priority validated candidate"
+                elif valid and field.selection_strategy == "highest":
+                    winner = max(
+                        valid,
+                        key=lambda item: (
+                            Decimal(str(item[1])),
+                            item[0],
                         ),
-                        "text_source": extraction_source,
-                        "text_characters": len(extraction_text),
-                    },
-                )
-
-                active_phase = self._start_phase(job, JobPhase.VALIDATE_RESULTS)
-                extracted_values: dict[str, object] = {}
-                extracted_by_key: dict[str, object] = {}
-                for field_key, field in config.fields.items():
-                    valid: list[tuple[float, object, ExtractionResult]] = []
-                    validators = [item.model_dump() for item in field.validators]
-                    for candidate, result in candidates_by_field[field_key]:
-                        accepted, normalized, reason = self.validator.validate(
-                            candidate, validators
-                        )
-                        result.normalized_value = normalized
-                        result.validation_status = "VALID" if accepted else "INVALID"
-                        result.reason = reason
-                        if accepted and candidate.confidence >= field.minimum_confidence:
-                            valid.append((candidate.confidence, normalized, result))
-                    distinct = {str(item[1]) for item in valid}
-                    if valid and field.selection_strategy == "first":
-                        winner = valid[0]
-                        winner[2].accepted = True
-                        output_value = field.value_mapping.get(str(winner[1]), winner[1])
-                        extracted_by_key[field_key] = output_value
-                        if field.target_field_id is not None:
-                            extracted_values[str(field.target_field_id)] = output_value
-                        for _, _, result in valid[1:]:
-                            result.reason = "Lower-priority validated candidate"
-                    elif valid and field.selection_strategy == "highest":
-                        winner = max(
-                            valid,
-                            key=lambda item: (
-                                Decimal(str(item[1])),
-                                item[0],
-                            ),
-                        )
-                        winner[2].accepted = True
-                        output_value = field.value_mapping.get(str(winner[1]), winner[1])
-                        extracted_by_key[field_key] = output_value
-                        if field.target_field_id is not None:
-                            extracted_values[str(field.target_field_id)] = output_value
-                        for _, _, result in valid:
-                            if result is not winner[2]:
-                                result.reason = "Lower validated total candidate"
-                    elif valid and len(distinct) == 1:
-                        winner = max(valid, key=lambda item: item[0])
-                        winner[2].accepted = True
-                        output_value = field.value_mapping.get(str(winner[1]), winner[1])
-                        extracted_by_key[field_key] = output_value
-                        if field.target_field_id is not None:
-                            extracted_values[str(field.target_field_id)] = output_value
-                    elif len(distinct) > 1:
-                        for _, _, result in valid:
-                            result.reason = "Conflicting validated candidates"
-                self.db.commit()
-                missing_fields = [
-                    field_key
-                    for field_key, field in config.fields.items()
-                    if field.required
-                    and (
-                        field_key not in extracted_by_key
-                        or field.target_field_id is None
                     )
-                ]
-                self._finish_phase(
-                    active_phase,
-                    metadata={
-                        "fields_accepted": len(extracted_values),
-                        "missing_fields": missing_fields,
-                    },
+                    winner[2].accepted = True
+                    output_value = field.value_mapping.get(str(winner[1]), winner[1])
+                    extracted_by_key[field_key] = output_value
+                    if field.target_field_id is not None:
+                        extracted_values[str(field.target_field_id)] = output_value
+                    for _, _, result in valid:
+                        if result is not winner[2]:
+                            result.reason = "Lower validated total candidate"
+                elif valid and len(distinct) == 1:
+                    winner = max(valid, key=lambda item: item[0])
+                    winner[2].accepted = True
+                    output_value = field.value_mapping.get(str(winner[1]), winner[1])
+                    extracted_by_key[field_key] = output_value
+                    if field.target_field_id is not None:
+                        extracted_values[str(field.target_field_id)] = output_value
+                elif len(distinct) > 1:
+                    for _, _, result in valid:
+                        result.reason = "Conflicting validated candidates"
+            self.db.commit()
+            missing_fields = [
+                field_key
+                for field_key, field in config.fields.items()
+                if field.required
+                and (
+                    field_key not in extracted_by_key
+                    or field.target_field_id is None
                 )
+            ]
+            self._finish_phase(
+                active_phase,
+                metadata={
+                    "fields_accepted": len(extracted_values),
+                    "missing_fields": missing_fields,
+                },
+            )
 
-                active_phase = self._start_phase(job, JobPhase.RELOAD_METADATA)
-                before_write = await connector.get_document(document.external_document_id)
-                self._finish_phase(
-                    active_phase,
-                    metadata={"metadata_reloaded": True},
-                )
+            active_phase = self._start_phase(job, JobPhase.RELOAD_METADATA)
+            before_write = await connector.get_document(document.external_document_id)
+            self._finish_phase(
+                active_phase,
+                metadata={"metadata_reloaded": True},
+            )
 
-                active_phase = self._start_phase(job, JobPhase.WRITE_METADATA)
-                changed = await connector.write_empty_fields(
-                    document.external_document_id, extracted_values
+            active_phase = self._start_phase(job, JobPhase.WRITE_METADATA)
+            changed = await connector.write_empty_fields(
+                document.external_document_id, extracted_values
+            )
+            for field_id, value in changed.items():
+                self._audit(
+                    job,
+                    "WRITE_CUSTOM_FIELD",
+                    field_id,
+                    before_write.custom_fields.get(field_id),
+                    value,
                 )
-                for field_id, value in changed.items():
+            title_written = False
+            invoice_number = extracted_by_key.get("invoice_number")
+            if invoice_number is not None:
+                title_written = await connector.write_title(
+                    document.external_document_id,
+                    str(invoice_number),
+                )
+                if title_written:
                     self._audit(
                         job,
-                        "WRITE_CUSTOM_FIELD",
-                        field_id,
-                        before_write.custom_fields.get(field_id),
-                        value,
-                    )
-                title_written = False
-                invoice_number = extracted_by_key.get("invoice_number")
-                if invoice_number is not None:
-                    title_written = await connector.write_title(
-                        document.external_document_id,
+                        "WRITE_TITLE",
+                        "title",
+                        before_write.title,
                         str(invoice_number),
                     )
-                    if title_written:
+            correspondent_written = False
+            correspondent_match = None
+            correspondent_enabled = (
+                runtime_fields.correspondent_enabled if runtime_fields is not None else True
+            )
+            if correspondent_enabled and before_write.correspondent_id is None:
+                correspondent_match = match_correspondent(
+                    extraction_text,
+                    await connector.list_correspondents(),
+                )
+                if correspondent_match is not None:
+                    correspondent_written = await connector.write_correspondent_if_empty(
+                        document.external_document_id,
+                        correspondent_match.correspondent_id,
+                    )
+                    if correspondent_written:
                         self._audit(
                             job,
-                            "WRITE_TITLE",
-                            "title",
-                            before_write.title,
-                            str(invoice_number),
-                        )
-                correspondent_written = False
-                correspondent_match = None
-                correspondent_enabled = (
-                    runtime_fields.correspondent_enabled if runtime_fields is not None else True
-                )
-                if correspondent_enabled and before_write.correspondent_id is None:
-                    correspondent_match = match_correspondent(
-                        extraction_text,
-                        await connector.list_correspondents(),
-                    )
-                    if correspondent_match is not None:
-                        correspondent_written = await connector.write_correspondent_if_empty(
-                            document.external_document_id,
+                            "WRITE_CORRESPONDENT",
+                            "correspondent",
+                            None,
                             correspondent_match.correspondent_id,
                         )
-                        if correspondent_written:
-                            self._audit(
-                                job,
-                                "WRITE_CORRESPONDENT",
-                                "correspondent",
-                                None,
-                                correspondent_match.correspondent_id,
-                            )
-                if (
-                    runtime_fields is not None
-                    and runtime_fields.correspondent_required
-                    and before_write.correspondent_id is None
-                    and correspondent_match is None
-                ):
-                    missing_fields.append("correspondent")
-                all_fields_extracted = not missing_fields
-                self._finish_phase(
-                    active_phase,
-                    metadata={
-                        "fields_written": len(changed),
-                        "title_written": title_written,
-                        "correspondent_written": correspondent_written,
-                        "correspondent_match": (
-                            {
-                                "id": correspondent_match.correspondent_id,
-                                "name": correspondent_match.name,
-                                "score": round(correspondent_match.score, 4),
-                                "source": correspondent_match.source,
-                            }
-                            if correspondent_match is not None
-                            else None
-                        ),
-                    },
-                )
+            if (
+                runtime_fields is not None
+                and runtime_fields.correspondent_required
+                and before_write.correspondent_id is None
+                and correspondent_match is None
+            ):
+                missing_fields.append("correspondent")
+            all_fields_extracted = not missing_fields
+            self._finish_phase(
+                active_phase,
+                metadata={
+                    "fields_written": len(changed),
+                    "title_written": title_written,
+                    "correspondent_written": correspondent_written,
+                    "correspondent_match": (
+                        {
+                            "id": correspondent_match.correspondent_id,
+                            "name": correspondent_match.name,
+                            "score": round(correspondent_match.score, 4),
+                            "source": correspondent_match.source,
+                        }
+                        if correspondent_match is not None
+                        else None
+                    ),
+                },
+            )
 
             active_phase = self._start_phase(job, JobPhase.CLEANUP)
             self._finish_phase(active_phase)
             active_phase = self._start_phase(job, JobPhase.COMPLETE)
             job.status = (
-                JobStatus.COMPLETED if all_fields_extracted else JobStatus.COMPLETED_WITH_WARNINGS
+            JobStatus.COMPLETED if all_fields_extracted else JobStatus.COMPLETED_WITH_WARNINGS
             )
             job.finished_at = datetime.now(UTC)
             self._finish_phase(active_phase)

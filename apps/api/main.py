@@ -18,7 +18,6 @@ from connectors.paperless.connector import PaperlessConnector
 from core.config.settings import get_settings
 from core.db.session import engine
 from core.models.instance_field_config import InstanceFieldConfig
-from plugins.ocr.factory import create_ocr_adapter
 from webhooks.paperless.router import router as paperless_webhook_router
 
 
@@ -76,11 +75,6 @@ async def ready() -> dict[str, object]:
         checks["paperless"] = await PaperlessConnector().health_check()
     except ConnectorError:
         checks["paperless"] = False
-    try:
-        create_ocr_adapter()
-        checks["ocr"] = True
-    except (RuntimeError, ValueError):
-        checks["ocr"] = False
     if settings.ollama_enabled or ai_fields_enabled:
         try:
             async with httpx.AsyncClient(
