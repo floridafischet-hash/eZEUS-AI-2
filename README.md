@@ -1,6 +1,6 @@
 # eZEUS-AI-2
 
-eZEUS-AI-2 ist eine automatisierte Verarbeitungspipeline für [Paperless-ngx](https://docs.paperless-ngx.com/). Sobald in Paperless ein neues Dokument auftaucht, holt sich eZEUS die Datei, liest den Text per OCR aus, extrahiert einzelne Felder (z. B. Rechnungsnummer, Betrag, Datum) anhand konfigurierbarer Regeln oder optional per lokalem KI-Modell, validiert die Ergebnisse und schreibt sie zurück nach Paperless — ohne jemals vorhandene oder manuell gesetzte Werte zu überschreiben.
+eZEUS-AI-2 ist eine automatisierte Verarbeitungspipeline für [Paperless-ngx](https://docs.paperless-ngx.com/). Sobald in Paperless ein neues Dokument auftaucht, liest eZEUS den von Paperless bereits erkannten Text, extrahiert einzelne Felder (z. B. Rechnungsnummer, Betrag, Datum) anhand konfigurierbarer Regeln oder optional per lokalem KI-Modell, validiert die Ergebnisse und schreibt sie zurück nach Paperless — ohne jemals vorhandene oder manuell gesetzte Werte zu überschreiben. Die Texterkennung (OCR) übernimmt vollständig Paperless-ngx; eZEUS führt keine eigene OCR durch.
 
 Alles läuft lokal (eigener Server, eigenes Docker-Netz). Es gibt standardmäßig keine Verbindung zu Cloud-Diensten.
 
@@ -44,8 +44,8 @@ Alles läuft lokal (eigener Server, eigenes Docker-Netz). Es gibt standardmäßi
 | Docker + Docker Compose | aktuelle Version, Compose v2 |
 | Laufende Paperless-ngx-Instanz | erreichbar per HTTP(S) vom eZEUS-Server aus |
 | Paperless API-Token | wird unter Paperless → Einstellungen → API-Token erzeugt |
-| Freier Arbeitsspeicher | mind. 4 GB (PaddleOCR + optional Ollama brauchen RAM) |
-| Optional: NVIDIA-GPU | nur nötig, wenn OCR/Ollama auf GPU statt CPU laufen sollen |
+| Freier Arbeitsspeicher | mind. 2 GB (optional mehr, wenn Ollama aktiviert ist) |
+| Optional: NVIDIA-GPU | nur nötig, wenn Ollama auf GPU statt CPU laufen soll |
 
 eZEUS bringt in seiner `docker-compose.yml` **keine echte Paperless-Instanz** mit — dort läuft standardmäßig nur ein *Mock-Paperless* für Tests/Entwicklung. Für den echten Betrieb zeigt eZEUS auf eure bestehende Paperless-ngx-Installation (per `PAPERLESS_BASE_URL`, siehe Abschnitt 4).
 
@@ -69,7 +69,7 @@ eZEUS besteht aus mehreren Containern, die zusammenspielen:
                                     ▼
                           ┌──────────────────┐       ┌─────────────────┐
                           │   worker (Celery) │──────►│  Paperless-ngx   │
-                          │   OCR + Extraktion│       │  (Datei holen,   │
+                          │   Extraktion      │       │  (Text lesen,    │
                           │   + Validierung   │◄──────│   Werte schreiben)│
                           └──────────┬────────┘       └─────────────────┘
                                     │
@@ -86,7 +86,7 @@ eZEUS besteht aus mehreren Containern, die zusammenspielen:
                           └──────────────────┘
 ```
 
-**Wichtig:** Die `api` nimmt den Webhook nur entgegen und legt einen Auftrag (Job) an. Die eigentliche Verarbeitung (Datei holen, OCR, Extraktion, Schreiben) passiert **komplett getrennt** im `worker`-Container. Das hält die Webhook-Antwort schnell und macht das System robust gegen Lastspitzen.
+**Wichtig:** Die `api` nimmt den Webhook nur entgegen und legt einen Auftrag (Job) an. Die eigentliche Verarbeitung (Paperless-Text lesen, Extraktion, Validierung, Schreiben) passiert **komplett getrennt** im `worker`-Container. Das hält die Webhook-Antwort schnell und macht das System robust gegen Lastspitzen.
 
 ---
 
@@ -122,7 +122,7 @@ docker compose build
 docker compose up -d
 ```
 
-Das startet: `api`, `worker`, `postgres`, `redis` (und im Standard-Compose-File zusätzlich ein Mock-Paperless für Testzwecke — für den echten Betrieb könnt ihr diesen Dienst ignorieren oder aus der Compose-Datei entfernen, sobald `PAPERLESS_BASE_URL` auf eure echte Instanz zeigt).
+Das startet: `api`, `worker`, `postgres`, `redis` (und im Standard-Compose-File zusätzlich ein Mock-Paperless für Testzwecke — für den echten Betrieb könnt ihr diesen Dienst ignorieren oder aus der Compose-Datei entfernen, sobald `PAPERLESS_BASE_URL` auf eure echte Instanz zeigt). Kein gesondertes OCR-Image nötig — der Worker verwendet dasselbe Image wie die API.
 
 ### 3.4 Datenbank-Migrationen
 
@@ -139,7 +139,7 @@ curl http://localhost:8080/health
 curl http://localhost:8080/ready
 ```
 
-`/ready` prüft zusätzlich Datenbank, Redis, Paperless-Erreichbarkeit, OCR-Verfügbarkeit und — falls aktiviert — Ollama. Erst wenn hier alles `true` zurückgibt, ist das System vollständig betriebsbereit.
+`/ready` prüft zusätzlich Datenbank, Redis, Paperless-Erreichbarkeit und — falls aktiviert — Ollama. Erst wenn hier alles `true` zurückgibt, ist das System vollständig betriebsbereit.
 
 ---
 
@@ -167,7 +167,6 @@ curl http://localhost:8080/ready
 | `OLLAMA_MAX_INPUT_CHARS` | Wie viel Dokumenttext maximal an das Modell geschickt wird (längerer Text wird gekürzt) |
 | `JOB_MAX_RETRIES` | Wie oft ein fehlgeschlagener Job automatisch wiederholt wird |
 | `JOB_RETRY_DELAYS_SECONDS` | Wartezeiten zwischen den Wiederholungsversuchen, z. B. `30,120,600` |
-| `OCR_TIMEOUT_SECONDS` | Maximale Laufzeit der Texterkennung pro Dokument |
 | `MAX_DOCUMENT_BYTES` | Obergrenze für Dateigröße (Standard ca. 100 MB) |
 
 ---
@@ -248,7 +247,7 @@ Für andere Dokumentarten (z. B. Lieferscheine) einfach eine weitere Vorlage mit
 | Endpunkt | Zweck |
 |---|---|
 | `GET /health` | Einfacher Lebenszeichen-Check |
-| `GET /ready` | Prüft Datenbank, Redis, Paperless-Erreichbarkeit, OCR und ggf. Ollama |
+| `GET /ready` | Prüft Datenbank, Redis, Paperless-Erreichbarkeit und ggf. Ollama |
 | `GET /` | Web-Dashboard mit Übersicht laufender/fehlgeschlagener Jobs |
 | `GET /api/logs` | Log-/Audit-Einträge (nur Metadaten, keine Dokumentinhalte) |
 | `GET /docs` | Automatisch generierte API-Dokumentation (Swagger UI) |
@@ -287,13 +286,13 @@ Der neue Job wird an die Warteschlange (Redis, verwaltet über Celery) übergebe
 
 Ein freier Worker-Prozess holt sich den Job aus der Warteschlange, Status wechselt zu `RUNNING`. Ab hier läuft die eigentliche Verarbeitung in klar getrennten, einzeln protokollierten Phasen:
 
-**Phase A — Metadaten laden.** Der Worker fragt bei Paperless-ngx per `GET /api/documents/128/` die aktuellen Metadaten ab (Dateiname, Dokumenttyp, MIME-Type).
+**Phase A — Metadaten laden.** Der Worker fragt bei Paperless-ngx per `GET /api/documents/128/` die aktuellen Metadaten ab (Dateiname, Dokumenttyp, MIME-Type) und liest dabei gleichzeitig den von Paperless bereits erkannten OCR-Text aus.
 
-**Phase B — Datei herunterladen.** Per `GET /api/documents/128/download/` wird die eigentliche Datei geladen und temporär auf dem eZEUS-Server gespeichert. Ist die Datei größer als `MAX_DOCUMENT_BYTES`, bricht der Job an dieser Stelle kontrolliert ab.
+**Phase B — Textquelle bestimmen.** Hat Paperless-ngx bereits einen Text zum Dokument gespeichert, wird dieser direkt als Extraktionsgrundlage verwendet. Die Phasen B (Download), C (OCR) und D (OCR-Schreiben) werden in diesem Fall übersprungen — eZEUS führt keine eigene Texterkennung durch. Ist kein Text vorhanden, werden alle drei Phasen als übersprungen markiert und der Job endet mit einem Warnhinweis (kein Text verfügbar).
 
-**Phase C — Texterkennung (OCR).** Die Datei wird an PaddleOCR übergeben, das den kompletten Text der Seite(n) erkennt — vergleichbar mit dem, was beim Scannen eines Dokuments automatisch passiert. Ergebnis: reiner Text, noch keine strukturierten Felder.
+**Phase C — OCR (übersprungen).** Entfällt; die Texterkennung übernimmt vollständig Paperless-ngx.
 
-**Phase D — OCR-Text zurückschreiben.** Der erkannte Text wird nach Paperless-ngx zurückgeschrieben, **aber nur, wenn das Textfeld dort noch leer ist**. Hat Paperless bereits selbst einen Text erkannt, bleibt dieser unangetastet.
+**Phase D — OCR-Text zurückschreiben (übersprungen).** Entfällt; eZEUS schreibt keinen OCR-Text zurück.
 
 **Phase E — passende Vorlage auswählen.** Anhand des Dokumenttyps (aus Phase A) sucht das System die dazu passende, aktive Standard-Vorlage (siehe Abschnitt 6). Gibt es keine passende Vorlage, endet der Job hier regulär — nicht als Fehler, sondern mit dem Hinweis „keine Extraktionsregeln vorhanden“.
 
@@ -310,7 +309,7 @@ Jeder Provider liefert null, einen oder mehrere Kandidatenwerte mit einer Konfid
 
 **Phase I — Ergebnisse schreiben.** Nur Felder, die in Paperless-ngx **zu diesem Zeitpunkt noch leer** sind, werden mit den validierten Werten befüllt. Bereits vorhandene oder manuell eingetragene Werte werden nie überschrieben. Jede tatsächlich vorgenommene Änderung wird mit Alt- und Neuwert im Audit-Log festgehalten.
 
-**Phase J — Abschluss.** Temporäre Dateien werden gelöscht, der Job-Status wechselt zu `COMPLETED` (oder `COMPLETED_WITH_WARNINGS`, falls z. B. keine Vorlage gefunden wurde). Tritt in irgendeiner Phase ein Fehler auf, wird nur diese Phase als `FAILED` markiert, der Job erhält Status `FAILED` mit Fehlerart und -meldung.
+**Phase J — Abschluss.** Der Job-Status wechselt zu `COMPLETED` (oder `COMPLETED_WITH_WARNINGS`, falls z. B. keine Vorlage gefunden oder kein Text verfügbar war). Tritt in irgendeiner Phase ein Fehler auf, wird nur diese Phase als `FAILED` markiert, der Job erhält Status `FAILED` mit Fehlerart und -meldung.
 
 ### Schritt 6 — Ergebnis ist sichtbar (wo: Paperless-ngx und eZEUS-Dashboard)
 
@@ -319,12 +318,12 @@ In Paperless-ngx erscheinen die neu gesetzten Felder wie gewohnt am Dokument. Im
 ### Konkretes Beispiel: Rechnungsbetrag
 
 ```
-OCR-Rohtext:        "Gesamtbetrag: 1.234,56 EUR"
+Paperless-Text:     "Gesamtbetrag: 1.234,56 EUR"
 Regel (Provider):   regex sucht "Gesamtbetrag:\s*([\d.,]+\s*EUR)"
-Roher Treffer:       "1.234,56 EUR"
-Validator:           monetary_amount normalisiert → "1234.56"
+Roher Treffer:      "1.234,56 EUR"
+Validator:          monetary_amount normalisiert → "1234.56"
 Zielfeld in Paperless leer? → ja → Wert wird geschrieben
-Audit-Log:            Feld "total", alt=leer, neu="1234.56"
+Audit-Log:          Feld "total", alt=leer, neu="1234.56"
 ```
 
 Stünde im Zielfeld bereits ein Wert (z. B. weil jemand ihn von Hand eingetragen hat), würde in diesem letzten Schritt **nichts** geschrieben — der vorhandene Wert bleibt unverändert.
@@ -349,7 +348,7 @@ Automatische Wiederholungsversuche sind zusätzlich über `JOB_MAX_RETRIES` und 
 - Es gibt noch keine mitgelieferte Vorlage für Lieferscheine oder andere Dokumenttypen außer dem Rechnungs-Beispiel — eigene Vorlagen müssen selbst angelegt werden (siehe Abschnitt 6).
 - Die Admin-Oberfläche und die Log-API sind innerhalb der Anwendung selbst nicht durch eine eigene Benutzerverwaltung geschützt; ein produktiver Zugriff braucht einen authentifizierenden TLS-Reverse-Proxy davor.
 - Das Dashboard zeigt den konfigurierten Modellnamen. Das beweist weder den physischen Standort des Modells noch, dass es gerade geladen ist oder für den letzten Job verwendet wurde.
-- PaddleOCR-Modelle können beim ersten Worker-Start automatisch heruntergeladen werden (dafür ist Internetzugriff nötig).
+- Liefert Paperless-ngx keinen OCR-Text (z. B. bei Bilddateien ohne OCR-Konfiguration), findet eZEUS keine Felder und schließt den Job mit Warnhinweis ab.
 - Datenbankstatus und Celery-Nachricht werden nicht über eine gemeinsame Transaktion koordiniert.
 - Es gibt noch keinen vollständigen Lasttest und keine vollständigen Malware-, PDF-Bomb- oder End-to-End-Sicherheitstests — für den produktiven Einsatz vor dem Rollout selbst prüfen.
 
@@ -387,7 +386,7 @@ eZEUS kann mehrere Paperless-ngx-Installationen gleichzeitig bedienen. Jede ange
 - `core/queue`: Celery-Konfiguration und Queue-Adapter
 - `core/templates`: Template-Schema und Auswahl
 - `core/validation`: Validierungs- und Normalisierungslogik
-- `plugins`: Extraktions-, LLM-, OCR- und Validierungsbausteine
+- `plugins`: Extraktions-, LLM- und Validierungsbausteine
 - `webhooks`: Paperless-Webhook, Schema und Secret-Prüfung
 - `infrastructure/migrations`: Alembic-Konfiguration und Migrationen
 - `scripts`: Hilfsskript zur Erzeugung der PDF-Testdatei
@@ -429,11 +428,11 @@ Weitere Informationen stehen in [docs/testing.md](docs/testing.md).
 
 ## 14. Fehlerbehebung
 
-- `/health` antwortet, `/ready` liefert aber HTTP 503: Die Antwort enthält den Status von Datenbank, Redis, Paperless, OCR und gegebenenfalls Ollama.
+- `/health` antwortet, `/ready` liefert aber HTTP 503: Die Antwort enthält den Status von Datenbank, Redis, Paperless und gegebenenfalls Ollama.
 - Paperless meldet HTTP 401: `PAPERLESS_API_TOKEN` und `PAPERLESS_BASE_URL` prüfen.
 - Der Webhook meldet HTTP 401: Header und `PAPERLESS_WEBHOOK_SECRET` müssen übereinstimmen.
 - Administrative Endpunkte melden HTTP 401: mit einem aktiven persönlichen Konto über die Verwaltungsoberfläche oder die Header `X-EZEUS-Admin-User` und `X-EZEUS-Admin-Password` anmelden. Nur vor dem ersten Konto kann `ADMIN_API_SECRET` als `X-EZEUS-Admin-Secret` verwendet werden.
-- PaddleOCR ist nicht installiert: das Extra `ocr-paddle` installieren oder `Dockerfile.paddle` verwenden.
+- Job endet mit Warnhinweis, Felder fehlen: Paperless hat keinen OCR-Text zum Dokument gespeichert — sicherstellen, dass Paperless-ngx OCR aktiviert hat und das Dokument korrekt verarbeitet wurde.
 - Das Ollama-Modell wird nicht als bereit erkannt: `OLLAMA_ENABLED`, `OLLAMA_BASE_URL` und `OLLAMA_MODEL` prüfen.
 - Portänderungen: `APP_PORT` in `.env` setzen und den Compose-Stack neu erstellen.
 
@@ -466,14 +465,13 @@ Beispiel für die Wiederherstellung:
 docker compose exec -T postgres pg_restore -U ezeus -d ezeus --clean --if-exists < ezeus.dump
 ```
 
-Die lokale `.env`-Datei muss getrennt und verschlüsselt gesichert werden. Das Redis-Volume enthält Warteschlangen- und Ergebniszustand, ist aber nicht die führende fachliche Datenquelle. Das Volume `ocr_models` kann neu aufgebaut werden, sofern die benötigten Modelle weiterhin verfügbar sind.
+Die lokale `.env`-Datei muss getrennt und verschlüsselt gesichert werden. Das Redis-Volume enthält Warteschlangen- und Ergebniszustand, ist aber nicht die führende fachliche Datenquelle.
 
 Eine Wiederherstellung muss zunächst in einer getrennten Umgebung getestet werden.
 
 ## 17. Entwicklung und Erweiterung
 
 - Neue Extraktionsprovider implementieren `ExtractionProvider` aus `plugins/base/interfaces.py`.
-- Neue OCR-Provider implementieren `OCRProvider` und werden in `plugins/ocr/factory.py` registriert.
 - Neue Template-Provider und Validatornamen müssen in `core/templates/schema.py` freigegeben werden.
 - Datenbankänderungen benötigen eine Alembic-Migration.
 - Änderungen an Connectoren müssen den Schutz bereits gefüllter Paperless-Felder erhalten.
