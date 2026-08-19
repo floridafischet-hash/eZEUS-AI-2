@@ -3,15 +3,15 @@ class ConnectorError(Exception):
 
 
 class AuthenticationError(ConnectorError):
-    """Credentials were not accepted by the remote system."""
+    pass
 
 
 class AuthorizationError(ConnectorError):
-    """Credentials lack permission for the requested operation."""
+    pass
 
 
 class NotFoundError(ConnectorError):
-    """The requested remote resource does not exist."""
+    pass
 
 
 class RateLimitError(ConnectorError):
@@ -27,12 +27,12 @@ class ConnectionError(ConnectorError):
 
 
 class ConflictError(ConnectorError):
-    """The remote state conflicts with the requested operation."""
+    pass
 
 
 class ValidationError(ConnectorError):
-    """The request or remote document failed validation."""
+    pass
 
 
 class UnsupportedOperationError(ConnectorError):
-    """The connector cannot perform the requested operation."""
+    pass

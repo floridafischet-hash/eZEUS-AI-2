@@ -1,4 +1,6 @@
 import json
+import re
+import unicodedata
 from typing import Any
 
 import httpx
@@ -44,13 +46,12 @@ class OllamaExtractionProvider(ExtractionProvider):
         half = self.max_input_chars // 2
         return f"{text[:half]}\n\n[... Dokument gekürzt ...]\n\n{text[-half:]}"
 
-    async def extract(
-        self, text: str, config: dict[str, object]
-    ) -> list[ExtractionCandidate]:
-        settings = get_settings()
-        if not settings.ollama_enabled:
-            raise RuntimeError("Ollama extraction is disabled")
+    @staticmethod
+    def _grounding_text(value: str) -> str:
+        normalized = unicodedata.normalize("NFKD", value).casefold()
+        return re.sub(r"[^a-z0-9]", "", normalized)
 
+    async def extract(self, text: str, config: dict[str, object]) -> list[ExtractionCandidate]:
         field_name = str(config.get("field_name") or config.get("description") or "").strip()
         if not field_name:
             raise ValueError("Ollama provider requires field_name or description")
@@ -109,10 +110,15 @@ class OllamaExtractionProvider(ExtractionProvider):
         value = result.get("value")
         if value is None or not str(value).strip():
             return []
+        value_text = str(value).strip()
+        grounded_value = self._grounding_text(value_text)
+        grounded_document = self._grounding_text(document_text)
+        if not grounded_value or grounded_value not in grounded_document:
+            return []
         confidence = min(1.0, max(0.0, float(result.get("confidence", 0))))
         return [
             ExtractionCandidate(
-                value=str(value).strip(),
+                value=value_text,
                 confidence=confidence,
                 provider=self.id,
                 metadata={"model": self.model, "local": True, "field": field_name},

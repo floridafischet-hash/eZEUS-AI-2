@@ -2,6 +2,20 @@
 
 Alle wesentlichen Änderungen an eZEUS-AI-2 werden in dieser Datei dokumentiert.
 
+## Unveröffentlicht
+
+- Mandantenbezogene Feldkonfiguration mit Standardvorlage, Custom-Feldern,
+  Feldtypen, Pflichtstatus, Sortierung sowie OCR-/KI-Schaltern ergänzt.
+- Geschützte Feldkonfigurations-API und Weboberfläche mit Vorschau ergänzt.
+- Verarbeitungs-Pipeline an die dauerhaft gespeicherte Instanzkonfiguration
+  gebunden.
+- Konfigurationsänderungen um mandantenbezogene Auditdaten erweitert.
+- Individuelle Administratorkonten mit Scrypt-Passwörtern und den Rollen
+  `admin` und `viewer` ergänzt; das gemeinsame Secret ist nur noch Bootstrap.
+- Fehlende Paperless-Custom-Fields werden automatisch angelegt und verknüpft.
+- Mandantenbezogene KI-Felder aktivieren Ollama ohne zusätzlichen globalen
+  Extraktionsschalter.
+
 ## 0.2.0 - 2026-07-27
 
 ### Hinzugefügt

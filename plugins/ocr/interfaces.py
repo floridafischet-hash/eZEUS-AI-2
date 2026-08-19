@@ -8,5 +8,4 @@ class OCRProvider(ABC):
     id: str
 
     @abstractmethod
-    def recognize(self, document_path: Path) -> OCRDocument:
-        """Run OCR and return provider-neutral positional results."""
+    def recognize(self, document_path: Path) -> OCRDocument: ...

@@ -5,6 +5,8 @@ from fastapi import FastAPI, Header, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
+from core.config.settings import get_settings
+
 app = FastAPI(title="Paperless API Mock")
 fixture = Path(__file__).parents[2] / "tests" / "fixtures" / "invoice.pdf"
 document: dict[str, object] = {
@@ -30,7 +32,8 @@ class PatchDocument(BaseModel):
 
 
 def authenticate(authorization: Annotated[str | None, Header()] = None) -> None:
-    if authorization != "Token mock-paperless-token":
+    configured_token = get_settings().paperless_api_token or "mock-paperless-token"
+    if authorization != f"Token {configured_token}":
         raise HTTPException(status_code=401, detail="Invalid token")
 
 
