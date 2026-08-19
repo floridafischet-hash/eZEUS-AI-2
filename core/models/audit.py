@@ -15,6 +15,9 @@ class AuditEntry(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     entity_id: Mapped[str] = mapped_column(String(255), nullable=False)
     details: Mapped[dict[str, object]] = mapped_column(JSON, default=dict)
     job_id: Mapped[UUID | None] = mapped_column(ForeignKey("jobs.id"), index=True)
+    instance_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("paperless_instances.id"), index=True
+    )
     target_system: Mapped[str | None] = mapped_column(String(128))
     field: Mapped[str | None] = mapped_column(String(255))
     old_value: Mapped[object | None] = mapped_column(JSON)

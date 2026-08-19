@@ -5,8 +5,6 @@ from plugins.ocr.models import OCRDocument
 
 
 class OCRAdapter:
-    """Boundary between the eZEUS core and OCR-specific implementations."""
-
     def __init__(self, provider: OCRProvider) -> None:
         self.provider = provider
 

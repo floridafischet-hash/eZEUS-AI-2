@@ -1,10 +1,10 @@
 services:
   api:
     build: .
-    command: sh -c "alembic upgrade head && uvicorn apps.api.main:app --host 0.0.0.0 --port 8080"
+    command: sh -c "alembic upgrade head && uvicorn apps.api.main:app --host $${APP_HOST:-0.0.0.0} --port $${APP_PORT:-8080} --log-level $${APP_LOG_LEVEL:-INFO}"
     env_file: .env
     ports:
-      - "8080:8080"
+      - "${APP_PORT:-8080}:${APP_PORT:-8080}"
     depends_on:
       postgres:
         condition: service_healthy
@@ -13,7 +13,7 @@ services:
       paperless:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/ready', timeout=5)"]
+      test: ["CMD-SHELL", "python -c \"import os, urllib.request; urllib.request.urlopen('http://localhost:' + os.getenv('APP_PORT', '8080') + '/ready', timeout=5)\""]
       interval: 15s
       timeout: 6s
       retries: 10
@@ -22,7 +22,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.paddle
-    command: sh -c "chown -R ezeus:ezeus /home/ezeus/.paddlex && exec su -s /bin/sh ezeus -c 'celery -A core.queue.celery_app.celery_app worker -Q high,normal,low --loglevel=INFO'"
+    command: sh -c "chown -R ezeus:ezeus /home/ezeus/.paddlex && exec su -s /bin/sh ezeus -c 'celery -A core.queue.celery_app.celery_app worker -Q high,normal,low --loglevel=$${APP_LOG_LEVEL:-INFO}'"
     env_file: .env
     volumes:
       - ocr_models:/home/ezeus/.paddlex

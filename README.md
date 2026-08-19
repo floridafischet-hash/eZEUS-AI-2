@@ -4,6 +4,14 @@ eZEUS-AI-2 ist eine automatisierte Verarbeitungspipeline für [Paperless-ngx](ht
 
 Alles läuft lokal (eigener Server, eigenes Docker-Netz). Es gibt standardmäßig keine Verbindung zu Cloud-Diensten.
 
+> **Hinweis zum Modellstandort (Stand 03.08.2026):** Das produktiv verwendete
+> Sprachmodell `qwen3:4b` läuft in einem eigenen Ollama-Container auf dem
+> Server, **nicht** auf einem Windows-PC. `OLLAMA_BASE_URL` zeigt auf den
+> Docker-Service `ollama` im privaten Server-Netz (`http://ollama:11434`) –
+> das ist keine PC-Adresse. Eine Umstellung auf PC-Inferenz wäre ein eigener
+> Architektur- und Sicherheitsumbau (gesicherter Netzwerkkanal, authentifizierte
+> Modell-API, Firewallregeln) und ist aktuell nicht umgesetzt.
+
 ---
 
 ## Inhaltsverzeichnis
@@ -18,6 +26,14 @@ Alles läuft lokal (eigener Server, eigenes Docker-Netz). Es gibt standardmäßi
 8. [Detaillierter Ablauf: Was passiert wann, wo und wie](#8-detaillierter-ablauf-was-passiert-wann-wo-und-wie)
 9. [Fehgeschlagene Jobs & Wiederholung](#9-fehlgeschlagene-jobs--wiederholung)
 10. [Bekannte Einschränkungen](#10-bekannte-einschränkungen)
+11. [Mehrere Paperless-Instanzen (Mandantenfähigkeit)](#11-mehrere-paperless-instanzen-mandantenfähigkeit)
+12. [Projektstruktur](#12-projektstruktur)
+13. [Tests](#13-tests)
+14. [Fehlerbehebung](#14-fehlerbehebung)
+15. [Sicherheitshinweise](#15-sicherheitshinweise)
+16. [Backup und Wiederherstellung](#16-backup-und-wiederherstellung)
+17. [Entwicklung und Erweiterung](#17-entwicklung-und-erweiterung)
+18. [Lizenz](#18-lizenz)
 
 ---
 
@@ -330,7 +346,139 @@ Automatische Wiederholungsversuche sind zusätzlich über `JOB_MAX_RETRIES` und 
 
 ## 10. Bekannte Einschränkungen
 
-- Aktuell nur eine Paperless-Instanz pro Deployment vorgesehen.
-- Die Admin-API kennt nur ein gemeinsames Geheimnis, keine Benutzerrollen oder abgestufte Rechte.
 - Es gibt noch keine mitgelieferte Vorlage für Lieferscheine oder andere Dokumenttypen außer dem Rechnungs-Beispiel — eigene Vorlagen müssen selbst angelegt werden (siehe Abschnitt 6).
-- Laut Projektstand kein vollständiger Lasttest und keine fertige Referenzdatensynchronisation — für den produktiven Einsatz vor dem Rollout selbst prüfen.
+- Die Admin-Oberfläche und die Log-API sind innerhalb der Anwendung selbst nicht durch eine eigene Benutzerverwaltung geschützt; ein produktiver Zugriff braucht einen authentifizierenden TLS-Reverse-Proxy davor.
+- Das Dashboard zeigt den konfigurierten Modellnamen. Das beweist weder den physischen Standort des Modells noch, dass es gerade geladen ist oder für den letzten Job verwendet wurde.
+- PaddleOCR-Modelle können beim ersten Worker-Start automatisch heruntergeladen werden (dafür ist Internetzugriff nötig).
+- Datenbankstatus und Celery-Nachricht werden nicht über eine gemeinsame Transaktion koordiniert.
+- Es gibt noch keinen vollständigen Lasttest und keine vollständigen Malware-, PDF-Bomb- oder End-to-End-Sicherheitstests — für den produktiven Einsatz vor dem Rollout selbst prüfen.
+
+
+---
+
+## 11. Mehrere Paperless-Instanzen (Mandantenfähigkeit)
+
+eZEUS kann mehrere Paperless-ngx-Installationen gleichzeitig bedienen. Jede angelegte Instanz ist ein eigener "Mandant" mit eigener Feldkonfiguration, eigenem Webhook und eigenem API-Token.
+
+- Instanzen werden unter `/admin/instances` verwaltet (Name, Paperless-URL, API-Token und Webhook-Secret genügen zum Anlegen).
+- Beim Anlegen prüft eZEUS die Verbindung und richtet in Paperless-ngx automatisch einen verwalteten Workflow ein, der neue und geänderte Dokumente an die richtige, instanzspezifische Webhook-URL meldet:
+
+  ```
+  https://<ezeus-host>/webhooks/paperless/<instanzkennung>
+  ```
+
+- Jede Instanz erhält automatisch die Standardfelder Korrespondent, Rechnungsnummer, Rechnungsdatum, Rechnungsbetrag, Kundennummer und Baustellennummer. Diese lassen sich unter „Feldkonfiguration“ pro Instanz anpassen (Bezeichnung, Typ, Pflichtstatus, Regex-/Keyword-/KI-Auslesung).
+- Vorhandene Paperless-Custom-Fields werden beim Öffnen der Feldkonfiguration übernommen; neue Felder werden automatisch mit passendem Datentyp in Paperless angelegt und dauerhaft verknüpft.
+- Zugriff erfolgt über persönliche Admin- bzw. Viewer-Konten (`/api/admin-users/page`). Die Rolle `admin` darf ändern, `viewer` darf nur lesen. Das Bootstrap-Secret (`ADMIN_API_SECRET`) funktioniert nur so lange, bis das erste persönliche Konto angelegt wurde.
+- Der bisherige globale Webhook (`/webhooks/paperless`, ohne Instanzkennung) bleibt für eine einzelne, über `.env` konfigurierte Instanz rückwärtskompatibel.
+
+## 12. Projektstruktur
+
+- `apps/api`: FastAPI-Anwendung, Administrationsendpunkte und Dashboard
+- `apps/worker`: Celery-Aufgabe für Dokumentenaufträge
+- `apps/mock_paperless`: lokaler Paperless-API-Mock für Entwicklung
+- `connectors`: Connector-Schnittstelle und Paperless-Implementierung
+- `core/config`: Laufzeitkonfiguration
+- `core/db`: SQLAlchemy-Basis und Sitzungsverwaltung
+- `core/events`: interne Ereignismodelle
+- `core/jobs`: Auftragserstellung und Statusübergänge
+- `core/models`: persistente SQLAlchemy-Modelle
+- `core/orchestration`: Verarbeitungspipeline
+- `core/queue`: Celery-Konfiguration und Queue-Adapter
+- `core/templates`: Template-Schema und Auswahl
+- `core/validation`: Validierungs- und Normalisierungslogik
+- `plugins`: Extraktions-, LLM-, OCR- und Validierungsbausteine
+- `webhooks`: Paperless-Webhook, Schema und Secret-Prüfung
+- `infrastructure/migrations`: Alembic-Konfiguration und Migrationen
+- `scripts`: Hilfsskript zur Erzeugung der PDF-Testdatei
+- `tests`: Unit-, API- und Integrationstests
+- `docs`: ergänzende Architektur-, Betriebs- und Sicherheitsdokumentation
+
+Die API startet über `apps.api.main:app`. Celery lädt `core.queue.celery_app:celery_app`. Der Entwicklungs-Mock startet über `apps.mock_paperless.main:app`.
+
+## 13. Tests
+
+Vollständige Tests:
+
+```bash
+APP_ENV=test python -m pytest
+```
+
+Unter PowerShell:
+
+```powershell
+$env:APP_ENV = "test"
+python -m pytest
+```
+
+Statische Prüfungen:
+
+```bash
+ruff check .
+ruff format --check .
+mypy apps connectors core plugins webhooks
+```
+
+Compose-Konfiguration prüfen:
+
+```bash
+docker compose config --quiet
+```
+
+Weitere Informationen stehen in [docs/testing.md](docs/testing.md).
+
+## 14. Fehlerbehebung
+
+- `/health` antwortet, `/ready` liefert aber HTTP 503: Die Antwort enthält den Status von Datenbank, Redis, Paperless, OCR und gegebenenfalls Ollama.
+- Paperless meldet HTTP 401: `PAPERLESS_API_TOKEN` und `PAPERLESS_BASE_URL` prüfen.
+- Der Webhook meldet HTTP 401: Header und `PAPERLESS_WEBHOOK_SECRET` müssen übereinstimmen.
+- Administrative Endpunkte melden HTTP 401: mit einem aktiven persönlichen Konto über die Verwaltungsoberfläche oder die Header `X-EZEUS-Admin-User` und `X-EZEUS-Admin-Password` anmelden. Nur vor dem ersten Konto kann `ADMIN_API_SECRET` als `X-EZEUS-Admin-Secret` verwendet werden.
+- PaddleOCR ist nicht installiert: das Extra `ocr-paddle` installieren oder `Dockerfile.paddle` verwenden.
+- Das Ollama-Modell wird nicht als bereit erkannt: `OLLAMA_ENABLED`, `OLLAMA_BASE_URL` und `OLLAMA_MODEL` prüfen.
+- Portänderungen: `APP_PORT` in `.env` setzen und den Compose-Stack neu erstellen.
+
+## 15. Sicherheitshinweise
+
+- `.env` und lokale Varianten sind durch `.gitignore` ausgeschlossen.
+- Reale Tokens, Passwörter und Schlüssel dürfen nicht versioniert oder in Images eingebettet werden.
+- TLS-Prüfung für Paperless ist standardmäßig aktiv.
+- Dashboard, Log-Endpunkt und OpenAPI-Dokumentation besitzen keine eigene Benutzerverwaltung. Ein produktiver Zugriff benötigt einen authentifizierenden TLS-Reverse-Proxy.
+- Administrationskonten verwenden Scrypt-Passworthashes und die Rollen `admin` und `viewer`. Das Bootstrap-Secret verliert nach dem ersten aktiven Administratorkonto seine Zugriffsberechtigung.
+- Der Paperless-Mock ist ausschließlich für lokale Entwicklung und Tests vorgesehen.
+- Container-Netze, Datenbank und Redis dürfen im Produktivbetrieb nicht öffentlich erreichbar sein.
+- Der Quellcode enthält keine produktiven Zugangsdaten. Die Werte in `.env.example` sind erkennbare Platzhalter.
+
+Weitere bekannte Sicherheitslücken und ausstehende Maßnahmen stehen in [docs/security.md](docs/security.md) und im [CODE_REVIEW_REPORT.md](CODE_REVIEW_REPORT.md).
+
+## 16. Backup und Wiederherstellung
+
+PostgreSQL enthält die dauerhaften Aufträge, Templates, Ergebnisse und Auditdaten. Vor einem Backup sollten API und Worker keine neuen Aufträge annehmen.
+
+Beispiel für ein PostgreSQL-Backup:
+
+```bash
+docker compose exec -T postgres pg_dump -U ezeus -d ezeus -Fc > ezeus.dump
+```
+
+Beispiel für die Wiederherstellung:
+
+```bash
+docker compose exec -T postgres pg_restore -U ezeus -d ezeus --clean --if-exists < ezeus.dump
+```
+
+Die lokale `.env`-Datei muss getrennt und verschlüsselt gesichert werden. Das Redis-Volume enthält Warteschlangen- und Ergebniszustand, ist aber nicht die führende fachliche Datenquelle. Das Volume `ocr_models` kann neu aufgebaut werden, sofern die benötigten Modelle weiterhin verfügbar sind.
+
+Eine Wiederherstellung muss zunächst in einer getrennten Umgebung getestet werden.
+
+## 17. Entwicklung und Erweiterung
+
+- Neue Extraktionsprovider implementieren `ExtractionProvider` aus `plugins/base/interfaces.py`.
+- Neue OCR-Provider implementieren `OCRProvider` und werden in `plugins/ocr/factory.py` registriert.
+- Neue Template-Provider und Validatornamen müssen in `core/templates/schema.py` freigegeben werden.
+- Datenbankänderungen benötigen eine Alembic-Migration.
+- Änderungen an Connectoren müssen den Schutz bereits gefüllter Paperless-Felder erhalten.
+- Vor jeder Übernahme müssen Tests, Ruff, Formatter und mypy erfolgreich ausgeführt werden.
+
+## 18. Lizenz
+
+Im Repository ist derzeit keine Lizenzdatei vorhanden. Ohne ausdrückliche Lizenz werden keine Nutzungs-, Änderungs- oder Weitergaberechte eingeräumt.

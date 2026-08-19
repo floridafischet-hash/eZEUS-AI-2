@@ -1,33 +1,20 @@
-import hashlib
-import hmac
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from core.config.settings import get_settings
 from core.db.session import get_db
 from core.models.enums import JobStatus
 from core.models.job import Job
 from core.models.template import Template
 from core.queue.adapter import QueueAdapter
+from core.security.admin_auth import require_admin_secret
 from core.templates.schema import TemplateConfig
 
 router = APIRouter(prefix="/api", tags=["administration"])
-
-
-def require_admin_secret(x_ezeus_admin_secret: str | None = Header(default=None)) -> None:
-    expected = get_settings().admin_api_secret
-    if not expected or not x_ezeus_admin_secret:
-        raise HTTPException(status_code=401, detail="Administrative authentication required")
-    if not hmac.compare_digest(
-        hashlib.sha256(x_ezeus_admin_secret.encode()).digest(),
-        hashlib.sha256(expected.encode()).digest(),
-    ):
-        raise HTTPException(status_code=401, detail="Invalid administrative credentials")
 
 
 class TemplateCreate(BaseModel):
@@ -94,7 +81,9 @@ def retry_job(
     job.status = JobStatus.QUEUED
     job.error_type = None
     job.error_message = None
+    job.started_at = None
     job.finished_at = None
+    job.retry_count += 1
     db.commit()
     QueueAdapter().enqueue_document_job(job.id, job.priority)
     return {"job_id": str(job.id), "status": job.status.value}

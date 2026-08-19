@@ -20,6 +20,9 @@ class Settings(BaseSettings):
     paperless_api_token: str = ""
     paperless_webhook_secret: str = ""
     admin_api_secret: str = ""
+    proxy_auth_secret: str = ""
+    credential_encryption_key: str = ""
+    public_webhook_base_url: str = ""
     paperless_verify_tls: bool = True
 
     local_only: bool = True
@@ -36,12 +39,12 @@ class Settings(BaseSettings):
     ocr_language: str = "de"
     ocr_device: str = "cpu"
     ocr_timeout_seconds: int = 300
+    ocr_qwen_cleanup_enabled: bool = True
+    ocr_qwen_cleanup_timeout_seconds: int = 180
     max_document_bytes: int = 100 * 1024 * 1024
 
     job_max_retries: int = 3
-    job_retry_delays_seconds: Annotated[tuple[int, ...], NoDecode] = Field(
-        default=(30, 120, 600)
-    )
+    job_retry_delays_seconds: Annotated[tuple[int, ...], NoDecode] = Field(default=(30, 120, 600))
 
     @field_validator("job_retry_delays_seconds", mode="before")
     @classmethod
@@ -59,9 +62,12 @@ class Settings(BaseSettings):
                     ("PAPERLESS_API_TOKEN", self.paperless_api_token),
                     ("PAPERLESS_WEBHOOK_SECRET", self.paperless_webhook_secret),
                     ("ADMIN_API_SECRET", self.admin_api_secret),
+                    ("CREDENTIAL_ENCRYPTION_KEY", self.credential_encryption_key),
                 )
-                if not value or value == "change-me"
+                if not value or value == "change-me" or value.startswith("example-")
             ]
+            if "example-" in self.database_url:
+                missing.append("DATABASE_URL")
             if missing:
                 raise ValueError(f"Missing secure configuration: {', '.join(missing)}")
         if self.cloud_ai_globally_allowed and self.local_only:

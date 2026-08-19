@@ -15,12 +15,8 @@ class Job(UUIDPrimaryKeyMixin, TimestampMixin, Base):
             "uq_active_job_document",
             "document_id",
             unique=True,
-            postgresql_where=text(
-                "status IN ('RECEIVED', 'QUEUED', 'RUNNING', 'RETRY_WAITING')"
-            ),
-            sqlite_where=text(
-                "status IN ('RECEIVED', 'QUEUED', 'RUNNING', 'RETRY_WAITING')"
-            ),
+            postgresql_where=text("status IN ('RECEIVED', 'QUEUED', 'RUNNING', 'RETRY_WAITING')"),
+            sqlite_where=text("status IN ('RECEIVED', 'QUEUED', 'RUNNING', 'RETRY_WAITING')"),
         ),
     )
 
