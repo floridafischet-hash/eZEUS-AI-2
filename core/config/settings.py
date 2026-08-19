@@ -35,12 +35,6 @@ class Settings(BaseSettings):
     ollama_max_input_chars: int = 24_000
     ollama_keep_alive: str = "10m"
 
-    ocr_provider: str = "paddleocr"
-    ocr_language: str = "de"
-    ocr_device: str = "cpu"
-    ocr_timeout_seconds: int = 300
-    ocr_qwen_cleanup_enabled: bool = True
-    ocr_qwen_cleanup_timeout_seconds: int = 180
     max_document_bytes: int = 100 * 1024 * 1024
 
     job_max_retries: int = 3

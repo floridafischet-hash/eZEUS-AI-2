@@ -43,12 +43,8 @@ services:
   worker:
     build:
       context: .
-      dockerfile: Dockerfile.paddle
-    command: >-
-      sh -c "chown -R ezeus:ezeus /home/ezeus/.paddlex &&
-      exec su -s /bin/sh ezeus -c
-      'celery -A core.queue.celery_app.celery_app worker
-      -Q high,normal,low --loglevel=INFO'"
+      dockerfile: Dockerfile
+    command: celery -A core.queue.celery_app.celery_app worker -Q high,normal,low --loglevel=INFO
     env_file:
       - /home/jarvis/.config/ezeus-ai-2/env
     environment:
@@ -58,8 +54,6 @@ services:
       OLLAMA_TIMEOUT_SECONDS: "300"
       OLLAMA_MAX_INPUT_CHARS: "24000"
       OLLAMA_KEEP_ALIVE: "10m"
-    volumes:
-      - ocr_models:/home/ezeus/.paddlex
     networks:
       - backend
       - paperless
@@ -139,7 +133,6 @@ services:
 volumes:
   postgres_data:
   redis_data:
-  ocr_models:
   ollama_models:
 
 networks:

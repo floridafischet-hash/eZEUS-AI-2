@@ -24,8 +24,8 @@ PHASE_DESCRIPTIONS = {
     "DOWNLOAD_DOCUMENT": (
         "Originaldokument von Paperless in ein temporäres Arbeitsverzeichnis geladen."
     ),
-    "RUN_OCR": "Texterkennung für das Originaldokument ausgeführt.",
-    "WRITE_OCR": "Erkannten Text in Paperless zurückgeschrieben.",
+    "RUN_OCR": "OCR wird von Paperless übernommen (übersprungen).",
+    "WRITE_OCR": "OCR-Schreibphase übersprungen (Paperless verwaltet den Text).",
     "SELECT_TEMPLATE": "Passende Verarbeitungsvorlage anhand des Dokumenttyps gesucht.",
     "EXTRACT_FIELDS": "Konfigurierte Felder mit den vorgesehenen Extraktionsverfahren ermittelt.",
     "VALIDATE_RESULTS": "Extrahierte Werte validiert und eindeutige Ergebnisse ausgewählt.",
@@ -58,8 +58,8 @@ DASHBOARD_CONTENT = """
   </article>
   <article class="metric-card">
     <div class="metric-label">Texterkennung</div>
-    <div class="metric-value">PaddleOCR</div>
-    <div class="metric-note">OCR-Verarbeitung auf eigener Infrastruktur</div>
+    <div class="metric-value">Paperless</div>
+    <div class="metric-note">OCR wird von Paperless-ngx übernommen</div>
   </article>
   <article class="metric-card">
     <div class="metric-label">Dokumentenquelle</div>

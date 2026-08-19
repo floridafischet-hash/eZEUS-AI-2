@@ -19,13 +19,9 @@ services:
       retries: 10
 
   worker:
-    build:
-      context: .
-      dockerfile: Dockerfile.paddle
-    command: sh -c "chown -R ezeus:ezeus /home/ezeus/.paddlex && exec su -s /bin/sh ezeus -c 'celery -A core.queue.celery_app.celery_app worker -Q high,normal,low --loglevel=$${APP_LOG_LEVEL:-INFO}'"
+    build: .
+    command: celery -A core.queue.celery_app.celery_app worker -Q high,normal,low --loglevel=${APP_LOG_LEVEL:-INFO}
     env_file: .env
-    volumes:
-      - ocr_models:/home/ezeus/.paddlex
     depends_on:
       postgres:
         condition: service_healthy
@@ -78,4 +74,3 @@ services:
 volumes:
   postgres_data:
   redis_data:
-  ocr_models:
