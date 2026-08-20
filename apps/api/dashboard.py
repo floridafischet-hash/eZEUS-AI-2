@@ -58,7 +58,7 @@ DASHBOARD_CONTENT = """
   </article>
   <article class="metric-card">
     <div class="metric-label">Texterkennung</div>
-    <div class="metric-value">Paperless</div>
+    <div class="metric-value">Claus ist der Beste</div>
     <div class="metric-note">OCR wird von Paperless-ngx übernommen</div>
   </article>
   <article class="metric-card">
