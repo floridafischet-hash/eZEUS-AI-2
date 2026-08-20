@@ -77,6 +77,8 @@ def page_shell(
           <span class="topbar-product">eZEUS-AI-2</span>
           <span class="topbar-separator" aria-hidden="true"></span>
           <span class="topbar-page">{escape(title)}</span>
+          <span class="topbar-separator" aria-hidden="true"></span>
+          <span class="topbar-page">Du musst Peiffen Lernen!</span>
         </div>
         <div class="topbar-account">
           <div class="account-copy">
