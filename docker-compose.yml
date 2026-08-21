@@ -3,6 +3,8 @@ services:
     build: .
     command: sh -c "alembic upgrade head && uvicorn apps.api.main:app --host $${APP_HOST:-0.0.0.0} --port $${APP_PORT:-8080} --log-level $${APP_LOG_LEVEL:-INFO}"
     env_file: .env
+    environment:
+      DATABASE_URL: "postgresql+psycopg://ezeus:example-postgres-password-change-me@postgres:5432/ezeus"
     ports:
       - "${APP_PORT:-8080}:${APP_PORT:-8080}"
     depends_on:
@@ -22,6 +24,8 @@ services:
     build: .
     command: celery -A core.queue.celery_app.celery_app worker -Q high,normal,low --loglevel=${APP_LOG_LEVEL:-INFO}
     env_file: .env
+    environment:
+      DATABASE_URL: "postgresql+psycopg://ezeus:example-postgres-password-change-me@postgres:5432/ezeus"
     depends_on:
       postgres:
         condition: service_healthy

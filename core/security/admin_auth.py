@@ -19,20 +19,9 @@ basic_auth = HTTPBasic(auto_error=False)
 
 @dataclass(frozen=True)
 class AdminPrincipal:
-    user_id: UUID | None
+    user_id: UUID
     username: str
     role: str
-    legacy: bool = False
-
-
-def _valid_legacy_secret(provided: str | None) -> bool:
-    expected = get_settings().admin_api_secret
-    if not expected or not provided:
-        return False
-    return hmac.compare_digest(
-        hashlib.sha256(provided.encode()).digest(),
-        hashlib.sha256(expected.encode()).digest(),
-    )
 
 
 def _valid_proxy_secret(provided: str | None) -> bool:
@@ -48,21 +37,11 @@ def _valid_proxy_secret(provided: str | None) -> bool:
 def require_admin_user(
     db: Annotated[Session, Depends(get_db)],
     credentials: Annotated[HTTPBasicCredentials | None, Depends(basic_auth)],
-    x_ezeus_admin_secret: str | None = Header(default=None),
     x_ezeus_admin_user: str | None = Header(default=None),
     x_ezeus_admin_password: str | None = Header(default=None),
     x_ezeus_proxy_user: str | None = Header(default=None),
     x_ezeus_proxy_secret: str | None = Header(default=None),
 ) -> AdminPrincipal:
-    if _valid_legacy_secret(x_ezeus_admin_secret):
-        active_admin = db.scalar(
-            select(AdminUser.id).where(
-                AdminUser.role == "admin",
-                AdminUser.enabled.is_(True),
-            )
-        )
-        if active_admin is None:
-            return AdminPrincipal(None, "system-admin", "admin", legacy=True)
     if x_ezeus_proxy_user and _valid_proxy_secret(x_ezeus_proxy_secret):
         proxy_user = db.scalar(
             select(AdminUser).where(

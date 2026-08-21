@@ -134,8 +134,6 @@ def admin_users_page() -> str:
           <input id="login-user" autocomplete="username"></div>
         <div><label for="login-password">Passwort</label>
           <input id="login-password" type="password" autocomplete="current-password"></div>
-        <div class="full"><label for="legacy-secret">Bootstrap-Admin-Secret</label>
-          <input id="legacy-secret" type="password"></div>
       </div>
       <div class="form-actions"><button id="load" type="button">Konten neu laden</button></div>
     </details>
@@ -161,9 +159,6 @@ def admin_users_page() -> str:
     if(username&&password) {
       result["X-EZEUS-Admin-User"]=username;
       result["X-EZEUS-Admin-Password"]=password;
-    } else {
-      const secret=document.getElementById("legacy-secret").value;
-      if(secret) result["X-EZEUS-Admin-Secret"]=secret;
     }
     if(json) result["Content-Type"]="application/json";
     return result;

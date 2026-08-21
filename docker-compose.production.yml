@@ -9,6 +9,7 @@ services:
     env_file:
       - /home/jarvis/.config/ezeus-ai-2/env
     environment:
+      DATABASE_URL: "postgresql+psycopg://ezeus:example-postgres-password-change-me@postgres:5432/ezeus"
       OLLAMA_ENABLED: "true"
       OLLAMA_BASE_URL: "http://ollama:11434"
       OLLAMA_MODEL: "qwen3:4b"
@@ -48,6 +49,7 @@ services:
     env_file:
       - /home/jarvis/.config/ezeus-ai-2/env
     environment:
+      DATABASE_URL: "postgresql+psycopg://ezeus:example-postgres-password-change-me@postgres:5432/ezeus"
       OLLAMA_ENABLED: "true"
       OLLAMA_BASE_URL: "http://ollama:11434"
       OLLAMA_MODEL: "qwen3:4b"

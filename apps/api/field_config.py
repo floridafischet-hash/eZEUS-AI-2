@@ -143,8 +143,6 @@ def field_configuration_page(instance_slug: str) -> str:
           <input id="username" autocomplete="username"></div>
         <div><label for="password">Passwort</label>
           <input id="password" type="password" autocomplete="current-password"></div>
-        <div class="full"><label for="secret">Bootstrap-Admin-Secret</label>
-          <input id="secret" type="password" autocomplete="current-password"></div>
       </div>
       <div class="form-actions"><button id="load" type="button">Neu laden</button></div>
     </details>
@@ -188,9 +186,6 @@ def field_configuration_page(instance_slug: str) -> str:
     if(username&&password) {
       headers["X-EZEUS-Admin-User"]=username;
       headers["X-EZEUS-Admin-Password"]=password;
-    } else {
-      const secret=document.getElementById("secret").value;
-      if(secret) headers["X-EZEUS-Admin-Secret"]=secret;
     }
     if(json) headers["Content-Type"]="application/json"; return headers;
   }

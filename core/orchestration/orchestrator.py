@@ -92,7 +92,7 @@ class Orchestrator:
                 },
             )
 
-            active_phase = self._start_phase(job, JobPhase.DOWNLOAD_DOCUMENT)
+            active_phase = self._start_phase(job, JobPhase.READ_DOCUMENT_TEXT)
             paperless_text = (remote.content or "").strip()
             if paperless_text:
                 extraction_text = paperless_text
@@ -100,8 +100,8 @@ class Orchestrator:
                 self._finish_phase(
                     active_phase,
                     metadata={
-                        "skipped": True,
-                        "reason": "Paperless OCR content is already available",
+                        "source": "paperless_content",
+                        "characters": len(paperless_text),
                     },
                 )
             else:
@@ -109,22 +109,8 @@ class Orchestrator:
                 extraction_source = "none"
                 self._finish_phase(
                     active_phase,
-                    metadata={
-                        "skipped": True,
-                        "reason": "No Paperless OCR content available; OCR is handled by Paperless",
-                    },
+                    metadata={"source": "none", "reason": "Kein Textinhalt in Paperless vorhanden"},
                 )
-
-            active_phase = self._start_phase(job, JobPhase.RUN_OCR)
-            self._finish_phase(
-                active_phase,
-                metadata={"skipped": True, "reason": "OCR is handled by Paperless"},
-            )
-            active_phase = self._start_phase(job, JobPhase.WRITE_OCR)
-            self._finish_phase(
-                active_phase,
-                metadata={"skipped": True, "content_written": False, "reason": "OCR is handled by Paperless"},
-            )
 
             active_phase = self._start_phase(job, JobPhase.SELECT_TEMPLATE)
             paperless_fields = await connector.list_custom_fields()

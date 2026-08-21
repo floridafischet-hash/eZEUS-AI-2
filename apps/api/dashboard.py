@@ -21,11 +21,9 @@ router = APIRouter(tags=["dashboard"])
 PHASE_DESCRIPTIONS = {
     "RECEIVE_EVENT": "Webhook empfangen, geprüft und als Verarbeitungsauftrag gespeichert.",
     "LOAD_DOCUMENT": "Dokumentmetadaten über die API der zugeordneten Paperless-Instanz geladen.",
-    "DOWNLOAD_DOCUMENT": (
-        "Originaldokument von Paperless in ein temporäres Arbeitsverzeichnis geladen."
+    "READ_DOCUMENT_TEXT": (
+        "Textinhalt aus Paperless gelesen; Quelle und Zeichenanzahl werden protokolliert."
     ),
-    "RUN_OCR": "OCR wird von Paperless übernommen (übersprungen).",
-    "WRITE_OCR": "OCR-Schreibphase übersprungen (Paperless verwaltet den Text).",
     "SELECT_TEMPLATE": "Passende Verarbeitungsvorlage anhand des Dokumenttyps gesucht.",
     "EXTRACT_FIELDS": "Konfigurierte Felder mit den vorgesehenen Extraktionsverfahren ermittelt.",
     "VALIDATE_RESULTS": "Extrahierte Werte validiert und eindeutige Ergebnisse ausgewählt.",
@@ -58,7 +56,7 @@ DASHBOARD_CONTENT = """
   </article>
   <article class="metric-card">
     <div class="metric-label">Texterkennung</div>
-    <div class="metric-value">Claus ist der Beste</div>
+    <div class="metric-value">Paperless-ngx</div>
     <div class="metric-note">OCR wird von Paperless-ngx übernommen</div>
   </article>
   <article class="metric-card">

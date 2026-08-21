@@ -8,8 +8,9 @@ gespeichert. Die Anwendung verwendet über TLS die dedizierten Header
 Nginx-Basic-Authentication ihren eigenen `Authorization`-Header unabhängig
 verwenden kann. `admin` darf
 Konfigurationen und Konten ändern; `viewer` darf Konfigurationen nur lesen und
-Vorschauen ausführen. Das bestehende `ADMIN_API_SECRET` dient ausschließlich
-dem Bootstrap des ersten Administratorkontos.
+Vorschauen ausführen. Das erste Administratorkonto wird einmalig über
+`python -m scripts.create_admin_user <benutzername>` in einer administrativen
+Shell angelegt; die HTTP-API besitzt keinen gemeinsamen Bootstrap-Schlüssel.
 
 Bei vorgeschalteter HTTP-Basic-Authentifizierung kann der Reverse Proxy den
 bereits geprüften Benutzernamen über `X-EZEUS-Proxy-User` weiterreichen. Die
@@ -26,12 +27,8 @@ Alle Änderungen werden mit Akteur, Mandant, Zeitpunkt und Vorher-/Nachherwert
 in `audit_entries` gespeichert.
 
 Webhook-Secrets werden mit konstantem Zeitverhalten verglichen. Paperless-TLS
-ist standardmäßig aktiv. Downloads besitzen eine Größenbegrenzung und temporäre
-Dateien liegen in automatisch bereinigten Verzeichnissen. Externe Dateinamen
-werden vor dem temporären Speichern auf den reinen Basisnamen reduziert. Die API
-läuft nicht als Root. Der Worker wechselt nach der Berechtigungsanpassung des
-OCR-Modell-Volumes zum Benutzer `ezeus`. Vor jedem Schreiben wird der
-Remotezustand erneut geladen.
+ist standardmäßig aktiv. Die API läuft nicht als Root. Vor jedem Schreiben wird
+der Remotezustand erneut geladen.
 
 Vor einem Produktivbetrieb fehlen noch:
 

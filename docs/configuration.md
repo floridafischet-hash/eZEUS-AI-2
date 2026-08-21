@@ -10,13 +10,13 @@ Alle Werte werden über Umgebungsvariablen gelesen.
 - `PAPERLESS_BASE_URL`: Paperless-API-Basisadresse
 - `PAPERLESS_API_TOKEN`: API-Token; in Produktion Pflicht
 - `PAPERLESS_WEBHOOK_SECRET`: Webhook-Secret; in Produktion Pflicht
-- `ADMIN_API_SECRET`: Secret für administrative API-Aufrufe; in Produktion Pflicht
+- `PROXY_AUTH_SECRET`: optionales internes Secret für einen vorgeschalteten,
+  vertrauenswürdigen Authentifizierungs-Proxy
 - `CREDENTIAL_ENCRYPTION_KEY`: URL-sicherer Fernet-Schlüssel zur Verschlüsselung
   gespeicherter Paperless-Zugangsdaten; in Produktion Pflicht
 - `PUBLIC_WEBHOOK_BASE_URL`: optionale öffentliche Basisadresse für die auf der
   Verwaltungsseite angezeigten Webhook-URLs
 - `PAPERLESS_VERIFY_TLS`: standardmäßig `true`
-- `MAX_DOCUMENT_BYTES`: maximale Downloadgröße (wird nur für interne Größenprüfungen genutzt)
 - `JOB_MAX_RETRIES`, `JOB_RETRY_DELAYS_SECONDS`: technische Retries
 - `LOCAL_ONLY`: verhindert Cloud-Verarbeitung
 - `OLLAMA_ENABLED`: aktiviert den lokalen LLM-Extraktionsprovider

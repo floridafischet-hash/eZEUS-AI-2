@@ -12,10 +12,29 @@ from connectors.paperless.connector import PaperlessConnector
 from core.config.settings import get_settings
 from core.db.base import Base
 from core.db.session import get_db
+from core.models.admin_user import AdminUser
 from core.models.audit import AuditEntry
 from core.models.document import Document
 from core.models.paperless_instance import PaperlessInstance
 from core.queue.adapter import QueueAdapter
+from core.security.passwords import hash_password
+
+ADMIN_HEADERS = {
+    "X-EZEUS-Admin-User": "test-admin",
+    "X-EZEUS-Admin-Password": "test-admin-password",
+}
+
+
+def _seed_admin(session_factory: sessionmaker[Session]) -> None:
+    with session_factory.begin() as db:
+        db.add(
+            AdminUser(
+                username="test-admin",
+                password_hash=hash_password("test-admin-password"),
+                role="admin",
+                enabled=True,
+            )
+        )
 
 
 def test_instance_credentials_are_encrypted_and_webhook_selects_source(
@@ -28,6 +47,7 @@ def test_instance_credentials_are_encrypted_and_webhook_selects_source(
     )
     Base.metadata.create_all(engine)
     session_factory = sessionmaker(bind=engine, class_=Session)
+    _seed_admin(session_factory)
 
     def database() -> Generator[Session, None, None]:
         with session_factory() as session:
@@ -35,7 +55,6 @@ def test_instance_credentials_are_encrypted_and_webhook_selects_source(
 
     encryption_key = Fernet.generate_key().decode()
     monkeypatch.setenv("CREDENTIAL_ENCRYPTION_KEY", encryption_key)
-    monkeypatch.setenv("ADMIN_API_SECRET", "test-admin-secret")
     get_settings.cache_clear()
     monkeypatch.setattr(
         QueueAdapter,
@@ -47,7 +66,7 @@ def test_instance_credentials_are_encrypted_and_webhook_selects_source(
         client = TestClient(app)
         create_response = client.post(
             "/api/paperless-instances",
-            headers={"X-EZEUS-Admin-Secret": "test-admin-secret"},
+            headers=ADMIN_HEADERS,
             json={
                 "name": "Externes Paperless",
                 "base_url": "https://paperless.example.test",
@@ -68,7 +87,7 @@ def test_instance_credentials_are_encrypted_and_webhook_selects_source(
 
         listed = client.get(
             "/api/paperless-instances",
-            headers={"X-EZEUS-Admin-Secret": "test-admin-secret"},
+            headers=ADMIN_HEADERS,
         )
         assert listed.status_code == 200
         serialized = str(listed.json())
@@ -116,8 +135,8 @@ def test_instance_admin_page_is_available() -> None:
     assert 'href="/static/ezeus-ui.css"' in response.text
     assert 'src="/static/ezeus-logo.png"' in response.text
     assert response.text.count('<form id="instance-form">') == 1
-    assert 'id="admin-secret"' in response.text
-    assert "Bootstrap-Admin-Secret" in response.text
+    assert 'id="admin-username"' in response.text
+    assert 'id="admin-password"' in response.text
     assert 'id="name"' in response.text
     assert 'id="base-url"' in response.text
     assert 'id="api-token"' in response.text
@@ -139,18 +158,18 @@ def test_instance_can_be_edited_without_exposing_or_replacing_secrets(
     )
     Base.metadata.create_all(engine)
     session_factory = sessionmaker(bind=engine, class_=Session)
+    _seed_admin(session_factory)
 
     def database() -> Generator[Session, None, None]:
         with session_factory() as session:
             yield session
 
     monkeypatch.setenv("CREDENTIAL_ENCRYPTION_KEY", Fernet.generate_key().decode())
-    monkeypatch.setenv("ADMIN_API_SECRET", "test-admin-secret")
     get_settings.cache_clear()
     app.dependency_overrides[get_db] = database
     try:
         client = TestClient(app)
-        headers = {"X-EZEUS-Admin-Secret": "test-admin-secret"}
+        headers = ADMIN_HEADERS
         created = client.post(
             "/api/paperless-instances",
             headers=headers,
@@ -224,13 +243,13 @@ def test_unscoped_webhook_rejects_secret_shared_by_multiple_instances(
     )
     Base.metadata.create_all(engine)
     session_factory = sessionmaker(bind=engine, class_=Session)
+    _seed_admin(session_factory)
 
     def database() -> Generator[Session, None, None]:
         with session_factory() as session:
             yield session
 
     monkeypatch.setenv("CREDENTIAL_ENCRYPTION_KEY", Fernet.generate_key().decode())
-    monkeypatch.setenv("ADMIN_API_SECRET", "test-admin-secret")
     get_settings.cache_clear()
     monkeypatch.setattr(
         QueueAdapter,
@@ -247,7 +266,7 @@ def test_unscoped_webhook_rejects_secret_shared_by_multiple_instances(
         ):
             response = client.post(
                 "/api/paperless-instances",
-                headers={"X-EZEUS-Admin-Secret": "test-admin-secret"},
+                headers=ADMIN_HEADERS,
                 json={
                     "name": name,
                     "base_url": base_url,
@@ -280,19 +299,19 @@ def _create_instance_for_test_connection(monkeypatch) -> tuple:
     )
     Base.metadata.create_all(engine)
     session_factory = sessionmaker(bind=engine, class_=Session)
+    _seed_admin(session_factory)
 
     def database() -> Generator[Session, None, None]:
         with session_factory() as session:
             yield session
 
     monkeypatch.setenv("CREDENTIAL_ENCRYPTION_KEY", Fernet.generate_key().decode())
-    monkeypatch.setenv("ADMIN_API_SECRET", "test-admin-secret")
     get_settings.cache_clear()
     app.dependency_overrides[get_db] = database
     client = TestClient(app)
     created = client.post(
         "/api/paperless-instances",
-        headers={"X-EZEUS-Admin-Secret": "test-admin-secret"},
+        headers=ADMIN_HEADERS,
         json={
             "name": "Verbindungstest",
             "base_url": "https://paperless.example.test",
@@ -322,7 +341,7 @@ def test_test_connection_reports_missing_workflow(monkeypatch) -> None:
     try:
         response = client.post(
             f"/api/paperless-instances/{created['id']}/test",
-            headers={"X-EZEUS-Admin-Secret": "test-admin-secret"},
+            headers=ADMIN_HEADERS,
         )
         assert response.status_code == 200
         body = response.json()
@@ -349,7 +368,7 @@ def test_test_connection_warns_about_update_trigger_loop(monkeypatch) -> None:
     try:
         response = client.post(
             f"/api/paperless-instances/{created['id']}/test",
-            headers={"X-EZEUS-Admin-Secret": "test-admin-secret"},
+            headers=ADMIN_HEADERS,
         )
         assert response.status_code == 200
         body = response.json()
@@ -377,7 +396,7 @@ def test_test_connection_confirms_correctly_configured_workflow(monkeypatch) -> 
     try:
         response = client.post(
             f"/api/paperless-instances/{created['id']}/test",
-            headers={"X-EZEUS-Admin-Secret": "test-admin-secret"},
+            headers=ADMIN_HEADERS,
         )
         assert response.status_code == 200
         body = response.json()

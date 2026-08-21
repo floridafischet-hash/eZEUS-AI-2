@@ -13,5 +13,4 @@ def test_production_rejects_example_credentials() -> None:
             ),
             paperless_api_token="example-paperless-api-token",
             paperless_webhook_secret="example-webhook-secret",
-            admin_api_secret="example-admin-api-secret",
         )

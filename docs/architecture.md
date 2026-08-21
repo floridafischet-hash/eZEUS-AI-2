@@ -26,9 +26,8 @@ reine eZEUS-Einstellung; deaktivierte Einträge werden in Paperless weder
 geändert noch entfernt.
 
 `AdminUser` speichert individuelle Konten mit Scrypt-Passworthash, Rolle und
-Aktivstatus. Das Bootstrap-Secret authentifiziert nur, solange noch kein
-aktiver Administrator existiert. Damit bleibt die Ersteinrichtung möglich,
-ohne im laufenden Betrieb ein gemeinsames Administrationskennwort zu verwenden.
+Aktivstatus. Das erste Konto wird außerhalb der HTTP-API mit dem interaktiven
+Kommando `python -m scripts.create_admin_user <benutzername>` angelegt.
 
 Der Webhook normalisiert Paperless-Ereignisse und erzeugt ausschließlich
 persistente Jobs. Celery transportiert Job-IDs über Redis; PostgreSQL bleibt die
@@ -37,14 +36,12 @@ Quelle für Status, Phasen, Ergebnisse und Auditdaten.
 Der Worker führt folgende Phasen aus:
 
 ```text
-LOAD_DOCUMENT -> DOWNLOAD_DOCUMENT (übersprungen) -> RUN_OCR (übersprungen)
--> WRITE_OCR (übersprungen) -> SELECT_TEMPLATE -> EXTRACT_FIELDS
+LOAD_DOCUMENT -> READ_DOCUMENT_TEXT -> SELECT_TEMPLATE -> EXTRACT_FIELDS
 -> VALIDATE_RESULTS -> RELOAD_METADATA -> WRITE_METADATA -> CLEANUP -> COMPLETE
 ```
 
-Die Phasen `DOWNLOAD_DOCUMENT`, `RUN_OCR` und `WRITE_OCR` werden immer als
-übersprungen markiert. Die Texterkennung übernimmt vollständig Paperless-ngx;
-eZEUS liest den von Paperless bereitgestellten Text direkt aus den Metadaten.
+Die Texterkennung übernimmt vollständig Paperless-ngx; eZEUS liest den von
+Paperless bereitgestellten Text in `READ_DOCUMENT_TEXT` direkt aus den Metadaten.
 Liefert Paperless keinen Text, schließt der Job mit `COMPLETED_WITH_WARNINGS` ab.
 
 Der Orchestrator greift über `PaperlessConnector`, `TemplateService` und

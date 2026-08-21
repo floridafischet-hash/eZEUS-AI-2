@@ -359,8 +359,6 @@ def instance_admin_page() -> str:
           <input id="admin-username" autocomplete="username"></div>
         <div><label for="admin-password">Passwort</label>
           <input id="admin-password" type="password" autocomplete="current-password"></div>
-        <div class="full"><label for="admin-secret">Bootstrap-Admin-Secret</label>
-          <input id="admin-secret" type="password" autocomplete="current-password"></div>
       </div>
     </details>
   </div>
@@ -428,9 +426,6 @@ def instance_admin_page() -> str:
     if(username&&password) {
       result["X-EZEUS-Admin-User"]=username;
       result["X-EZEUS-Admin-Password"]=password;
-    } else {
-      const secret=document.getElementById("admin-secret").value;
-      if(secret) result["X-EZEUS-Admin-Secret"]=secret;
     }
     if(json) result["Content-Type"]="application/json";
     return result;

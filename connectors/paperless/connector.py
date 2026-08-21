@@ -196,13 +196,6 @@ class PaperlessConnector(DocumentConnector):
             custom_fields=fields,
         )
 
-    async def download_original(self, external_document_id: str) -> bytes:
-        response = await self._request("GET", f"/api/documents/{external_document_id}/download/")
-        settings = get_settings()
-        if len(response.content) > settings.max_document_bytes:
-            raise ValidationError("Document exceeds the configured size limit")
-        return response.content
-
     async def list_custom_fields(self) -> list[ConnectorCustomField]:
         fields: list[ConnectorCustomField] = []
         url = "/api/custom_fields/?page_size=100"
@@ -313,17 +306,6 @@ class PaperlessConnector(DocumentConnector):
             next_url = data.get("next")
             url = str(next_url) if next_url else ""
         return correspondents
-
-    async def write_content(self, external_document_id: str, content: str) -> bool:
-        current = await self.get_document(external_document_id)
-        if current.content:
-            return False
-        await self._request(
-            "PATCH",
-            f"/api/documents/{external_document_id}/",
-            json={"content": content},
-        )
-        return True
 
     async def write_title(self, external_document_id: str, title: str) -> bool:
         current = await self.get_document(external_document_id)

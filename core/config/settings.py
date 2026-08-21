@@ -19,7 +19,6 @@ class Settings(BaseSettings):
     paperless_base_url: str = "http://localhost:8000"
     paperless_api_token: str = ""
     paperless_webhook_secret: str = ""
-    admin_api_secret: str = ""
     proxy_auth_secret: str = ""
     credential_encryption_key: str = ""
     public_webhook_base_url: str = ""
@@ -35,8 +34,6 @@ class Settings(BaseSettings):
     ollama_max_input_chars: int = 24_000
     ollama_keep_alive: str = "10m"
 
-    max_document_bytes: int = 100 * 1024 * 1024
-
     job_max_retries: int = 3
     job_retry_delays_seconds: Annotated[tuple[int, ...], NoDecode] = Field(default=(30, 120, 600))
 
@@ -47,6 +44,8 @@ class Settings(BaseSettings):
             return tuple(int(item.strip()) for item in value.split(",") if item.strip())
         return value
 
+    postgres_password: str = ""
+
     @model_validator(mode="after")
     def validate_runtime_configuration(self) -> "Settings":
         if self.app_env == "production":
@@ -55,13 +54,11 @@ class Settings(BaseSettings):
                 for name, value in (
                     ("PAPERLESS_API_TOKEN", self.paperless_api_token),
                     ("PAPERLESS_WEBHOOK_SECRET", self.paperless_webhook_secret),
-                    ("ADMIN_API_SECRET", self.admin_api_secret),
                     ("CREDENTIAL_ENCRYPTION_KEY", self.credential_encryption_key),
+                    ("POSTGRES_PASSWORD", self.postgres_password),
                 )
                 if not value or value == "change-me" or value.startswith("example-")
             ]
-            if "example-" in self.database_url:
-                missing.append("DATABASE_URL")
             if missing:
                 raise ValueError(f"Missing secure configuration: {', '.join(missing)}")
         if self.cloud_ai_globally_allowed and self.local_only:

@@ -16,10 +16,3 @@ class ExtractionProvider(ABC):
 
     @abstractmethod
     async def extract(self, text: str, config: dict[str, object]) -> list[ExtractionCandidate]: ...
-
-
-class Validator(ABC):
-    id: str
-
-    @abstractmethod
-    def validate(self, candidate: ExtractionCandidate, config: dict[str, object]) -> bool: ...

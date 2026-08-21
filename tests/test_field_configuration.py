@@ -85,13 +85,21 @@ def field_config_client(
     )
     Base.metadata.create_all(engine)
     session_factory = sessionmaker(bind=engine, class_=Session)
+    with session_factory.begin() as db:
+        db.add(
+            AdminUser(
+                username="test-admin",
+                password_hash=hash_password("test-admin-password"),
+                role="admin",
+                enabled=True,
+            )
+        )
 
     def database() -> Generator[Session, None, None]:
         with session_factory() as session:
             yield session
 
     monkeypatch.setenv("CREDENTIAL_ENCRYPTION_KEY", Fernet.generate_key().decode())
-    monkeypatch.setenv("ADMIN_API_SECRET", "test-admin-secret")
     connector = FakeCustomFieldConnector()
     monkeypatch.setattr(
         "apps.api.field_config.connector_for_instance",
@@ -121,10 +129,10 @@ def create_instance(client: TestClient, name: str, host: str) -> dict[str, objec
     return response.json()
 
 
-def admin_headers(actor: str = "Administrator A") -> dict[str, str]:
+def admin_headers(_actor: str = "Administrator A") -> dict[str, str]:
     return {
-        "X-EZEUS-Admin-Secret": "test-admin-secret",
-        "X-EZEUS-Admin-Actor": actor,
+        "X-EZEUS-Admin-User": "test-admin",
+        "X-EZEUS-Admin-Password": "test-admin-password",
     }
 
 
@@ -249,7 +257,7 @@ def test_configuration_is_saved_reloaded_and_isolated_with_audit(
             select(AuditEntry).where(AuditEntry.instance_id == first_instance.id)
         ).all()
         assert audits
-        assert all(audit.actor == "system-admin" for audit in audits)
+        assert all(audit.actor == "test-admin" for audit in audits)
         assert all(audit.details["tenant_slug"] == first["slug"] for audit in audits)
 
 
@@ -352,7 +360,10 @@ def test_individual_accounts_enforce_roles_and_record_identity(
     )
     assert response.status_code == 201
     endpoint = f"/api/instances/{instance['slug']}/field-config"
-    assert client.get(endpoint, headers=admin_headers()).status_code == 401
+    assert client.get(
+        endpoint,
+        headers={"X-EZEUS-Admin-Secret": "retired-bootstrap-secret"},
+    ).status_code == 401
 
     viewer_headers = basic_headers("observer", "correct-horse-battery-staple")
     assert client.get(endpoint, headers=viewer_headers).status_code == 200

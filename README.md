@@ -111,9 +111,8 @@ Danach `.env` öffnen und **mindestens folgende Werte ändern** (siehe Abschnitt
 - `PAPERLESS_BASE_URL`
 - `PAPERLESS_API_TOKEN`
 - `PAPERLESS_WEBHOOK_SECRET`
-- `ADMIN_API_SECRET`
 
-> Alle vier Secrets müssen sich vom Beispielwert unterscheiden. Startet eZEUS mit `APP_ENV=production` und einem noch unveränderten Beispiel-Secret, verweigert die Anwendung absichtlich den Start (Sicherheitsmaßnahme).
+> Alle produktiven Secrets müssen sich vom Beispielwert unterscheiden. Startet eZEUS mit `APP_ENV=production` und einem noch unveränderten Beispiel-Secret, verweigert die Anwendung absichtlich den Start (Sicherheitsmaßnahme).
 
 ### 3.3 Container bauen und starten
 
@@ -130,6 +129,12 @@ Die Migrationen laufen beim Start des `api`-Containers automatisch (`alembic upg
 
 ```bash
 docker compose exec api alembic upgrade head
+```
+
+Danach das erste persönliche Administratorkonto interaktiv anlegen:
+
+```bash
+docker compose exec api python -m scripts.create_admin_user <benutzername>
 ```
 
 ### 3.5 Health-Check
@@ -157,7 +162,7 @@ curl http://localhost:8080/ready
 | `PAPERLESS_API_TOKEN` | API-Token aus Paperless (zum Lesen/Schreiben von Dokumenten) |
 | `PAPERLESS_WEBHOOK_SECRET` | Gemeinsames Geheimnis, das Paperless bei jedem Webhook-Aufruf mitschickt |
 | `PAPERLESS_VERIFY_TLS` | TLS-Zertifikatsprüfung bei HTTPS-Verbindung zu Paperless |
-| `ADMIN_API_SECRET` | Geheimnis für Admin-Endpunkte (Templates anlegen, Jobs erneut anstoßen) |
+| `PROXY_AUTH_SECRET` | Optionales internes Secret für einen vertrauenswürdigen Authentifizierungs-Proxy |
 | `LOCAL_ONLY` | Wenn `true`: keine Cloud-KI-Anbindung möglich, egal was sonst konfiguriert ist |
 | `CLOUD_AI_GLOBALLY_ALLOWED` | Muss `false` bleiben, solange `LOCAL_ONLY=true` — sonst verweigert die Anwendung den Start |
 | `OLLAMA_ENABLED` | Schaltet die lokale KI-Extraktion frei (`true`/`false`) |
@@ -167,7 +172,6 @@ curl http://localhost:8080/ready
 | `OLLAMA_MAX_INPUT_CHARS` | Wie viel Dokumenttext maximal an das Modell geschickt wird (längerer Text wird gekürzt) |
 | `JOB_MAX_RETRIES` | Wie oft ein fehlgeschlagener Job automatisch wiederholt wird |
 | `JOB_RETRY_DELAYS_SECONDS` | Wartezeiten zwischen den Wiederholungsversuchen, z. B. `30,120,600` |
-| `MAX_DOCUMENT_BYTES` | Obergrenze für Dateigröße (Standard ca. 100 MB) |
 
 ---
 
@@ -196,11 +200,12 @@ curl http://localhost:8080/ready
 
 ## 6. Erste Extraktions-Vorlage (Template) anlegen
 
-Eine Vorlage legt fest, welche Felder aus welchem Dokumenttyp wie extrahiert und geprüft werden. Angelegt wird sie über die Admin-API (`ADMIN_API_SECRET` erforderlich):
+Eine Vorlage legt fest, welche Felder aus welchem Dokumenttyp wie extrahiert und geprüft werden. Angelegt wird sie mit einem persönlichen Administratorkonto über die Admin-API:
 
 ```bash
 curl -X POST http://localhost:8080/api/templates \
-  -H "X-EZEUS-Admin-Secret: <euer Admin-Secret>" \
+  -H "X-EZEUS-Admin-User: <benutzername>" \
+  -H "X-EZEUS-Admin-Password: <passwort>" \
   -H "Content-Type: application/json" \
   -d '{
     "name": "Standard-Rechnung",
@@ -336,7 +341,8 @@ Fehlgeschlagene oder mit Warnungen abgeschlossene Jobs lassen sich über die Adm
 
 ```bash
 curl -X POST http://localhost:8080/api/jobs/<job-id>/retry \
-  -H "X-EZEUS-Admin-Secret: <euer Admin-Secret>"
+  -H "X-EZEUS-Admin-User: <benutzername>" \
+  -H "X-EZEUS-Admin-Password: <passwort>"
 ```
 
 Automatische Wiederholungsversuche sind zusätzlich über `JOB_MAX_RETRIES` und `JOB_RETRY_DELAYS_SECONDS` steuerbar (z. B. 3 Versuche nach 30 s, 2 min, 10 min).
@@ -368,7 +374,7 @@ eZEUS kann mehrere Paperless-ngx-Installationen gleichzeitig bedienen. Jede ange
 
 - Jede Instanz erhält automatisch die Standardfelder Korrespondent, Rechnungsnummer, Rechnungsdatum, Rechnungsbetrag, Kundennummer und Baustellennummer. Diese lassen sich unter „Feldkonfiguration“ pro Instanz anpassen (Bezeichnung, Typ, Pflichtstatus, Regex-/Keyword-/KI-Auslesung).
 - Vorhandene Paperless-Custom-Fields werden beim Öffnen der Feldkonfiguration übernommen; neue Felder werden automatisch mit passendem Datentyp in Paperless angelegt und dauerhaft verknüpft.
-- Zugriff erfolgt über persönliche Admin- bzw. Viewer-Konten (`/api/admin-users/page`). Die Rolle `admin` darf ändern, `viewer` darf nur lesen. Das Bootstrap-Secret (`ADMIN_API_SECRET`) funktioniert nur so lange, bis das erste persönliche Konto angelegt wurde.
+- Zugriff erfolgt über persönliche Admin- bzw. Viewer-Konten (`/api/admin-users/page`). Die Rolle `admin` darf ändern, `viewer` darf nur lesen.
 - Der bisherige globale Webhook (`/webhooks/paperless`, ohne Instanzkennung) bleibt für eine einzelne, über `.env` konfigurierte Instanz rückwärtskompatibel.
 
 ### Workflow manuell in Paperless anlegen
@@ -467,7 +473,7 @@ Weitere Informationen stehen in [docs/testing.md](docs/testing.md).
 - `/health` antwortet, `/ready` liefert aber HTTP 503: Die Antwort enthält den Status von Datenbank, Redis, Paperless und gegebenenfalls Ollama.
 - Paperless meldet HTTP 401: `PAPERLESS_API_TOKEN` und `PAPERLESS_BASE_URL` prüfen.
 - Der Webhook meldet HTTP 401: Header und `PAPERLESS_WEBHOOK_SECRET` müssen übereinstimmen.
-- Administrative Endpunkte melden HTTP 401: mit einem aktiven persönlichen Konto über die Verwaltungsoberfläche oder die Header `X-EZEUS-Admin-User` und `X-EZEUS-Admin-Password` anmelden. Nur vor dem ersten Konto kann `ADMIN_API_SECRET` als `X-EZEUS-Admin-Secret` verwendet werden.
+- Administrative Endpunkte melden HTTP 401: mit einem aktiven persönlichen Konto über die Verwaltungsoberfläche oder die Header `X-EZEUS-Admin-User` und `X-EZEUS-Admin-Password` anmelden. Falls noch kein Konto existiert, eines mit `python -m scripts.create_admin_user <benutzername>` anlegen.
 - Job endet mit Warnhinweis, Felder fehlen: Paperless hat keinen OCR-Text zum Dokument gespeichert — sicherstellen, dass Paperless-ngx OCR aktiviert hat und das Dokument korrekt verarbeitet wurde.
 - Das Ollama-Modell wird nicht als bereit erkannt: `OLLAMA_ENABLED`, `OLLAMA_BASE_URL` und `OLLAMA_MODEL` prüfen.
 - Portänderungen: `APP_PORT` in `.env` setzen und den Compose-Stack neu erstellen.
@@ -484,7 +490,7 @@ Weitere Informationen stehen in [docs/testing.md](docs/testing.md).
 - Reale Tokens, Passwörter und Schlüssel dürfen nicht versioniert oder in Images eingebettet werden.
 - TLS-Prüfung für Paperless ist standardmäßig aktiv.
 - Dashboard, Log-Endpunkt und OpenAPI-Dokumentation besitzen keine eigene Benutzerverwaltung. Ein produktiver Zugriff benötigt einen authentifizierenden TLS-Reverse-Proxy.
-- Administrationskonten verwenden Scrypt-Passworthashes und die Rollen `admin` und `viewer`. Das Bootstrap-Secret verliert nach dem ersten aktiven Administratorkonto seine Zugriffsberechtigung.
+- Administrationskonten verwenden Scrypt-Passworthashes und die Rollen `admin` und `viewer`. Es gibt keinen gemeinsamen Bootstrap-Schlüssel in der HTTP-API.
 - Der Paperless-Mock ist ausschließlich für lokale Entwicklung und Tests vorgesehen.
 - Container-Netze, Datenbank und Redis dürfen im Produktivbetrieb nicht öffentlich erreichbar sein.
 - Der Quellcode enthält keine produktiven Zugangsdaten. Die Werte in `.env.example` sind erkennbare Platzhalter.

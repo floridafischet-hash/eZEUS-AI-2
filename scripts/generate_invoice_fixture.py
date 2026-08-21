@@ -7,7 +7,7 @@ target = Path(__file__).parents[1] / "tests" / "fixtures" / "invoice.pdf"
 target.parent.mkdir(parents=True, exist_ok=True)
 
 canvas = Canvas(str(target), pagesize=A4)
-canvas.setTitle("eZEUS OCR Testrechnung")
+canvas.setTitle("eZEUS Testrechnung")
 canvas.setFont("Helvetica-Bold", 18)
 canvas.drawString(72, 770, "RECHNUNG")
 canvas.setFont("Helvetica", 13)
