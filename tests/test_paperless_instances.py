@@ -146,6 +146,80 @@ def test_instance_admin_page_is_available() -> None:
     assert 'id="edit-name"' in response.text
     assert 'id="edit-api-token"' in response.text
     assert "Bearbeiten" in response.text
+    assert "Endgültig löschen" in response.text
+
+
+def test_only_disabled_instance_can_be_deleted_and_deletion_is_audited(
+    monkeypatch,
+) -> None:
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    session_factory = sessionmaker(bind=engine, class_=Session)
+    _seed_admin(session_factory)
+
+    def database() -> Generator[Session, None, None]:
+        with session_factory() as session:
+            yield session
+
+    monkeypatch.setenv("CREDENTIAL_ENCRYPTION_KEY", Fernet.generate_key().decode())
+    get_settings.cache_clear()
+    app.dependency_overrides[get_db] = database
+    try:
+        client = TestClient(app)
+        created = client.post(
+            "/api/paperless-instances",
+            headers=ADMIN_HEADERS,
+            json={
+                "name": "Zu löschende Instanz",
+                "base_url": "https://delete.example.test",
+                "api_token": "api-token",
+                "webhook_secret": "webhook-secret-long-enough",
+            },
+        ).json()
+        endpoint = f"/api/paperless-instances/{created['id']}"
+
+        active_delete = client.delete(endpoint, headers=ADMIN_HEADERS)
+        assert active_delete.status_code == 409
+        assert "deaktiviert" in active_delete.json()["detail"]
+
+        disabled = client.patch(
+            endpoint,
+            headers=ADMIN_HEADERS,
+            json={"enabled": False},
+        )
+        assert disabled.status_code == 200
+
+        deleted = client.delete(endpoint, headers=ADMIN_HEADERS)
+        assert deleted.status_code == 204
+        assert deleted.content == b""
+
+        with session_factory() as db:
+            assert db.get(PaperlessInstance, UUID(created["id"])) is None
+            update_audit = db.scalar(
+                select(AuditEntry).where(
+                    AuditEntry.action == "UPDATE_PAPERLESS_INSTANCE"
+                )
+            )
+            assert update_audit is not None
+            assert update_audit.instance_id is None
+            delete_audit = db.scalar(
+                select(AuditEntry).where(
+                    AuditEntry.action == "DELETE_PAPERLESS_INSTANCE"
+                )
+            )
+            assert delete_audit is not None
+            assert delete_audit.actor == "test-admin"
+            assert delete_audit.instance_id is None
+            assert delete_audit.old_value["name"] == "Zu löschende Instanz"
+
+        assert client.delete(endpoint, headers=ADMIN_HEADERS).status_code == 404
+    finally:
+        app.dependency_overrides.clear()
+        get_settings.cache_clear()
 
 
 def test_instance_can_be_edited_without_exposing_or_replacing_secrets(

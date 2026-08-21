@@ -7,7 +7,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import HTMLResponse
 from pydantic import AnyHttpUrl, BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -222,6 +222,55 @@ def update_instance(
     db.commit()
     db.refresh(instance)
     return _serialize(instance)
+
+
+@router.delete(
+    "/api/paperless-instances/{instance_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete_instance(
+    instance_id: UUID,
+    db: Annotated[Session, Depends(get_db)],
+    principal: Annotated[AdminPrincipal, Depends(require_admin_secret)],
+) -> None:
+    instance = db.get(PaperlessInstance, instance_id)
+    if instance is None:
+        raise HTTPException(status_code=404, detail="Paperless-Instanz nicht gefunden")
+    if instance.enabled:
+        raise HTTPException(
+            status_code=409,
+            detail="Aktive Paperless-Instanzen müssen vor dem Löschen deaktiviert werden",
+        )
+
+    deleted_instance = {
+        "id": str(instance.id),
+        "name": instance.name,
+        "slug": instance.slug,
+        "base_url": instance.base_url,
+        "verify_tls": instance.verify_tls,
+        "enabled": instance.enabled,
+    }
+    # Historische Audit-Einträge bleiben erhalten, dürfen die endgültige
+    # Löschung der Instanz aber nicht über ihren Fremdschlüssel blockieren.
+    db.execute(
+        update(AuditEntry)
+        .where(AuditEntry.instance_id == instance.id)
+        .values(instance_id=None)
+    )
+    db.add(
+        AuditEntry(
+            actor=principal.username,
+            action="DELETE_PAPERLESS_INSTANCE",
+            entity_type="paperless_instance",
+            entity_id=str(instance.id),
+            target_system="paperless",
+            old_value=deleted_instance,
+            new_value=None,
+            details={"deleted_instance": deleted_instance},
+        )
+    )
+    db.delete(instance)
+    db.commit()
 
 
 @router.post(
@@ -521,6 +570,24 @@ def instance_admin_page() -> str:
             await loadInstances();
           })
         );
+        if(!item.enabled) {
+          actions.append(actionButton("Endgültig löschen","danger",async()=>{
+            if(!confirm(
+              `Instanz „${item.name}“ endgültig löschen? Die Zugangsdaten und `+
+              `Feldkonfigurationen werden unwiderruflich entfernt.`
+            )) return;
+            const result=await fetch(`/api/paperless-instances/${item.id}`,{
+              method:"DELETE",headers:headers()
+            });
+            if(!result.ok) {
+              let detail=`Löschen fehlgeschlagen: HTTP ${result.status}`;
+              try { detail=(await result.json()).detail||detail; } catch(error) {}
+              showMessage(detail,true); return;
+            }
+            showMessage(`Instanz „${item.name}“ wurde endgültig gelöscht.`);
+            await loadInstances();
+          }));
+        }
         card.append(info,actions); instances.append(card);
       });
     } catch(error) {
