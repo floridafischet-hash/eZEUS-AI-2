@@ -13,16 +13,36 @@ def upgrade() -> None:
     bind = op.get_bind()
     inspector = sa.inspect(bind)
 
-    # Remove phase records that belong to the removed OCR phases
-    op.execute(
-        sa.text("DELETE FROM job_phases WHERE phase IN ('RUN_OCR', 'WRITE_OCR')")
-    )
-    op.execute(
-        sa.text(
-            "UPDATE job_phases SET phase = 'READ_DOCUMENT_TEXT' "
-            "WHERE phase = 'DOWNLOAD_DOCUMENT'"
+    if bind.dialect.name == "postgresql":
+        op.execute(
+            sa.text(
+                "DELETE FROM job_phases "
+                "WHERE phase::text IN ('RUN_OCR', 'WRITE_OCR')"
+            )
         )
-    )
+        op.execute(
+            sa.text(
+                "DO $$ BEGIN "
+                "IF EXISTS ("
+                "SELECT 1 FROM pg_enum JOIN pg_type ON pg_enum.enumtypid = pg_type.oid "
+                "WHERE pg_type.typname = 'jobphase' "
+                "AND pg_enum.enumlabel = 'DOWNLOAD_DOCUMENT'"
+                ") THEN "
+                "ALTER TYPE jobphase RENAME VALUE "
+                "'DOWNLOAD_DOCUMENT' TO 'READ_DOCUMENT_TEXT'; "
+                "END IF; END $$"
+            )
+        )
+    else:
+        op.execute(
+            sa.text("DELETE FROM job_phases WHERE phase IN ('RUN_OCR', 'WRITE_OCR')")
+        )
+        op.execute(
+            sa.text(
+                "UPDATE job_phases SET phase = 'READ_DOCUMENT_TEXT' "
+                "WHERE phase = 'DOWNLOAD_DOCUMENT'"
+            )
+        )
 
     # Drop the ocr_artifacts table if it still exists
     if inspector.has_table("ocr_artifacts"):
@@ -31,6 +51,21 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    bind = op.get_bind()
+    if bind.dialect.name == "postgresql":
+        op.execute(
+            sa.text(
+                "ALTER TYPE jobphase RENAME VALUE "
+                "'READ_DOCUMENT_TEXT' TO 'DOWNLOAD_DOCUMENT'"
+            )
+        )
+    else:
+        op.execute(
+            sa.text(
+                "UPDATE job_phases SET phase = 'DOWNLOAD_DOCUMENT' "
+                "WHERE phase = 'READ_DOCUMENT_TEXT'"
+            )
+        )
     op.create_table(
         "ocr_artifacts",
         sa.Column("job_id", sa.Uuid(), nullable=False),
