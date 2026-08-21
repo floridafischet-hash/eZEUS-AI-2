@@ -32,7 +32,7 @@ async def test_ezeus_workflow_is_created_with_safe_public_webhook(monkeypatch) -
 
     result = await connector.ensure_ezeus_workflow(
         webhook_url=(
-            "https://webhook.example.sslip.io/"
+            "https://webhook.example.test/"
             "webhooks/paperless/paperless-example-test"
         ),
         webhook_secret="long-secret-value",
