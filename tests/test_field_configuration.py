@@ -1,4 +1,5 @@
 from collections.abc import Generator
+from uuid import UUID
 
 import pytest
 from cryptography.fernet import Fernet
@@ -387,6 +388,55 @@ def test_individual_accounts_enforce_roles_and_record_identity(
         )
         assert audit is not None
         assert audit.actor == "alice"
+
+
+def test_only_disabled_admin_accounts_can_be_permanently_deleted(
+    field_config_client,
+) -> None:
+    client, session_factory, _ = field_config_client
+    created = client.post(
+        "/api/admin-users",
+        headers=admin_headers(),
+        json={
+            "username": "retired-user",
+            "password": "correct-horse-battery-staple",
+            "role": "viewer",
+        },
+    )
+    assert created.status_code == 201
+    user_id = created.json()["id"]
+
+    active_delete = client.delete(f"/api/admin-users/{user_id}", headers=admin_headers())
+    assert active_delete.status_code == 409
+    assert "disabled" in active_delete.json()["detail"]
+
+    disabled = client.patch(
+        f"/api/admin-users/{user_id}",
+        headers=admin_headers(),
+        json={"enabled": False},
+    )
+    assert disabled.status_code == 200
+
+    deleted = client.delete(f"/api/admin-users/{user_id}", headers=admin_headers())
+    assert deleted.status_code == 200
+    assert "permanently deleted" in deleted.json()["detail"]
+
+    with session_factory() as db:
+        assert db.get(AdminUser, UUID(user_id)) is None
+        audit = db.scalar(
+            select(AuditEntry).where(
+                AuditEntry.action == "DELETE_ADMIN_USER",
+                AuditEntry.entity_id == user_id,
+            )
+        )
+        assert audit is not None
+        assert audit.actor == "test-admin"
+        assert audit.old_value["username"] == "retired-user"
+        assert audit.new_value is None
+
+    assert client.delete(
+        f"/api/admin-users/{user_id}", headers=admin_headers()
+    ).status_code == 404
 
 
 def test_missing_paperless_custom_field_is_created_and_linked(

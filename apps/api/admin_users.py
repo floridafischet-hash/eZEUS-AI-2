@@ -219,7 +219,24 @@ def admin_users_page() -> str:
             if(result.ok) await load();
           } finally { window.ezeusUI?.setBusy(save,false); }
         });
-        actions.append(role,enabledLabel,save); card.append(info,actions); usersRoot.append(card);
+        actions.append(role,enabledLabel,save);
+        if(!user.enabled) {
+          const remove=document.createElement("button"); remove.className="small danger";
+          remove.textContent="Endgültig löschen";
+          remove.addEventListener("click",async()=>{
+            if(!confirm(`Deaktiviertes Konto „${user.username}“ endgültig löschen?\n\nDieser Vorgang kann nicht rückgängig gemacht werden.`)) return;
+            window.ezeusUI?.setBusy(remove,true,"Löscht …");
+            try {
+              const result=await fetch(`/api/admin-users/${user.id}`,{
+                method:"DELETE",headers:headers()});
+              const body=await result.json();
+              show(body.detail||(result.ok?"Konto endgültig gelöscht.":`HTTP ${result.status}`),!result.ok);
+              if(result.ok) await load();
+            } finally { window.ezeusUI?.setBusy(remove,false); }
+          });
+          actions.append(remove);
+        }
+        card.append(info,actions); usersRoot.append(card);
       });
     } catch(error) {
       usersRoot.className="notice error"; usersRoot.textContent=`Laden fehlgeschlagen: ${error.message}`;
@@ -307,3 +324,36 @@ def update_admin_user(
     db.commit()
     db.refresh(user)
     return _serialize(user)
+
+
+@router.delete("/{user_id}")
+def delete_admin_user(
+    user_id: UUID,
+    db: Annotated[Session, Depends(get_db)],
+    principal: Annotated[AdminPrincipal, Depends(require_admin_secret)],
+) -> dict[str, str]:
+    user = db.get(AdminUser, user_id)
+    if user is None:
+        raise HTTPException(status_code=404, detail="Administrator account not found")
+    if principal.user_id == user.id:
+        raise HTTPException(status_code=409, detail="Administrators cannot delete themselves")
+    if user.enabled:
+        raise HTTPException(
+            status_code=409,
+            detail="Only disabled administrator accounts can be deleted",
+        )
+    old_value = _serialize(user)
+    db.add(
+        AuditEntry(
+            actor=principal.username,
+            action="DELETE_ADMIN_USER",
+            entity_type="admin_user",
+            entity_id=str(user.id),
+            target_system="ezeus",
+            old_value=old_value,
+            new_value=None,
+        )
+    )
+    db.delete(user)
+    db.commit()
+    return {"detail": "Administrator account permanently deleted"}
