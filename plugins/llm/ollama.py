@@ -6,6 +6,7 @@ from typing import Any
 import httpx
 
 from core.config.settings import get_settings
+from core.security.outbound import stream_capped, validate_outbound_url
 from plugins.base.interfaces import ExtractionCandidate, ExtractionProvider
 
 RESULT_SCHEMA: dict[str, object] = {
@@ -39,6 +40,7 @@ class OllamaExtractionProvider(ExtractionProvider):
         self.max_input_chars = max_input_chars or settings.ollama_max_input_chars
         self.keep_alive = keep_alive or settings.ollama_keep_alive
         self.client = client
+        self._settings = settings
 
     def _trim_text(self, text: str) -> str:
         if len(text) <= self.max_input_chars:
@@ -85,11 +87,19 @@ class OllamaExtractionProvider(ExtractionProvider):
         }
 
         owns_client = self.client is None
+        request_url = f"{self.base_url}/api/chat"
+        validate_outbound_url(request_url, settings=self._settings)
         client = self.client or httpx.AsyncClient(
             base_url=self.base_url, timeout=self.timeout_seconds
         )
         try:
-            response = await client.post("/api/chat", json=payload)
+            response, _ = await stream_capped(
+                client,
+                "POST",
+                request_url,
+                max_bytes=self._settings.ollama_max_response_bytes,
+                json=payload,
+            )
             response.raise_for_status()
             body = response.json()
         finally:

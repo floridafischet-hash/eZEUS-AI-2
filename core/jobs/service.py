@@ -8,6 +8,8 @@ from core.models.document import Document
 from core.models.enums import JobPhase, JobPriority, JobStatus, PhaseStatus
 from core.models.job import Job
 from core.models.job_phase import JobPhaseEntry
+from core.models.queue_outbox import QueueOutbox
+from core.queue.outbox import add_job_to_outbox
 
 
 class JobService:
@@ -16,13 +18,19 @@ class JobService:
 
     def create_from_event(
         self, event: DocumentImportedEvent, priority: JobPriority = JobPriority.NORMAL
-    ) -> tuple[Job, bool]:
+    ) -> tuple[Job, bool, QueueOutbox | None]:
         if event.source_event_id:
             existing = self.db.scalar(
                 select(Job).where(Job.source_event_id == event.source_event_id)
             )
             if existing:
-                return existing, existing.status == JobStatus.RECEIVED
+                if existing.status == JobStatus.RECEIVED:
+                    outbox = add_job_to_outbox(self.db, existing)
+                    self.db.commit()
+                    self.db.refresh(existing)
+                    self.db.refresh(outbox)
+                    return existing, True, outbox
+                return existing, False, None
 
         document = self.db.scalar(
             select(Document).where(
@@ -52,7 +60,7 @@ class JobService:
             )
         )
         if active_job:
-            return active_job, False
+            return active_job, False, None
 
         job = Job(
             document_id=document.id,
@@ -73,10 +81,8 @@ class JobService:
                 metadata_json={"connector": event.connector},
             )
         )
+        outbox = add_job_to_outbox(self.db, job)
         self.db.commit()
         self.db.refresh(job)
-        return job, True
-
-    def mark_queued(self, job: Job) -> None:
-        job.status = JobStatus.QUEUED
-        self.db.commit()
+        self.db.refresh(outbox)
+        return job, True, outbox

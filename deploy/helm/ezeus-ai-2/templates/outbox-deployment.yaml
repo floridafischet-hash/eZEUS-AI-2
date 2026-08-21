@@ -1,0 +1,62 @@
+{{- if .Values.outbox.enabled -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ezeus.fullname" . }}-outbox
+  labels:
+    {{- include "ezeus.labels" . | nindent 4 }}
+    app.kubernetes.io/component: outbox
+spec:
+  replicas: {{ .Values.outbox.replicaCount }}
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "ezeus.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: outbox
+  template:
+    metadata:
+      labels:
+        {{- include "ezeus.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: outbox
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+    spec:
+      serviceAccountName: {{ include "ezeus.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if .Values.migrations.enabled }}
+      initContainers:
+        - name: database-migrations
+          image: {{ include "ezeus.imageRef" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["python", "-m", "core.db.migrate"]
+          envFrom:
+            - configMapRef:
+                name: {{ include "ezeus.fullname" . }}-config
+            - secretRef:
+                name: {{ include "ezeus.secretName" . }}
+          resources:
+            requests: { cpu: 50m, memory: 96Mi }
+            limits: { cpu: 500m, memory: 512Mi }
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+      {{- end }}
+      containers:
+        - name: outbox
+          image: {{ include "ezeus.imageRef" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["python", "-m", "core.queue.outbox"]
+          envFrom:
+            - configMapRef:
+                name: {{ include "ezeus.fullname" . }}-config
+            - secretRef:
+                name: {{ include "ezeus.secretName" . }}
+          resources: {{- toYaml .Values.outbox.resources | nindent 12 }}
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+{{- end }}

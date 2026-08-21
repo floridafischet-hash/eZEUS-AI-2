@@ -16,7 +16,7 @@ document: dict[str, object] = {
     "mime_type": "application/pdf",
     "document_type": 7,
     "correspondent": None,
-    "content": "",
+    "content": "Rechnungsnummer: RE-2026-128\nGesamtbetrag: 123,45 EUR",
     "custom_fields": [
         {"field": 14, "value": None},
         {"field": 15, "value": None},
@@ -27,6 +27,8 @@ write_log: list[dict[str, object]] = []
 
 
 class PatchDocument(BaseModel):
+    title: str | None = None
+    correspondent: int | None = None
     content: str | None = None
     custom_fields: list[dict[str, object]] | None = None
 
@@ -59,6 +61,34 @@ def download_document(
 ) -> FileResponse:
     authenticate(authorization)
     return FileResponse(fixture, media_type="application/pdf", filename="invoice.pdf")
+
+
+@app.get("/api/custom_fields/")
+def list_custom_fields(
+    authorization: Annotated[str | None, Header()] = None,
+) -> dict[str, object]:
+    authenticate(authorization)
+    return {
+        "count": 2,
+        "next": None,
+        "results": [
+            {"id": 14, "name": "Rechnungsnummer", "data_type": "string"},
+            {
+                "id": 15,
+                "name": "Rechnungsbetrag",
+                "data_type": "monetary",
+                "extra_data": {"default_currency": "EUR"},
+            },
+        ],
+    }
+
+
+@app.get("/api/correspondents/")
+def list_correspondents(
+    authorization: Annotated[str | None, Header()] = None,
+) -> dict[str, object]:
+    authenticate(authorization)
+    return {"count": 0, "next": None, "results": []}
 
 
 @app.patch("/api/documents/128/")

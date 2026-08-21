@@ -14,6 +14,15 @@ async def test_regex_uses_capture_group_and_multiple_patterns() -> None:
 
 
 @pytest.mark.asyncio
+async def test_regex_interrupts_a_running_catastrophic_pattern() -> None:
+    with pytest.raises(TimeoutError, match="hard time limit"):
+        await RegexExtractionProvider().extract(
+            "a" * 20_000 + "!",
+            {"pattern": r"(a|aa)+$", "timeout_ms": 5},
+        )
+
+
+@pytest.mark.asyncio
 async def test_keyword_returns_every_occurrence_with_context() -> None:
     candidates = await KeywordExtractionProvider().extract(
         "Start\nGesamtbetrag\n10,00 EUR\nText\nZahlbetrag\n20,00 EUR",

@@ -15,6 +15,7 @@ from core.models.job import Job
 from core.models.job_phase import JobPhaseEntry
 from core.models.paperless_instance import PaperlessInstance
 from core.paperless.service import instance_slug_from_connector
+from core.security.redaction import redact_sensitive_text
 
 router = APIRouter(tags=["dashboard"])
 
@@ -328,7 +329,7 @@ def processing_logs(
             phase_name = phase_entry.phase.value
             error = phase_entry.error
             if error and job.error_message:
-                error = f"{error}: {job.error_message}"
+                error = redact_sensitive_text(f"{error}: {job.error_message}")
             steps.append(
                 {
                     "phase": phase_name,
@@ -359,7 +360,9 @@ def processing_logs(
                 "finished_at": job.finished_at.isoformat() if job.finished_at else None,
                 "duration_seconds": round(elapsed_seconds(started_at, finished_at, now), 1),
                 "error_type": job.error_type,
-                "error_message": job.error_message,
+                "error_message": (
+                    redact_sensitive_text(job.error_message) if job.error_message else None
+                ),
                 "worker_id": job.worker_id,
                 "retry_count": job.retry_count,
                 "steps": steps,

@@ -5,19 +5,26 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    command: sh -c "alembic upgrade head && uvicorn apps.api.main:app --host 0.0.0.0 --port 8080"
+    command: sh -c "python -m core.db.migrate && exec python -m apps.api"
+    init: true
     env_file:
-      - /home/jarvis/.config/ezeus-ai-2/env
+      - path: ${EZEUS_ENV_FILE:-.env}
+        required: true
     environment:
-      DATABASE_URL: "postgresql+psycopg://ezeus:${POSTGRES_PASSWORD}@postgres:5432/ezeus"
+      APP_ENV: production
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: ezeus
+      POSTGRES_DATABASE: ezeus
       OLLAMA_ENABLED: "true"
       OLLAMA_BASE_URL: "http://ollama:11434"
       OLLAMA_MODEL: "qwen3:4b"
       OLLAMA_TIMEOUT_SECONDS: "300"
       OLLAMA_MAX_INPUT_CHARS: "24000"
+      OLLAMA_MAX_RESPONSE_BYTES: "1048576"
       OLLAMA_KEEP_ALIVE: "10m"
     ports:
-      - "127.0.0.1:8082:8080"
+      - "127.0.0.1:${HOST_PORT:-8082}:${APP_PORT:-8080}"
     networks:
       backend:
       paperless:
@@ -36,25 +43,34 @@ services:
         - CMD
         - python
         - -c
-        - "import urllib.request; urllib.request.urlopen('http://localhost:8080/ready', timeout=5)"
+        - "import os, urllib.request; urllib.request.urlopen('http://localhost:' + os.getenv('APP_PORT', '8080') + '/ready', timeout=5)"
       interval: 15s
       timeout: 6s
       retries: 10
+    mem_limit: 1g
+    cpus: 1.0
 
   worker:
     build:
       context: .
       dockerfile: Dockerfile
-    command: celery -A core.queue.celery_app.celery_app worker -Q high,normal,low --loglevel=INFO
+    command: sh -c "python -m core.db.migrate && exec celery -A core.queue.celery_app.celery_app worker -Q high,normal,low --concurrency=$${CELERY_CONCURRENCY:-2} --loglevel=$${APP_LOG_LEVEL:-INFO}"
+    init: true
     env_file:
-      - /home/jarvis/.config/ezeus-ai-2/env
+      - path: ${EZEUS_ENV_FILE:-.env}
+        required: true
     environment:
-      DATABASE_URL: "postgresql+psycopg://ezeus:${POSTGRES_PASSWORD}@postgres:5432/ezeus"
+      APP_ENV: production
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: ezeus
+      POSTGRES_DATABASE: ezeus
       OLLAMA_ENABLED: "true"
       OLLAMA_BASE_URL: "http://ollama:11434"
       OLLAMA_MODEL: "qwen3:4b"
       OLLAMA_TIMEOUT_SECONDS: "300"
       OLLAMA_MAX_INPUT_CHARS: "24000"
+      OLLAMA_MAX_RESPONSE_BYTES: "1048576"
       OLLAMA_KEEP_ALIVE: "10m"
     networks:
       - backend
@@ -74,11 +90,43 @@ services:
       interval: 30s
       timeout: 10s
       retries: 5
+    mem_limit: 2g
+    cpus: 2.0
+
+  outbox:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: sh -c "python -m core.db.migrate && exec python -m core.queue.outbox"
+    init: true
+    env_file:
+      - path: ${EZEUS_ENV_FILE:-.env}
+        required: true
+    environment:
+      APP_ENV: production
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: ezeus
+      POSTGRES_DATABASE: ezeus
+    networks:
+      - backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    mem_limit: 256m
+    cpus: 0.5
 
   postgres:
-    image: postgres:16-alpine
+    image: postgres:16.15-alpine
     env_file:
-      - /home/jarvis/.config/ezeus-ai-2/env
+      - path: ${EZEUS_ENV_FILE:-.env}
+        required: true
+    environment:
+      POSTGRES_DB: ezeus
+      POSTGRES_USER: ezeus
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:
@@ -91,9 +139,11 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+    mem_limit: 1g
+    cpus: 1.0
 
   redis:
-    image: redis:7-alpine
+    image: redis:7.4.11-alpine
     command: redis-server --appendonly yes
     volumes:
       - redis_data:/data
@@ -108,9 +158,11 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+    mem_limit: 512m
+    cpus: 0.5
 
   ollama:
-    image: ollama/ollama:0.32.4
+    image: ollama/ollama:0.32.15
     environment:
       OLLAMA_CONTEXT_LENGTH: "8192"
       OLLAMA_KEEP_ALIVE: "10m"
@@ -141,4 +193,4 @@ networks:
   backend:
   paperless:
     external: true
-    name: paperless-ngx_default
+    name: ${PAPERLESS_DOCKER_NETWORK:-paperless-ngx_default}

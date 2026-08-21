@@ -64,9 +64,7 @@ STANDARD_FIELDS: tuple[dict[str, object], ...] = (
 STANDARD_PATTERNS: dict[str, list[str]] = {
     "invoice_number": cast(list[str], FIELD_DEFINITIONS["rechnungsnummer"]["patterns"]),
     "invoice_amount": cast(list[str], FIELD_DEFINITIONS["rechnungsbetrag"]["patterns"]),
-    "invoice_date": [
-        r"(?i)(?:Rechnungsdatum|Datum)\s*[:.]?\s*(\d{1,2}[./-]\d{1,2}[./-]\d{2,4})"
-    ],
+    "invoice_date": [r"(?i)(?:Rechnungsdatum|Datum)\s*[:.]?\s*(\d{1,2}[./-]\d{1,2}[./-]\d{2,4})"],
     "customer_number": [
         r"(?i)(?:Kundennummer|Kunden[\s.-]*(?:Nr|Nummer)\.?)"
         r"\s*[:.]?\s*([A-Z0-9][A-Z0-9./_-]*)"
@@ -408,9 +406,7 @@ class FieldConfigurationService:
                 "providers": providers,
                 "validators": self._validators(field),
                 "minimum_confidence": 0.55,
-                "selection_strategy": (
-                    "highest" if field.field_type == "money" else "first"
-                ),
+                "selection_strategy": ("highest" if field.field_type == "money" else "first"),
                 "required": field.required,
                 "value_mapping": value_mapping,
             }
@@ -438,11 +434,7 @@ class FieldConfigurationService:
             remote = None
             if field.external_field_id:
                 remote = next(
-                    (
-                        item
-                        for item in remote_fields
-                        if item.external_id == field.external_field_id
-                    ),
+                    (item for item in remote_fields if item.external_id == field.external_field_id),
                     None,
                 )
             if remote is None:
@@ -511,9 +503,7 @@ class FieldConfigurationService:
         ]
 
     @staticmethod
-    def _target_id(
-        field: InstanceFieldConfig, external_by_name: dict[str, int]
-    ) -> int | None:
+    def _target_id(field: InstanceFieldConfig, external_by_name: dict[str, int]) -> int | None:
         if field.external_field_id:
             try:
                 return int(field.external_field_id)

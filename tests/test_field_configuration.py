@@ -65,8 +65,7 @@ class FakeCustomFieldConnector:
     ) -> ConnectorCustomField:
         updated = ConnectorCustomField(external_field_id, name, data_type)
         self.fields = [
-            updated if field.external_id == external_field_id else field
-            for field in self.fields
+            updated if field.external_id == external_field_id else field for field in self.fields
         ]
         return updated
 
@@ -196,9 +195,10 @@ def test_url_slug_selects_tenant_and_requires_administrator(
     assert first_response.status_code == 200
     assert first_response.json()["instance"]["id"] == first["id"]
     assert second_response.json()["instance"]["id"] == second["id"]
-    assert client.get(
-        "/api/instances/not-a-tenant/field-config", headers=admin_headers()
-    ).status_code == 404
+    assert (
+        client.get("/api/instances/not-a-tenant/field-config", headers=admin_headers()).status_code
+        == 404
+    )
 
 
 def test_configuration_is_saved_reloaded_and_isolated_with_audit(
@@ -234,19 +234,19 @@ def test_configuration_is_saved_reloaded_and_isolated_with_audit(
 
     reloaded = client.get(endpoint, headers=admin_headers()).json()["fields"]
     assert reloaded == saved_fields
-    assert next(
-        field for field in reloaded if field["field_key"] == "invoice_amount"
-    )["enabled"] is False
+    assert (
+        next(field for field in reloaded if field["field_key"] == "invoice_amount")["enabled"]
+        is False
+    )
 
     second_fields = client.get(
         f"/api/instances/{second['slug']}/field-config", headers=admin_headers()
     ).json()["fields"]
-    assert next(
-        field for field in second_fields if field["field_key"] == "invoice_amount"
-    )["enabled"] is True
-    second_project_code = next(
-        field for field in second_fields if field["label"] == "Projektcode"
+    assert (
+        next(field for field in second_fields if field["field_key"] == "invoice_amount")["enabled"]
+        is True
     )
+    second_project_code = next(field for field in second_fields if field["label"] == "Projektcode")
     assert second_project_code["enabled"] is False
 
     with session_factory() as db:
@@ -269,9 +269,7 @@ def test_preview_validates_fields_without_saving(field_config_client) -> None:
     fields = client.get(endpoint, headers=admin_headers()).json()["fields"]
     fields[0]["label"] = "Geänderter Vorschautext"
 
-    preview = client.post(
-        f"{endpoint}/preview", headers=admin_headers(), json={"fields": fields}
-    )
+    preview = client.post(f"{endpoint}/preview", headers=admin_headers(), json={"fields": fields})
     assert preview.status_code == 200
     assert preview.json()["fields"][0]["label"] == "Geänderter Vorschautext"
 
@@ -302,15 +300,11 @@ async def test_runtime_extraction_uses_only_tenant_configuration(
             field["required"] = True
             field["ai_enabled"] = True
             field["external_field_id"] = "88"
-    assert client.put(
-        endpoint, headers=admin_headers(), json={"fields": fields}
-    ).status_code == 200
+    assert client.put(endpoint, headers=admin_headers(), json={"fields": fields}).status_code == 200
 
     with session_factory() as db:
         instance = db.scalar(
-            select(PaperlessInstance).where(
-                PaperlessInstance.slug == instance_data["slug"]
-            )
+            select(PaperlessInstance).where(PaperlessInstance.slug == instance_data["slug"])
         )
         assert instance is not None
         runtime = FieldConfigurationService(db).runtime_config(
@@ -361,18 +355,19 @@ def test_individual_accounts_enforce_roles_and_record_identity(
     )
     assert response.status_code == 201
     endpoint = f"/api/instances/{instance['slug']}/field-config"
-    assert client.get(
-        endpoint,
-        headers={"X-EZEUS-Admin-Secret": "retired-bootstrap-secret"},
-    ).status_code == 401
+    assert (
+        client.get(
+            endpoint,
+            headers={"X-EZEUS-Admin-Secret": "retired-bootstrap-secret"},
+        ).status_code
+        == 401
+    )
 
     viewer_headers = basic_headers("observer", "correct-horse-battery-staple")
     assert client.get(endpoint, headers=viewer_headers).status_code == 200
     fields = client.get(endpoint, headers=viewer_headers).json()["fields"]
     fields[0]["label"] = "Nicht erlaubt"
-    assert client.put(
-        endpoint, headers=viewer_headers, json={"fields": fields}
-    ).status_code == 403
+    assert client.put(endpoint, headers=viewer_headers, json={"fields": fields}).status_code == 403
 
     fields[0]["label"] = "Lieferant"
     saved = client.put(endpoint, headers=admin_auth, json={"fields": fields})
@@ -434,9 +429,7 @@ def test_only_disabled_admin_accounts_can_be_permanently_deleted(
         assert audit.old_value["username"] == "retired-user"
         assert audit.new_value is None
 
-    assert client.delete(
-        f"/api/admin-users/{user_id}", headers=admin_headers()
-    ).status_code == 404
+    assert client.delete(f"/api/admin-users/{user_id}", headers=admin_headers()).status_code == 404
 
 
 def test_missing_paperless_custom_field_is_created_and_linked(
@@ -497,9 +490,7 @@ def test_existing_paperless_fields_are_imported_without_changing_paperless(
 
     with session_factory() as db:
         instance = db.scalar(
-            select(PaperlessInstance).where(
-                PaperlessInstance.slug == instance_data["slug"]
-            )
+            select(PaperlessInstance).where(PaperlessInstance.slug == instance_data["slug"])
         )
         assert instance is not None
         runtime = FieldConfigurationService(db).runtime_config(instance, connector.fields)

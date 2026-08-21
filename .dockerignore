@@ -9,3 +9,5 @@ __pycache__
 *.pyc
 *.db
 htmlcov
+build
+*.sbom.json

@@ -253,9 +253,7 @@ def delete_instance(
     # Historische Audit-Einträge bleiben erhalten, dürfen die endgültige
     # Löschung der Instanz aber nicht über ihren Fremdschlüssel blockieren.
     db.execute(
-        update(AuditEntry)
-        .where(AuditEntry.instance_id == instance.id)
-        .values(instance_id=None)
+        update(AuditEntry).where(AuditEntry.instance_id == instance.id).values(instance_id=None)
     )
     db.add(
         AuditEntry(

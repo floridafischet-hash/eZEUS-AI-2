@@ -1,5 +1,45 @@
 # Code Review Report
 
+## Umsetzungsstand vom 21. August 2026
+
+Der nachfolgende Bericht bleibt als historischer Prüfstand vom 28. Juli 2026
+erhalten. Seine damalige Liste „Nicht gelöste Probleme“ ist inzwischen wie
+folgt bearbeitet:
+
+| Damaliger offener Punkt | Aktueller Stand |
+|---|---|
+| Compose-/End-to-End-Test | Erledigt: automatisierter Webhook-Smoke-Test mit echter PostgreSQL-, Redis-, API-, Outbox-, Celery- und Mock-Paperless-Laufzeit. PaddleOCR wurde bewusst entfernt, weil ausschließlich Paperless-OCR-Text verwendet wird. |
+| `/ready` gegen Dienste | Erledigt für PostgreSQL, Redis und Paperless; Ollama wird nur geprüft, wenn es aktiviert oder für ein Feld benötigt wird. |
+| Starlette-TestClient-Warnung | Erledigt durch kompatiblen Testtransport (`httpx2`). |
+| Schutz von Dashboard, Logs und OpenAPI | Erledigt im Kubernetes-Deployment durch optionalen oauth2-proxy/OIDC-Ingress; Compose dokumentiert den erforderlichen TLS-Auth-Proxy. |
+| Rollen, Rate Limits und SSRF | Erledigt: persönliche `admin`-/`viewer`-Konten, App- und Ingress-Limits, Host-Allowlist, DNS-/Privatnetzschutz und Origin-Schutz für Pagination. |
+| Malware/PDF-Bomb/Ressourcen | Binärparser und Dokumentdownload wurden entfernt. Paperless trägt die Binärprüfung; eZEUS begrenzt MIME, OCR-Text, Antworten sowie Pod-/Containerressourcen. |
+| Streaming-Limit | Erledigt: Paperless- und Ollama-Antworten werden mit harter Obergrenze gestreamt. |
+| Regex-Unterbrechung | Erledigt: echte Engine-Timeouts für Extraktion und Korrespondentenregeln. |
+| DB-/Celery-Koordination | Erledigt: transaktionale PostgreSQL-Outbox mit Claims, Backoff und idempotentem Worker-Claim. |
+| Worker-Root-Start | Erledigt: alle Anwendungsprozesse laufen direkt als Non-Root-Benutzer. |
+| Dynamische Provider-/Modellanzeige | Erledigt: das Dashboard liest die Laufzeitkonfiguration. |
+| Lockfile und Scans | Erledigt: Hash-Lockfiles sowie CI für Bandit, `pip-audit`, Gitleaks, Trivy, CycloneDX-SBOM mit 30-tägiger Artefaktaufbewahrung, Helm/kubeconform und Container-Smoke. |
+| Lizenz | Erledigt: konservativer proprietärer/source-available-Status in `LICENSE`. |
+
+Zusätzlich ist das Projekt jetzt als Kubernetes-Workload ausgearbeitet. Das
+Helm-Chart enthält API, Worker, Outbox, serialisierte Migrationen, optionale
+interne StatefulSets, HPA/PDB, Security Contexts, NetworkPolicies, Ingress,
+Rate Limits und optional OIDC. `values.schema.json`, Helm-Lint und kubeconform
+prüfen Standard- und Produktionswerte automatisiert.
+
+Aktuelle Abschlussvalidierung:
+
+- 125 Python-Tests, Ruff-Format/Lint und mypy (83 Quelldateien) bestanden
+- Bandit und `pip-audit --strict` ohne Befund
+- beide Compose-Varianten erfolgreich aufgelöst
+- 49 gerenderte Helm-Ressourcen für Standard- und Produktionswerte durch
+  kubeconform validiert; unbeschränkte Egress-CIDRs werden vom Schema abgelehnt
+- Docker-Image als UID/GID `10001` auch mit read-only Root-Dateisystem geprüft
+- Gitleaks ohne Secret-Fund; Trivy ohne HIGH-/CRITICAL-Fund
+- realer Compose-Webhook-Durchlauf über PostgreSQL, Outbox, Redis, Celery und
+  Mock-Paperless erfolgreich
+
 ## Aktueller Referenzstand
 
 Der am 28. Juli 2026 produktiv verifizierte Referenzstand ist in
@@ -359,7 +399,7 @@ gespeichert wird.
 - `GET /health`: HTTP 200 mit Status `ok`
 - `git diff --check`: keine Whitespace-Fehler
 
-## Build-Ergebnis
+## Historisches Build-Ergebnis
 
 Der Python-Paketbau war erfolgreich:
 
@@ -374,7 +414,7 @@ nicht ausgeführt werden, weil der Docker-Desktop-Linux-Daemon auf dem
 Prüfrechner nicht lief. CLI und Compose waren installiert. Es liegt daher kein
 verifiziertes Container-Build-Ergebnis vor.
 
-## Nicht gelöste Probleme
+## Historisch: damals nicht gelöste Probleme
 
 - Der vollständige Compose-Stack und ein echter PaddleOCR-Lauf wurden wegen
   des nicht laufenden Docker-Daemons nicht geprüft.
@@ -396,7 +436,7 @@ verifiziertes Container-Build-Ergebnis vor.
   Secret-Scan-Pipeline.
 - Das Repository enthält keine Lizenzdatei.
 
-## Empfohlene weitere Schritte
+## Historisch: damals empfohlene weitere Schritte
 
 1. Docker-Daemon starten und `docker compose build`, `docker compose up -d`,
    `docker compose ps` sowie einen vollständigen Webhook-Ablauf ausführen.

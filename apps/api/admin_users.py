@@ -266,10 +266,7 @@ def admin_users_page() -> str:
 """
     return page_shell(
         title="Benutzerverwaltung",
-        description=(
-            "Persönliche Administrationskonten, Rollen und Aktivstatus "
-            "sicher verwalten."
-        ),
+        description=("Persönliche Administrationskonten, Rollen und Aktivstatus sicher verwalten."),
         active="users",
         content=content,
         script=script,
@@ -291,11 +288,15 @@ def update_admin_user(
         changes.get("enabled") is False or changes.get("role") == "viewer"
     ):
         raise HTTPException(status_code=409, detail="Administrators cannot revoke their own access")
-    if user.role == "admin" and user.enabled and (
-        changes.get("enabled") is False or changes.get("role") == "viewer"
+    if (
+        user.role == "admin"
+        and user.enabled
+        and (changes.get("enabled") is False or changes.get("role") == "viewer")
     ):
         active_admins = db.scalar(
-            select(func.count()).select_from(AdminUser).where(
+            select(func.count())
+            .select_from(AdminUser)
+            .where(
                 AdminUser.role == "admin",
                 AdminUser.enabled.is_(True),
             )

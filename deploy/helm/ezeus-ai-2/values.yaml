@@ -1,0 +1,300 @@
+# Default values for eZEUS-AI-2.
+# Override in your own values.yaml for production deployments.
+
+# Container image for both API and worker (same image, different command).
+image:
+  repository: ghcr.io/floridafischet-hash/ezeus-ai-2
+  tag: ""              # defaults to Chart.appVersion when empty
+  pullPolicy: IfNotPresent
+imagePullSecrets: []
+
+nameOverride: ""
+fullnameOverride: ""
+
+# Common labels applied to all rendered manifests.
+commonLabels: {}
+commonAnnotations: {}
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  runAsGroup: 10001
+  fsGroup: 10001
+  seccompProfile:
+    type: RuntimeDefault
+
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  runAsUser: 10001
+  runAsGroup: 10001
+  capabilities:
+    drop: ["ALL"]
+
+# Application configuration written to a ConfigMap and referenced via envFrom.
+config:
+  APP_ENV: production
+  APP_HOST: 0.0.0.0
+  APP_PORT: "8080"
+  APP_LOG_LEVEL: INFO
+  FORWARDED_ALLOW_IPS: "*"
+  LOCAL_ONLY: "true"
+  CLOUD_AI_GLOBALLY_ALLOWED: "false"
+  PAPERLESS_VERIFY_TLS: "true"
+  OLLAMA_ENABLED: "true"
+  OLLAMA_MODEL: qwen3:4b
+  OLLAMA_TIMEOUT_SECONDS: "300"
+  OLLAMA_MAX_INPUT_CHARS: "24000"
+  OLLAMA_MAX_RESPONSE_BYTES: "1048576"
+  OLLAMA_KEEP_ALIVE: "10m"
+  JOB_MAX_RETRIES: "3"
+  JOB_RETRY_DELAYS_SECONDS: "30,120,600"
+  # Rate limit defaults (per client IP).
+  RATE_LIMIT_REQUESTS_PER_MINUTE: "120"
+  RATE_LIMIT_BURST: "30"
+  RATE_LIMIT_MAX_CLIENTS: "10000"
+  RATE_LIMIT_TRUST_PROXY_HEADERS: "true"
+  # SSRF hardening: comma-separated allow list of hostnames for outbound calls.
+  # Leave empty to allow only in-cluster Paperless/Ollama hosts derived from config.
+  OUTBOUND_ALLOWED_HOSTS: ""
+  OUTBOUND_PRIVATE_ALLOWED_HOSTS: ""
+  # Download safety cap in bytes for Paperless downloads.
+  PAPERLESS_MAX_DOWNLOAD_BYTES: "52428800"    # 50 MiB
+  PAPERLESS_MAX_TEXT_CHARS: "2000000"
+  # Regex ReDoS hardening: seconds per pattern execution in isolated process.
+  REGEX_HARD_TIMEOUT_SECONDS: "2"
+  OUTBOX_POLL_SECONDS: "1"
+  OUTBOX_CLAIM_TIMEOUT_SECONDS: "300"
+  OUTBOX_BATCH_SIZE: "50"
+  OUTBOX_MAX_BACKOFF_SECONDS: "300"
+
+# Secrets are managed either inline via .Values.secrets OR via an existing Secret name.
+# For production prefer existingSecret pointing at a Sealed/External Secret.
+existingSecret: ""
+secrets:
+  # Placeholder values - MUST be overridden for production.
+  POSTGRES_PASSWORD: "change-me"
+  PAPERLESS_API_TOKEN: "change-me"
+  PAPERLESS_WEBHOOK_SECRET: "change-me"
+  CREDENTIAL_ENCRYPTION_KEY: ""      # generate with: python -c "from cryptography.fernet import Fernet;print(Fernet.generate_key().decode())"
+  PROXY_AUTH_SECRET: ""
+  OAUTH2_PROXY_CLIENT_SECRET: ""
+  OAUTH2_PROXY_COOKIE_SECRET: ""
+
+api:
+  replicaCount: 2
+  command: ["python", "-m", "apps.api"]
+  args: []
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+  livenessProbe:
+    httpGet:
+      path: /health
+      port: http
+    initialDelaySeconds: 20
+    periodSeconds: 15
+    timeoutSeconds: 5
+    failureThreshold: 6
+  readinessProbe:
+    httpGet:
+      path: /ready
+      port: http
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 6
+  service:
+    type: ClusterIP
+    port: 8080
+  hpa:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 6
+    targetCPUUtilizationPercentage: 75
+  pdb:
+    enabled: true
+    minAvailable: 1
+
+worker:
+  replicaCount: 2
+  command: ["celery"]
+  args:
+    - "-A"
+    - "core.queue.celery_app.celery_app"
+    - "worker"
+    - "-Q"
+    - "high,normal,low"
+    - "--loglevel=INFO"
+    - "--concurrency=2"
+  resources:
+    requests:
+      cpu: 200m
+      memory: 512Mi
+    limits:
+      cpu: 2000m
+      memory: 2Gi
+  livenessProbe:
+    exec:
+      command: ["sh", "-c", "celery -A core.queue.celery_app.celery_app inspect ping -d celery@$HOSTNAME"]
+    initialDelaySeconds: 45
+    periodSeconds: 60
+    timeoutSeconds: 20
+    failureThreshold: 3
+  hpa:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 8
+    targetCPUUtilizationPercentage: 80
+  pdb:
+    enabled: true
+    minAvailable: 1
+
+outbox:
+  enabled: true
+  replicaCount: 1
+  resources:
+    requests: { cpu: 25m, memory: 64Mi }
+    limits: { cpu: 250m, memory: 256Mi }
+
+migrations:
+  enabled: true
+  # Optional post-install/pre-upgrade hook for an already reachable external DB.
+  # Keep false when postgres.enabled=true; pod init containers handle that case.
+  helmHookEnabled: false
+  backoffLimit: 3
+  activeDeadlineSeconds: 300
+
+postgres:
+  enabled: true
+  image:
+    repository: postgres
+    tag: "16.15-alpine"
+    pullPolicy: IfNotPresent
+  auth:
+    database: ezeus
+    username: ezeus
+    # password is taken from .Values.secrets.POSTGRES_PASSWORD or existingSecret
+  persistence:
+    enabled: true
+    size: 20Gi
+    storageClass: ""
+    accessModes: ["ReadWriteOnce"]
+  resources:
+    requests: { cpu: 200m, memory: 512Mi }
+    limits:   { cpu: 2000m, memory: 2Gi }
+
+redis:
+  enabled: true
+  image:
+    repository: redis
+    tag: "7.4.11-alpine"
+    pullPolicy: IfNotPresent
+  persistence:
+    enabled: true
+    size: 4Gi
+    storageClass: ""
+    accessModes: ["ReadWriteOnce"]
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits:   { cpu: 500m, memory: 512Mi }
+
+ollama:
+  enabled: true
+  image:
+    repository: ollama/ollama
+    tag: "0.32.15"
+    pullPolicy: IfNotPresent
+  persistence:
+    enabled: true
+    size: 25Gi
+    storageClass: ""
+    accessModes: ["ReadWriteOnce"]
+  resources:
+    requests: { cpu: 500m, memory: 4Gi }
+    limits:   { cpu: 3000m, memory: 8Gi }
+  env:
+    OLLAMA_CONTEXT_LENGTH: "8192"
+    OLLAMA_KEEP_ALIVE: "10m"
+    OLLAMA_MAX_LOADED_MODELS: "1"
+    OLLAMA_NUM_PARALLEL: "1"
+  # Preload the configured model at container start.
+  preloadModel: true
+
+# External services (used when internal postgres/redis/ollama are disabled).
+external:
+  databaseUrl: ""      # e.g. postgresql+psycopg://user:pass@rds.example:5432/ezeus
+  redisUrl: ""         # e.g. redis://redis.example:6379/0
+  ollamaBaseUrl: ""    # e.g. http://ollama.example:11434
+  paperlessBaseUrl: "" # e.g. https://paperless.example
+  # publicWebhookBaseUrl is used when Paperless calls back into this cluster; typically the ingress URL.
+  publicWebhookBaseUrl: ""
+
+ingress:
+  enabled: false
+  className: nginx
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/proxy-body-size: "1m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
+  rateLimit:
+    enabled: true
+    requestsPerSecond: 20
+    burstMultiplier: 5
+    connections: 40
+  hosts:
+    - host: ezeus.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: ezeus-tls
+      hosts:
+        - ezeus.example.com
+  # If set, the ingress rewrites /webhooks/* to bypass the oauth2-proxy auth-url
+  # so Paperless-ngx can post webhooks without user login.
+  publicWebhookPaths:
+    - /webhooks/paperless
+    - /webhooks/paperless/
+    - /health
+
+# oauth2-proxy is deployed as a dedicated Deployment used by ingress-nginx auth_request.
+# Webhook paths bypass it via a separate Ingress (see ingress.publicWebhookPaths).
+oauth2Proxy:
+  enabled: false
+  image:
+    repository: quay.io/oauth2-proxy/oauth2-proxy
+    tag: "v7.15.4"
+  provider: oidc
+  clientId: ""
+  oidcIssuerUrl: ""
+  emailDomains:
+    - "*"
+  extraArgs: []
+
+networkPolicy:
+  enabled: true
+  # If specified, only these ingress namespaces can talk to the api service.
+  allowedIngressNamespaces:
+    - ingress-nginx
+  # Exact egress destinations (Paperless outside the cluster etc.). Never use
+  # an unrestricted 0.0.0.0/0 or ::/0 range; the values schema rejects both.
+  egressCidrs: []
+
+# Extra volumes/volumeMounts injected into api and worker pods
+extraVolumes: []
+extraVolumeMounts: []
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

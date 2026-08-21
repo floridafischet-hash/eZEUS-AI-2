@@ -1,0 +1,221 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "title": "eZEUS-AI-2 Helm values",
+  "type": "object",
+  "required": [
+    "image",
+    "config",
+    "api",
+    "worker",
+    "outbox",
+    "migrations",
+    "postgres",
+    "redis",
+    "ollama",
+    "external",
+    "ingress",
+    "oauth2Proxy",
+    "networkPolicy"
+  ],
+  "properties": {
+    "image": { "$ref": "#/definitions/applicationImage" },
+    "imagePullSecrets": { "type": "array" },
+    "nameOverride": { "type": "string" },
+    "fullnameOverride": { "type": "string" },
+    "commonLabels": { "type": "object" },
+    "commonAnnotations": { "type": "object" },
+    "serviceAccount": { "type": "object" },
+    "podSecurityContext": { "type": "object" },
+    "containerSecurityContext": { "type": "object" },
+    "config": {
+      "type": "object",
+      "additionalProperties": { "type": ["string", "number", "boolean"] }
+    },
+    "existingSecret": { "type": "string" },
+    "secrets": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    },
+    "api": { "$ref": "#/definitions/workload" },
+    "worker": { "$ref": "#/definitions/workload" },
+    "outbox": {
+      "type": "object",
+      "required": ["enabled", "replicaCount", "resources"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "replicaCount": { "type": "integer", "minimum": 1 },
+        "resources": { "type": "object" }
+      }
+    },
+    "migrations": {
+      "type": "object",
+      "required": ["enabled", "helmHookEnabled"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "helmHookEnabled": { "type": "boolean" },
+        "backoffLimit": { "type": "integer", "minimum": 0 },
+        "activeDeadlineSeconds": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "postgres": { "$ref": "#/definitions/statefulService" },
+    "redis": { "$ref": "#/definitions/statefulService" },
+    "ollama": {
+      "allOf": [
+        { "$ref": "#/definitions/statefulService" },
+        {
+          "type": "object",
+          "properties": {
+            "env": { "type": "object" },
+            "preloadModel": { "type": "boolean" }
+          }
+        }
+      ]
+    },
+    "external": {
+      "type": "object",
+      "properties": {
+        "databaseUrl": { "type": "string" },
+        "redisUrl": { "type": "string" },
+        "ollamaBaseUrl": { "type": "string" },
+        "paperlessBaseUrl": { "type": "string" },
+        "publicWebhookBaseUrl": { "type": "string" }
+      }
+    },
+    "ingress": {
+      "type": "object",
+      "required": ["enabled", "className", "hosts"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "className": { "type": "string", "minLength": 1 },
+        "annotations": { "type": "object" },
+        "rateLimit": {
+          "type": "object",
+          "required": ["enabled", "requestsPerSecond", "burstMultiplier", "connections"],
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "requestsPerSecond": { "type": "integer", "minimum": 1 },
+            "burstMultiplier": { "type": "integer", "minimum": 1 },
+            "connections": { "type": "integer", "minimum": 1 }
+          }
+        },
+        "hosts": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["host", "paths"],
+            "properties": {
+              "host": { "type": "string", "minLength": 1 },
+              "paths": { "type": "array", "minItems": 1 }
+            }
+          }
+        },
+        "tls": { "type": "array" },
+        "publicWebhookPaths": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "oauth2Proxy": {
+      "type": "object",
+      "required": ["enabled", "image", "provider", "clientId", "oidcIssuerUrl"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "image": { "$ref": "#/definitions/simpleImage" },
+        "provider": { "type": "string" },
+        "clientId": { "type": "string" },
+        "oidcIssuerUrl": { "type": "string" },
+        "emailDomains": { "type": "array", "items": { "type": "string" } },
+        "extraArgs": { "type": "array", "items": { "type": "string" } }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "enabled": { "const": true } } },
+          "then": {
+            "properties": {
+              "clientId": { "minLength": 1 },
+              "oidcIssuerUrl": { "minLength": 1 }
+            }
+          }
+        }
+      ]
+    },
+    "networkPolicy": {
+      "type": "object",
+      "required": ["enabled", "allowedIngressNamespaces", "egressCidrs"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "allowedIngressNamespaces": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "egressCidrs": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F:.]+/[0-9]{1,3}$",
+            "not": { "enum": ["0.0.0.0/0", "::/0"] }
+          }
+        }
+      }
+    },
+    "extraVolumes": { "type": "array" },
+    "extraVolumeMounts": { "type": "array" },
+    "nodeSelector": { "type": "object" },
+    "tolerations": { "type": "array" },
+    "affinity": { "type": "object" }
+  },
+  "definitions": {
+    "simpleImage": {
+      "type": "object",
+      "required": ["repository", "tag"],
+      "properties": {
+        "repository": { "type": "string", "minLength": 1 },
+        "tag": { "type": "string", "minLength": 1 },
+        "pullPolicy": { "enum": ["Always", "IfNotPresent", "Never"] }
+      }
+    },
+    "applicationImage": {
+      "type": "object",
+      "required": ["repository", "tag", "pullPolicy"],
+      "properties": {
+        "repository": { "type": "string", "minLength": 1 },
+        "tag": { "type": "string" },
+        "pullPolicy": { "enum": ["Always", "IfNotPresent", "Never"] }
+      }
+    },
+    "workload": {
+      "type": "object",
+      "required": ["replicaCount", "command", "args", "resources"],
+      "properties": {
+        "replicaCount": { "type": "integer", "minimum": 1 },
+        "command": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+        "args": { "type": "array", "items": { "type": "string" } },
+        "resources": { "type": "object" },
+        "livenessProbe": { "type": "object" },
+        "readinessProbe": { "type": "object" },
+        "service": { "type": "object" },
+        "hpa": { "type": "object" },
+        "pdb": { "type": "object" }
+      }
+    },
+    "statefulService": {
+      "type": "object",
+      "required": ["enabled", "image", "persistence", "resources"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "image": { "$ref": "#/definitions/simpleImage" },
+        "auth": { "type": "object" },
+        "persistence": {
+          "type": "object",
+          "required": ["enabled", "size"],
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "size": { "type": "string", "minLength": 1 },
+            "storageClass": { "type": "string" },
+            "accessModes": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        "resources": { "type": "object" }
+      }
+    }
+  }
+}

@@ -29,9 +29,12 @@ geändert noch entfernt.
 Aktivstatus. Das erste Konto wird außerhalb der HTTP-API mit dem interaktiven
 Kommando `python -m scripts.create_admin_user <benutzername>` angelegt.
 
-Der Webhook normalisiert Paperless-Ereignisse und erzeugt ausschließlich
-persistente Jobs. Celery transportiert Job-IDs über Redis; PostgreSQL bleibt die
-Quelle für Status, Phasen, Ergebnisse und Auditdaten.
+Der Webhook normalisiert Paperless-Ereignisse und speichert Job, initialen
+Status und Queue-Outbox in derselben PostgreSQL-Transaktion. Ein eigener
+Dispatcher claimt Outbox-Zeilen mit `FOR UPDATE SKIP LOCKED`, veröffentlicht
+Job-IDs über Redis/Celery und wiederholt Fehler mit Backoff. PostgreSQL bleibt
+die Quelle für Status, Phasen, Ergebnisse und Auditdaten. Doppelte
+Celery-Zustellungen werden beim atomaren Job-Claim verworfen.
 
 Der Worker führt folgende Phasen aus:
 

@@ -82,9 +82,7 @@ def upgrade() -> None:
         )
         now = datetime.now(UTC)
         rows = []
-        instances = op.get_bind().execute(
-            sa.text("SELECT id FROM paperless_instances")
-        ).fetchall()
+        instances = op.get_bind().execute(sa.text("SELECT id FROM paperless_instances")).fetchall()
         for (instance_id,) in instances:
             for key, label, field_type, order, external_id in STANDARD_FIELDS:
                 rows.append(

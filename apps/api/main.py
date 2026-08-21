@@ -1,3 +1,4 @@
+import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -18,6 +19,8 @@ from connectors.paperless.connector import PaperlessConnector
 from core.config.settings import get_settings
 from core.db.session import engine
 from core.models.instance_field_config import InstanceFieldConfig
+from core.security.outbound import OutboundRequestError, stream_capped, validate_outbound_url
+from core.security.rate_limit import RateLimitMiddleware
 from webhooks.paperless.router import router as paperless_webhook_router
 
 
@@ -28,6 +31,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(title="eZEUS-AI-2", version="0.2.0", lifespan=lifespan)
+app.add_middleware(RateLimitMiddleware, settings=get_settings())
 app.mount(
     "/static",
     StaticFiles(directory=Path(__file__).parent / "static"),
@@ -40,17 +44,10 @@ app.include_router(admin_users_router)
 app.include_router(paperless_instances_router)
 app.include_router(field_config_router)
 
-
-@app.get("/health")
-def health() -> dict[str, str]:
-    return {"status": "ok"}
+READINESS_TIMEOUT_SECONDS = 5.0
 
 
-@app.get("/ready")
-async def ready() -> dict[str, object]:
-    settings = get_settings()
-    checks: dict[str, bool] = {}
-    ai_fields_enabled = False
+def _database_readiness() -> tuple[bool, bool]:
     try:
         with engine.connect() as connection:
             connection.execute(text("SELECT 1"))
@@ -64,24 +61,65 @@ async def ready() -> dict[str, object]:
                     .limit(1)
                 )
             )
-        checks["database"] = True
+        return True, ai_fields_enabled
     except Exception:
-        checks["database"] = False
+        return False, False
+
+
+def _redis_readiness(redis_url: str) -> bool:
+    client = Redis.from_url(
+        redis_url,
+        socket_connect_timeout=READINESS_TIMEOUT_SECONDS,
+        socket_timeout=READINESS_TIMEOUT_SECONDS,
+    )
     try:
-        checks["redis"] = bool(Redis.from_url(settings.redis_url).ping())
+        return bool(client.ping())
     except Exception:
-        checks["redis"] = False
+        return False
+    finally:
+        client.close()
+
+
+async def _paperless_readiness() -> bool:
     try:
-        checks["paperless"] = await PaperlessConnector().health_check()
+        return await PaperlessConnector().health_check()
     except ConnectorError:
-        checks["paperless"] = False
+        return False
+
+
+@app.get("/health")
+def health() -> dict[str, str]:
+    return {"status": "ok"}
+
+
+@app.get("/ready")
+async def ready() -> dict[str, object]:
+    settings = get_settings()
+    database_result, redis_ready, paperless_ready = await asyncio.gather(
+        asyncio.to_thread(_database_readiness),
+        asyncio.to_thread(_redis_readiness, settings.redis_url),
+        _paperless_readiness(),
+    )
+    database_ready, ai_fields_enabled = database_result
+    checks: dict[str, bool] = {
+        "database": database_ready,
+        "redis": redis_ready,
+        "paperless": paperless_ready,
+    }
     if settings.ollama_enabled or ai_fields_enabled:
         try:
+            request_url = f"{settings.ollama_base_url.rstrip('/')}/api/tags"
+            validate_outbound_url(request_url, settings=settings)
             async with httpx.AsyncClient(
                 base_url=settings.ollama_base_url,
-                timeout=min(settings.ollama_timeout_seconds, 15),
+                timeout=min(settings.ollama_timeout_seconds, READINESS_TIMEOUT_SECONDS),
             ) as client:
-                response = await client.get("/api/tags")
+                response, _ = await stream_capped(
+                    client,
+                    "GET",
+                    request_url,
+                    max_bytes=settings.ollama_max_response_bytes,
+                )
                 response.raise_for_status()
                 models = response.json().get("models", [])
                 checks["ollama"] = any(
@@ -90,7 +128,7 @@ async def ready() -> dict[str, object]:
                     for item in models
                     if isinstance(item, dict)
                 )
-        except (httpx.HTTPError, ValueError, TypeError):
+        except (httpx.HTTPError, OutboundRequestError, ValueError, TypeError):
             checks["ollama"] = False
     if not all(checks.values()):
         raise HTTPException(status_code=503, detail={"status": "not_ready", "checks": checks})

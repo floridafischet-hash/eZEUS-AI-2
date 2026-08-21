@@ -10,7 +10,7 @@ from core.db.session import get_db
 from core.models.enums import JobStatus
 from core.models.job import Job
 from core.models.template import Template
-from core.queue.adapter import QueueAdapter
+from core.queue.outbox import add_job_to_outbox, publish_outbox_event
 from core.security.admin_auth import require_admin_secret
 from core.templates.schema import TemplateConfig
 
@@ -84,6 +84,8 @@ def retry_job(
     job.started_at = None
     job.finished_at = None
     job.retry_count += 1
+    outbox = add_job_to_outbox(db, job)
     db.commit()
-    QueueAdapter().enqueue_document_job(job.id, job.priority)
+    db.refresh(outbox)
+    publish_outbox_event(db, event_id=outbox.id)
     return {"job_id": str(job.id), "status": job.status.value}

@@ -1,12 +1,20 @@
 services:
   api:
     build: .
-    command: sh -c "alembic upgrade head && uvicorn apps.api.main:app --host $${APP_HOST:-0.0.0.0} --port $${APP_PORT:-8080} --log-level $${APP_LOG_LEVEL:-INFO}"
-    env_file: .env
+    command: sh -c "python -m core.db.migrate && exec python -m apps.api"
+    env_file:
+      - path: .env.example
+        required: true
+      - path: .env
+        required: false
     environment:
-      DATABASE_URL: "postgresql+psycopg://ezeus:${POSTGRES_PASSWORD}@postgres:5432/ezeus"
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: ezeus
+      POSTGRES_DATABASE: ezeus
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-example-postgres-password-change-me}
     ports:
-      - "${APP_PORT:-8080}:${APP_PORT:-8080}"
+      - "127.0.0.1:${HOST_PORT:-8080}:${APP_PORT:-8080}"
     depends_on:
       postgres:
         condition: service_healthy
@@ -19,13 +27,24 @@ services:
       interval: 15s
       timeout: 6s
       retries: 10
+    mem_limit: 1g
+    cpus: 1.0
 
   worker:
     build: .
-    command: celery -A core.queue.celery_app.celery_app worker -Q high,normal,low --loglevel=${APP_LOG_LEVEL:-INFO}
-    env_file: .env
+    command: sh -c "python -m core.db.migrate && exec celery -A core.queue.celery_app.celery_app worker -Q high,normal,low --concurrency=$${CELERY_CONCURRENCY:-2} --loglevel=$${APP_LOG_LEVEL:-INFO}"
+    init: true
+    env_file:
+      - path: .env.example
+        required: true
+      - path: .env
+        required: false
     environment:
-      DATABASE_URL: "postgresql+psycopg://ezeus:${POSTGRES_PASSWORD}@postgres:5432/ezeus"
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: ezeus
+      POSTGRES_DATABASE: ezeus
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-example-postgres-password-change-me}
     depends_on:
       postgres:
         condition: service_healthy
@@ -38,13 +57,38 @@ services:
       interval: 30s
       timeout: 10s
       retries: 5
+    mem_limit: 2g
+    cpus: 2.0
+
+  outbox:
+    build: .
+    command: sh -c "python -m core.db.migrate && exec python -m core.queue.outbox"
+    init: true
+    env_file:
+      - path: .env.example
+        required: true
+      - path: .env
+        required: false
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: ezeus
+      POSTGRES_DATABASE: ezeus
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-example-postgres-password-change-me}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    mem_limit: 256m
+    cpus: 0.5
 
   postgres:
-    image: postgres:16-alpine
+    image: postgres:16.15-alpine
     environment:
       POSTGRES_DB: ezeus
       POSTGRES_USER: ezeus
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-example-postgres-password-change-me}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -52,9 +96,11 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+    mem_limit: 1g
+    cpus: 1.0
 
   redis:
-    image: redis:7-alpine
+    image: redis:7.4.11-alpine
     command: redis-server --appendonly yes
     volumes:
       - redis_data:/data
@@ -63,17 +109,26 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+    mem_limit: 512m
+    cpus: 0.5
 
   paperless:
     build: .
     command: uvicorn apps.mock_paperless.main:app --host 0.0.0.0 --port 8000
-    expose:
-      - "8000"
+    env_file:
+      - path: .env.example
+        required: true
+      - path: .env
+        required: false
+    ports:
+      - "127.0.0.1:${MOCK_PAPERLESS_PORT:-18083}:8000"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/debug/state', timeout=5)"]
       interval: 5s
       timeout: 3s
       retries: 10
+    mem_limit: 512m
+    cpus: 0.5
 
 volumes:
   postgres_data:

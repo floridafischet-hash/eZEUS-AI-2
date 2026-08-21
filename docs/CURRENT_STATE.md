@@ -2,8 +2,9 @@
 
 ## Gültigkeit
 
-Dieses Dokument beschreibt den verifizierten Stand vom 28. Juli 2026 auf dem
-Branch `local/qwen3-ollama` bis einschließlich Commit `a375683`.
+Die fachlichen Referenzfälle in diesem Dokument stammen vom 28. Juli 2026. Der
+technische Stand wurde am 21. August 2026 auf `main` erneut verifiziert und um
+Kubernetes/Helm, transaktionale Queue-Outbox, Security-Grenzen und CI erweitert.
 
 Der Stand dient als Ausgangsbasis für die weitere fachliche und technische
 Ausarbeitung. Nicht in diesem Dokument beschriebene Funktionen gelten nicht als
@@ -15,9 +16,14 @@ Die Anwendung läuft als Docker-Compose-Stack mit folgenden Diensten:
 
 - FastAPI-Anwendung
 - Celery-Worker
+- Queue-Outbox-Dispatcher
 - PostgreSQL
 - Redis
 - Ollama
+
+Alternativ steht ein produktionsnahes Helm-Chart für Kubernetes ab Version
+1.26 zur Verfügung. Es enthält dieselben Anwendungsdienste, NetworkPolicies,
+Ingress/OIDC, HPA/PDB, Migrationen und persistente StatefulSets.
 
 Der produktive Readiness-Endpunkt meldet Datenbank, Redis, Paperless und
 Ollama als bereit. Ollama bleibt Bestandteil des Stacks, wird bei der
@@ -48,7 +54,7 @@ Der derzeitige Standardablauf für verwaltete Paperless-Instanzen ist:
 1. Webhook authentifizieren und Instanz bestimmen.
 2. Dokumentmetadaten und vorhandenen Inhalt über die Paperless-API laden.
 3. Den von Paperless bereits erkannten OCR-Text als einzige Textquelle verwenden.
-4. Download, OCR und OCR-Schreiben werden immer übersprungen — eZEUS führt
+4. Download-, OCR- und OCR-Schreibphasen existieren nicht mehr — eZEUS führt
    keine eigene Texterkennung durch.
 5. Liefert Paperless keinen Text, schließt der Job mit einem Warnhinweis ab.
 6. Custom Fields der jeweiligen Paperless-Instanz laden und anhand ihrer Namen
@@ -210,16 +216,22 @@ Dokument `3555` dient als produktiv bestätigter Referenzfall:
 
 ## Qualitätssicherung
 
-Der dokumentierte Stand wurde mit folgenden Prüfungen validiert:
+Der technische Stand vom 21. August 2026 wurde mit folgenden Prüfungen
+validiert:
 
-- 52 Python-Tests erfolgreich
-- Ruff erfolgreich
-- mypy erfolgreich
-- produktiver Readiness-Test erfolgreich
-- End-to-End-Verarbeitung über Webhook, Worker und Paperless-API erfolgreich
+- vollständige Python-Testsuite mit 125 Tests erfolgreich
+- Ruff-Format und -Lint sowie striktes mypy erfolgreich
+- Bandit und `pip-audit` ohne Befund
+- Image-Build mit digest-gepinntem Basisimage und Hash-Lockfile erfolgreich
+- Trivy ohne behebbare High/Critical-Funde; Gitleaks ohne Leak
+- `/ready` gegen echte PostgreSQL-, Redis- und Mock-Paperless-Container
+- End-to-End-Verarbeitung über Webhook, transaktionale Outbox, Redis,
+  Celery-Worker und Paperless-API erfolgreich
+- Helm-Lint und strikte kubeconform-Prüfung für Standard- und
+  Produktionswerte erfolgreich
 
-Eine externe Starlette-Abkündigungswarnung im TestClient bleibt bestehen. Sie
-beeinflusst den Betrieb nicht.
+Die frühere Starlette-TestClient-Abkündigungswarnung ist durch die kompatible
+Testtransport-Abhängigkeit behoben.
 
 ## Bekannte Grenzen
 
@@ -236,8 +248,8 @@ beeinflusst den Betrieb nicht.
 - Liefert Paperless keinen OCR-Text, findet eZEUS keine Felder und schließt mit Warnhinweis ab. Eine eigene OCR-Komponente ist nicht vorhanden.
 - Das Datenmodell speichert frühere Phasen eines Wiederholungsversuchs, besitzt
   aber noch keine eigene persistente Versuchsentität.
-- Lasttests, Rollen- und Rechteverwaltung sowie ein vollständiges
-  Produktions-Sicherheitsaudit stehen noch aus.
+- Ein installationsbezogener Lasttest und ein vollständiges
+  Produktions-Sicherheitsaudit stehen vor dem jeweiligen Rollout noch aus.
 
 ## Offene fachliche Klärungspunkte
 

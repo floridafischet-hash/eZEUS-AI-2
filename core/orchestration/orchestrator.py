@@ -17,6 +17,8 @@ from core.paperless.service import (
     get_enabled_instance,
     instance_slug_from_connector,
 )
+from core.security.documents import validate_paperless_document
+from core.security.redaction import redact_sensitive_text
 from core.templates.automatic import config_from_custom_fields
 from core.templates.schema import TemplateConfig
 from core.templates.service import TemplateService
@@ -79,6 +81,7 @@ class Orchestrator:
         try:
             active_phase = self._start_phase(job, JobPhase.LOAD_DOCUMENT)
             remote = await connector.get_document(job.document.external_document_id)
+            validate_paperless_document(mime_type=remote.mime_type, content=remote.content)
             document = job.document
             document.filename = remote.filename
             document.mime_type = remote.mime_type
@@ -118,9 +121,7 @@ class Orchestrator:
             config: TemplateConfig | None
             instance_slug = instance_slug_from_connector(document.connector)
             instance = (
-                get_enabled_instance(self.db, instance_slug)
-                if instance_slug is not None
-                else None
+                get_enabled_instance(self.db, instance_slug) if instance_slug is not None else None
             )
             if instance is not None:
                 runtime_fields = FieldConfigurationService(self.db).runtime_config(
@@ -134,7 +135,8 @@ class Orchestrator:
                         "source": "instance_field_configuration",
                         "instance": instance.slug,
                         "field_ids": [
-                            field.target_field_id for field in config.fields.values()
+                            field.target_field_id
+                            for field in config.fields.values()
                             if field.target_field_id is not None
                         ],
                     },
@@ -148,7 +150,8 @@ class Orchestrator:
                         "selected": True,
                         "source": "paperless_custom_fields",
                         "field_ids": [
-                            field.target_field_id for field in config.fields.values()
+                            field.target_field_id
+                            for field in config.fields.values()
                             if field.target_field_id is not None
                         ],
                     },
@@ -171,9 +174,7 @@ class Orchestrator:
                 raise RuntimeError("Field configuration could not be resolved")
 
             active_phase = self._start_phase(job, JobPhase.EXTRACT_FIELDS)
-            candidates_by_field: dict[
-                str, list[tuple[ExtractionCandidate, ExtractionResult]]
-            ] = {}
+            candidates_by_field: dict[str, list[tuple[ExtractionCandidate, ExtractionResult]]] = {}
             for field_key, field in config.fields.items():
                 persisted: list[tuple[ExtractionCandidate, ExtractionResult]] = []
                 for provider_config in field.providers:
@@ -205,9 +206,7 @@ class Orchestrator:
                 active_phase,
                 metadata={
                     "fields_configured": len(config.fields),
-                    "candidates_found": sum(
-                        len(items) for items in candidates_by_field.values()
-                    ),
+                    "candidates_found": sum(len(items) for items in candidates_by_field.values()),
                     "text_source": extraction_source,
                     "text_characters": len(extraction_text),
                 },
@@ -220,9 +219,7 @@ class Orchestrator:
                 valid: list[tuple[float, object, ExtractionResult]] = []
                 validators = [item.model_dump() for item in field.validators]
                 for candidate, result in candidates_by_field[field_key]:
-                    accepted, normalized, reason = self.validator.validate(
-                        candidate, validators
-                    )
+                    accepted, normalized, reason = self.validator.validate(candidate, validators)
                     result.normalized_value = normalized
                     result.validation_status = "VALID" if accepted else "INVALID"
                     result.reason = reason
@@ -269,10 +266,7 @@ class Orchestrator:
                 field_key
                 for field_key, field in config.fields.items()
                 if field.required
-                and (
-                    field_key not in extracted_by_key
-                    or field.target_field_id is None
-                )
+                and (field_key not in extracted_by_key or field.target_field_id is None)
             ]
             self._finish_phase(
                 active_phase,
@@ -370,7 +364,7 @@ class Orchestrator:
             self._finish_phase(active_phase)
             active_phase = self._start_phase(job, JobPhase.COMPLETE)
             job.status = (
-            JobStatus.COMPLETED if all_fields_extracted else JobStatus.COMPLETED_WITH_WARNINGS
+                JobStatus.COMPLETED if all_fields_extracted else JobStatus.COMPLETED_WITH_WARNINGS
             )
             job.finished_at = datetime.now(UTC)
             self._finish_phase(active_phase)
@@ -379,7 +373,7 @@ class Orchestrator:
                 self._finish_phase(active_phase, error=type(exc).__name__)
             job.status = JobStatus.FAILED
             job.error_type = type(exc).__name__
-            job.error_message = str(exc)[:4000]
+            job.error_message = redact_sensitive_text(exc)
             job.finished_at = datetime.now(UTC)
             self.db.commit()
             raise

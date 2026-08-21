@@ -1,6 +1,5 @@
 from typing import Annotated
 
-from celery.exceptions import CeleryError
 from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -16,7 +15,7 @@ from core.paperless.service import (
     find_enabled_instance_by_webhook_secret,
     get_enabled_instance,
 )
-from core.queue.adapter import QueueAdapter
+from core.queue.outbox import publish_outbox_event
 from core.security.credentials import CredentialEncryptionError, decrypt_credential
 from webhooks.paperless.schemas import PaperlessWebhookPayload
 from webhooks.paperless.security import verify_shared_secret
@@ -97,10 +96,9 @@ def _accept_event(
     )
     try:
         service = JobService(db)
-        job, created = service.create_from_event(event, priority=JobPriority.NORMAL)
-        if created:
-            QueueAdapter().enqueue_document_job(job.id, job.priority)
-            service.mark_queued(job)
+        job, created, outbox = service.create_from_event(event, priority=JobPriority.NORMAL)
+        if outbox is not None:
+            publish_outbox_event(db, event_id=outbox.id)
         else:
             response.status_code = status.HTTP_200_OK
         return {
@@ -109,6 +107,6 @@ def _accept_event(
             "created": created,
             "status": job.status.value,
         }
-    except (CeleryError, SQLAlchemyError) as exc:
+    except SQLAlchemyError as exc:
         db.rollback()
         raise HTTPException(status_code=503, detail="Job service unavailable") from exc

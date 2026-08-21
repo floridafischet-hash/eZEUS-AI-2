@@ -37,9 +37,7 @@ def find_enabled_instance_by_webhook_secret(
 ) -> PaperlessInstance | None:
     if provided_secret is None:
         return None
-    instances = db.scalars(
-        select(PaperlessInstance).where(PaperlessInstance.enabled.is_(True))
-    )
+    instances = db.scalars(select(PaperlessInstance).where(PaperlessInstance.enabled.is_(True)))
     matching_instance: PaperlessInstance | None = None
     for instance in instances:
         if verify_shared_secret(

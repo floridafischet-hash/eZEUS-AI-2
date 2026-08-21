@@ -1,9 +1,11 @@
-import re
 import unicodedata
 from dataclasses import dataclass
 from difflib import SequenceMatcher
 
+import regex
+
 from connectors.base.interface import ConnectorCorrespondent
+from core.config.settings import get_settings
 
 
 @dataclass(slots=True, frozen=True)
@@ -36,9 +38,7 @@ def _line_score(rule: str, line: str) -> float:
     return SequenceMatcher(None, normalized_rule, normalized_line).ratio()
 
 
-def _score_rule(
-    correspondent: ConnectorCorrespondent, text: str
-) -> tuple[float, int, str]:
+def _score_rule(correspondent: ConnectorCorrespondent, text: str) -> tuple[float, int, str]:
     rule = correspondent.match.strip() or correspondent.name.strip()
     source = "matching_rule" if correspondent.match.strip() else "correspondent_name"
     if not rule:
@@ -46,10 +46,15 @@ def _score_rule(
     lines = [line.strip() for line in text.splitlines() if line.strip()]
     algorithm = correspondent.matching_algorithm
     if algorithm == 4 and correspondent.match.strip():
-        flags = re.IGNORECASE if correspondent.is_insensitive else 0
+        flags = regex.IGNORECASE if correspondent.is_insensitive else 0
         try:
-            match = re.search(rule, text, flags)
-        except re.error:
+            match = regex.search(
+                rule,
+                text,
+                flags,
+                timeout=get_settings().regex_hard_timeout_seconds,
+            )
+        except (regex.error, TimeoutError):
             return 0.0, 2**31 - 1, source
         if match is None:
             return 0.0, 2**31 - 1, source
@@ -57,7 +62,7 @@ def _score_rule(
         return 1.0, line_number, source
 
     normalized_text = _normalize(text)
-    words = [_normalize(word) for word in re.split(r"[\s,;|]+", rule) if _normalize(word)]
+    words = [_normalize(word) for word in regex.split(r"[\s,;|]+", rule) if _normalize(word)]
     if correspondent.match.strip() and algorithm in {1, 2, 3}:
         if algorithm == 3:
             normalized_rule = _normalize(rule)
@@ -77,9 +82,7 @@ def _score_rule(
         )
         return score, first, source
 
-    scored_lines = [
-        (_line_score(rule, line), index) for index, line in enumerate(lines)
-    ]
+    scored_lines = [(_line_score(rule, line), index) for index, line in enumerate(lines)]
     return max(scored_lines, default=(0.0, 2**31 - 1), key=lambda item: (item[0], -item[1])) + (
         source,
     )

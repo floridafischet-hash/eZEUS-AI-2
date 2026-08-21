@@ -4,6 +4,22 @@ Alle wesentlichen Änderungen an eZEUS-AI-2 werden in dieser Datei dokumentiert.
 
 ## Unveröffentlicht
 
+- Produktionsnahes Kubernetes-/Helm-Chart für API, Worker, Queue-Outbox,
+  PostgreSQL, Redis, Ollama, Migrationen, Ingress/OIDC, HPA/PDB und
+  NetworkPolicies ergänzt.
+- Transaktionale PostgreSQL-Outbox mit wiederholbarer Celery-Zustellung und
+  idempotentem Worker-Claim ergänzt.
+- Host-Allowlisting, DNS-/Privatnetz- und Pagination-Origin-Schutz für
+  Paperless-/Ollama-Aufrufe ergänzt.
+- Harte Streaming-Grenzen, MIME-/OCR-Textgrenzen, echte Regex-Timeouts und
+  strukturierte Fehlerredaktion ergänzt.
+- Hash-basierte Runtime-/Development-Lockfiles sowie einen digest-gepinnten,
+  CVE-geprüften Non-Root-Container-Build ergänzt.
+- CI für Tests, Ruff, mypy, Bandit, `pip-audit`, Gitleaks, Trivy,
+  CycloneDX-SBOM, Helm/kubeconform und vollständigen Compose-Smoke-Test ergänzt.
+- Verwaltete Paperless-Workflows auf den sicheren Trigger „Dokument
+  hinzugefügt“ beschränkt, damit eZEUS-Rückschreibungen keine Schleife auslösen.
+- Proprietären/source-available Lizenzstatus ausdrücklich dokumentiert.
 - Mandantenbezogene Feldkonfiguration mit Standardvorlage, Custom-Feldern,
   Feldtypen, Pflichtstatus, Sortierung sowie OCR-/KI-Schaltern ergänzt.
 - Geschützte Feldkonfigurations-API und Weboberfläche mit Vorschau ergänzt.

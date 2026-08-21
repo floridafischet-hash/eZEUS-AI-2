@@ -115,9 +115,7 @@ def test_instance_credentials_are_encrypted_and_webhook_selects_source(
         )
         assert accepted_without_slug.status_code == 202
         with session_factory() as db:
-            documents = db.scalars(
-                select(Document).order_by(Document.external_document_id)
-            ).all()
+            documents = db.scalars(select(Document).order_by(Document.external_document_id)).all()
             assert [document.connector for document in documents] == [
                 "paperless:paperless-example-test",
                 "paperless:paperless-example-test",
@@ -200,16 +198,12 @@ def test_only_disabled_instance_can_be_deleted_and_deletion_is_audited(
         with session_factory() as db:
             assert db.get(PaperlessInstance, UUID(created["id"])) is None
             update_audit = db.scalar(
-                select(AuditEntry).where(
-                    AuditEntry.action == "UPDATE_PAPERLESS_INSTANCE"
-                )
+                select(AuditEntry).where(AuditEntry.action == "UPDATE_PAPERLESS_INSTANCE")
             )
             assert update_audit is not None
             assert update_audit.instance_id is None
             delete_audit = db.scalar(
-                select(AuditEntry).where(
-                    AuditEntry.action == "DELETE_PAPERLESS_INSTANCE"
-                )
+                select(AuditEntry).where(AuditEntry.action == "DELETE_PAPERLESS_INSTANCE")
             )
             assert delete_audit is not None
             assert delete_audit.actor == "test-admin"
@@ -284,9 +278,7 @@ def test_instance_can_be_edited_without_exposing_or_replacing_secrets(
             assert updated.api_token_encrypted == old_token
             assert updated.webhook_secret_encrypted == old_secret
             audit = db.scalar(
-                select(AuditEntry).where(
-                    AuditEntry.action == "UPDATE_PAPERLESS_INSTANCE"
-                )
+                select(AuditEntry).where(AuditEntry.action == "UPDATE_PAPERLESS_INSTANCE")
             )
             assert audit is not None
             assert audit.instance_id == updated.id

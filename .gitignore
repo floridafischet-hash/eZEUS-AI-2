@@ -11,5 +11,7 @@ __pycache__/
 *.db
 .coverage
 htmlcov/
+build/
+*.sbom.json
 .gh-auth-output.txt
 .gh-auth-error.txt

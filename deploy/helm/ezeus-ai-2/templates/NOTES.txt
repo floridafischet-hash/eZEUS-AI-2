@@ -1,0 +1,35 @@
+
+eZEUS-AI-2 is installed as release {{ .Release.Name }} in namespace {{ .Release.Namespace }}.
+
+{{- if .Values.migrations.helmHookEnabled }}
+1. Check the migrations hook:
+   kubectl -n {{ .Release.Namespace }} logs -l app.kubernetes.io/component=migrations --tail=200
+{{- else }}
+1. Wait for the API rollout (its init container runs the serialized migrations):
+   kubectl -n {{ .Release.Namespace }} rollout status deploy/{{ include "ezeus.fullname" . }}-api
+{{- end }}
+
+2. Create your first admin user:
+   kubectl -n {{ .Release.Namespace }} exec -it deploy/{{ include "ezeus.fullname" . }}-api -- \
+     python -m scripts.create_admin_user <username>
+
+{{ if .Values.ingress.enabled }}
+3. Public URLs (via Ingress):
+{{ range .Values.ingress.hosts }}
+   https://{{ .host }}/
+   Webhook: https://{{ .host }}/webhooks/paperless/<instance-slug>
+{{ end }}
+{{ else }}
+3. Ingress is disabled. Use the port-forward below until an authenticated TLS
+   ingress or reverse proxy is configured.
+{{ end }}
+
+4. Health checks:
+   kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "ezeus.fullname" . }}-api 8080:8080
+   curl http://localhost:8080/health
+   curl http://localhost:8080/ready
+
+Important:
+- Override .Values.secrets.CREDENTIAL_ENCRYPTION_KEY with a real Fernet key before going to production.
+- If APP_ENV=production, placeholder secrets ("change-me", empty, or "example-*") will refuse to start.
+- Configure your external Paperless URL via external.paperlessBaseUrl or per-instance in the admin UI.

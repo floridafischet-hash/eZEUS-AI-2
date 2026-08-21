@@ -14,12 +14,7 @@ def upgrade() -> None:
     inspector = sa.inspect(bind)
 
     if bind.dialect.name == "postgresql":
-        op.execute(
-            sa.text(
-                "DELETE FROM job_phases "
-                "WHERE phase::text IN ('RUN_OCR', 'WRITE_OCR')"
-            )
-        )
+        op.execute(sa.text("DELETE FROM job_phases WHERE phase::text IN ('RUN_OCR', 'WRITE_OCR')"))
         op.execute(
             sa.text(
                 "DO $$ BEGIN "
@@ -34,9 +29,7 @@ def upgrade() -> None:
             )
         )
     else:
-        op.execute(
-            sa.text("DELETE FROM job_phases WHERE phase IN ('RUN_OCR', 'WRITE_OCR')")
-        )
+        op.execute(sa.text("DELETE FROM job_phases WHERE phase IN ('RUN_OCR', 'WRITE_OCR')"))
         op.execute(
             sa.text(
                 "UPDATE job_phases SET phase = 'READ_DOCUMENT_TEXT' "
@@ -54,10 +47,7 @@ def downgrade() -> None:
     bind = op.get_bind()
     if bind.dialect.name == "postgresql":
         op.execute(
-            sa.text(
-                "ALTER TYPE jobphase RENAME VALUE "
-                "'READ_DOCUMENT_TEXT' TO 'DOWNLOAD_DOCUMENT'"
-            )
+            sa.text("ALTER TYPE jobphase RENAME VALUE 'READ_DOCUMENT_TEXT' TO 'DOWNLOAD_DOCUMENT'")
         )
     else:
         op.execute(

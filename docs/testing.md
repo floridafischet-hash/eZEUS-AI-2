@@ -1,26 +1,30 @@
 # Tests
 
-Die Tests verwenden keine externe Paperless-Instanz. Unit-Tests prüfen
-OCR-Normalisierung, Webhook-Sicherheit, Templates, Extraktion und Validierung.
+Die schnellen Tests verwenden keine externe Paperless-Instanz. Sie prüfen
+Webhook-Sicherheit, Mandantentrennung, Outbox, SSRF-/Streaming-Grenzen,
+Regex-Timeouts, Templates, Extraktion, Validierung und Schreibschutz.
 
 ```bash
-python -m pip install -e ".[dev]"
-APP_ENV=test python -m pytest
-ruff check .
-mypy apps connectors core plugins webhooks
+python -m pip install --upgrade "pip==26.2.1" "setuptools==84.0.0" "wheel==0.48.0"
+python -m pip install --require-hashes -r requirements-dev.lock
+python -m pip install --no-deps --no-build-isolation .
+make format-check
+make lint
+make typecheck
+make test
+make security
 ```
 
 Ein vollständiger Container-Test benötigt Docker:
 
 ```bash
-docker compose config
-docker compose build
-docker compose up -d
-docker compose ps
+make container-smoke
+make smoke-down
+make helm-check
 ```
 
-Der lokale Stack enthält einen Paperless-API-Mock und die PDF-Datei
-`tests/fixtures/invoice.pdf` für manuelle End-to-End-Prüfungen. Der
-automatisierte Integrationstest verwendet einen isolierten Connector und einen
-OCR-Testprovider. Er prüft Templateauswahl, Extraktion, Validierung,
-Persistierung, Audit und Schreibschutz ohne externe Dienste.
+`scripts/container_smoke_test.py` verwendet echte Container für PostgreSQL,
+Redis, API, Outbox, Celery-Worker und Mock-Paperless. Er prüft den vollständigen
+Webhook-Ablauf bis zu Titel und Custom Fields. CI führt zusätzlich Bandit,
+`pip-audit`, Gitleaks, Trivy, SBOM-Erzeugung und 30-tägige
+Artefaktaufbewahrung, Helm-Lint und kubeconform aus.

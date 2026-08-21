@@ -1,4 +1,5 @@
 from typing import Any
+from urllib.parse import urljoin, urlparse
 
 import httpx
 
@@ -19,6 +20,12 @@ from connectors.base.interface import (
     DocumentConnector,
 )
 from core.config.settings import get_settings
+from core.security.outbound import (
+    DisallowedOutboundHost,
+    DownloadTooLargeError,
+    stream_capped,
+    validate_outbound_url,
+)
 
 
 class PaperlessConnector(DocumentConnector):
@@ -32,6 +39,7 @@ class PaperlessConnector(DocumentConnector):
         self.base_url = (base_url or settings.paperless_base_url).rstrip("/")
         self.token = api_token if api_token is not None else settings.paperless_api_token
         self.verify_tls = verify_tls if verify_tls is not None else settings.paperless_verify_tls
+        self._settings = settings
 
     def _client(self) -> httpx.AsyncClient:
         return httpx.AsyncClient(
@@ -41,14 +49,47 @@ class PaperlessConnector(DocumentConnector):
             verify=self.verify_tls,
         )
 
+    def _validated_request_url(self, url: str) -> str:
+        absolute_url = urljoin(f"{self.base_url}/", url)
+        base = urlparse(self.base_url)
+        target = urlparse(absolute_url)
+        base_port = base.port or (443 if base.scheme == "https" else 80)
+        target_port = target.port or (443 if target.scheme == "https" else 80)
+        if (target.scheme, target.hostname, target_port) != (
+            base.scheme,
+            base.hostname,
+            base_port,
+        ):
+            raise ConnectionError("Paperless response attempted a cross-origin request")
+        try:
+            # Managed instances may supply their own host while the operator
+            # leaves OUTBOUND_ALLOWED_HOSTS empty.  As soon as the operator
+            # configures that list it becomes authoritative.
+            dynamic_hosts = () if self._settings.outbound_allowed_hosts else (base.hostname or "",)
+            validate_outbound_url(
+                absolute_url,
+                extra_allowed_hosts=dynamic_hosts,
+                settings=self._settings,
+            )
+        except DisallowedOutboundHost as exc:
+            raise ConnectionError(str(exc)) from exc
+        return absolute_url
+
     async def _request(self, method: str, url: str, **kwargs: Any) -> httpx.Response:
+        request_url = self._validated_request_url(url)
+        max_bytes = self._settings.paperless_max_download_bytes
         try:
             async with self._client() as client:
-                response = await client.request(method, url, **kwargs)
+                response, body = await stream_capped(
+                    client, method, request_url, max_bytes=max_bytes, **kwargs
+                )
         except httpx.TimeoutException as exc:
             raise TimeoutError(str(exc)) from exc
+        except DownloadTooLargeError as exc:
+            raise ValidationError(str(exc)) from exc
         except httpx.RequestError as exc:
             raise ConnectionError(str(exc)) from exc
+        del body
         request_url = str(response.request.url)
         if response.status_code == 401:
             raise AuthenticationError(
@@ -68,11 +109,20 @@ class PaperlessConnector(DocumentConnector):
             )
         if response.status_code >= 500:
             raise ConnectionError(f"Paperless server error: HTTP {response.status_code}")
-        response.raise_for_status()
+        try:
+            response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            raise ValidationError(
+                f"Unexpected Paperless response: HTTP {response.status_code}"
+            ) from exc
         return response
 
     async def health_check(self) -> bool:
-        response = await self._request("GET", "/api/documents/?page_size=1")
+        response = await self._request(
+            "GET",
+            "/api/documents/?page_size=1",
+            timeout=5.0,
+        )
         return response.status_code == 200
 
     async def find_webhook_workflow(self, webhook_url: str) -> dict[str, object] | None:
@@ -120,7 +170,6 @@ class PaperlessConnector(DocumentConnector):
             "enabled": True,
             "triggers": [
                 {"type": 2},  # Document added
-                {"type": 3},  # Document updated
             ],
             "actions": [
                 {
@@ -208,9 +257,7 @@ class PaperlessConnector(DocumentConnector):
                     name=str(item["name"]),
                     data_type=str(item["data_type"]),
                     extra_data=(
-                        dict(item["extra_data"])
-                        if isinstance(item.get("extra_data"), dict)
-                        else {}
+                        dict(item["extra_data"]) if isinstance(item.get("extra_data"), dict) else {}
                     ),
                 )
                 for item in data.get("results", [])

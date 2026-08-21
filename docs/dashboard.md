@@ -45,10 +45,12 @@ Werte aus Dateinamen oder Datenbankfeldern werden nicht als HTML interpretiert.
 
 ## Zugriffsschutz
 
-Die Anwendung selbst stellt für das Dashboard keine Benutzerverwaltung bereit.
-In einer produktiven Umgebung muss der gesamte öffentliche Zugriff über einen
-TLS-Reverse-Proxy mit Authentifizierung erfolgen. Der API-Port sollte nur an
-Loopback oder ein privates Container-Netz gebunden werden.
+Die Anwendung erzwingt für das reine Betriebsdashboard keine eigene Anmeldung.
+Das Kubernetes-Chart kann deshalb oauth2-proxy/OIDC per ingress-nginx
+`auth_request` vorschalten; nur Webhook und `/health` bleiben öffentlich. Beim
+Compose-Betrieb muss der gesamte Browserzugriff über einen authentifizierenden
+TLS-Reverse-Proxy laufen. Der Host-Port ist standardmäßig nur an Loopback
+gebunden.
 
 Beispielwerte:
 

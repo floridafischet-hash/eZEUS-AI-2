@@ -48,17 +48,9 @@ def _recreate_postgresql_enum(
         )
     op.execute(sa.text("DROP TYPE jobphase"))
     op.execute(sa.text(f"CREATE TYPE jobphase AS ENUM ({quoted_values})"))
+    op.execute(sa.text("ALTER TABLE jobs ALTER COLUMN phase TYPE jobphase USING phase::jobphase"))
     op.execute(
-        sa.text(
-            "ALTER TABLE jobs ALTER COLUMN phase TYPE jobphase "
-            "USING phase::jobphase"
-        )
-    )
-    op.execute(
-        sa.text(
-            "ALTER TABLE job_phases ALTER COLUMN phase TYPE jobphase "
-            "USING phase::jobphase"
-        )
+        sa.text("ALTER TABLE job_phases ALTER COLUMN phase TYPE jobphase USING phase::jobphase")
     )
 
 
@@ -67,9 +59,7 @@ def upgrade() -> None:
     if bind.dialect.name != "postgresql":
         return
     op.execute(sa.text("ALTER TABLE jobs ALTER COLUMN phase TYPE varchar USING phase::text"))
-    op.execute(
-        sa.text("ALTER TABLE job_phases ALTER COLUMN phase TYPE varchar USING phase::text")
-    )
+    op.execute(sa.text("ALTER TABLE job_phases ALTER COLUMN phase TYPE varchar USING phase::text"))
     op.execute(
         sa.text(
             "UPDATE jobs SET phase = 'READ_DOCUMENT_TEXT' "
@@ -84,13 +74,10 @@ def downgrade() -> None:
     if bind.dialect.name != "postgresql":
         return
     op.execute(sa.text("ALTER TABLE jobs ALTER COLUMN phase TYPE varchar USING phase::text"))
-    op.execute(
-        sa.text("ALTER TABLE job_phases ALTER COLUMN phase TYPE varchar USING phase::text")
-    )
+    op.execute(sa.text("ALTER TABLE job_phases ALTER COLUMN phase TYPE varchar USING phase::text"))
     op.execute(
         sa.text(
-            "UPDATE jobs SET phase = 'DOWNLOAD_DOCUMENT' "
-            "WHERE phase::text = 'READ_DOCUMENT_TEXT'"
+            "UPDATE jobs SET phase = 'DOWNLOAD_DOCUMENT' WHERE phase::text = 'READ_DOCUMENT_TEXT'"
         )
     )
     op.execute(

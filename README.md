@@ -42,6 +42,7 @@ Alles läuft lokal (eigener Server, eigenes Docker-Netz). Es gibt standardmäßi
 | Komponente | Version / Hinweis |
 |---|---|
 | Docker + Docker Compose | aktuelle Version, Compose v2 |
+| Alternativ: Kubernetes + Helm | Kubernetes ab 1.26 und Helm 4 (Chart wird mit Helm 4.2 geprüft) |
 | Laufende Paperless-ngx-Instanz | erreichbar per HTTP(S) vom eZEUS-Server aus |
 | Paperless API-Token | wird unter Paperless → Einstellungen → API-Token erzeugt |
 | Freier Arbeitsspeicher | mind. 2 GB (optional mehr, wenn Ollama aktiviert ist) |
@@ -60,7 +61,19 @@ eZEUS besteht aus mehreren Containern, die zusammenspielen:
    Paperless-ngx  ─────► │   api (FastAPI)      │  nimmt Webhooks entgegen,
    (Webhook bei          │   Port 8080          │  stellt Admin-API & Dashboard
    neuem Dokument)       └──────────┬───────────┘  bereit
-                                    │ legt Job an, reiht ihn ein
+                                    │ speichert Job + Outbox
+                                    ▼
+                          ┌──────────────────┐
+                          │   postgres        │  Job + Queue-Outbox werden
+                          │                   │  atomar gespeichert
+                          └──────────┬────────┘
+                                    │
+                                    ▼
+                          ┌──────────────────┐
+                          │   outbox          │  übergibt dauerhaft gespeicherte
+                          │                   │  Jobs an Redis/Celery
+                          └──────────┬────────┘
+                                    │
                                     ▼
                           ┌──────────────────┐
                           │   redis           │  Warteschlange (Queue)
@@ -73,11 +86,8 @@ eZEUS besteht aus mehreren Containern, die zusammenspielen:
                           │   + Validierung   │◄──────│   Werte schreiben)│
                           └──────────┬────────┘       └─────────────────┘
                                     │
-                                    ▼
-                          ┌──────────────────┐
-                          │   postgres        │  speichert Jobs, Templates,
-                          │                   │  Extraktionsergebnisse, Audit-Log
-                          └──────────────────┘
+                                    └────────────► PostgreSQL speichert außerdem
+                                                   Templates, Ergebnisse und Audit-Log
 
                           (optional, nur wenn aktiviert)
                           ┌──────────────────┐
@@ -86,7 +96,7 @@ eZEUS besteht aus mehreren Containern, die zusammenspielen:
                           └──────────────────┘
 ```
 
-**Wichtig:** Die `api` nimmt den Webhook nur entgegen und legt einen Auftrag (Job) an. Die eigentliche Verarbeitung (Paperless-Text lesen, Extraktion, Validierung, Schreiben) passiert **komplett getrennt** im `worker`-Container. Das hält die Webhook-Antwort schnell und macht das System robust gegen Lastspitzen.
+**Wichtig:** Die `api` nimmt den Webhook nur entgegen und speichert Job plus Queue-Outbox in einer gemeinsamen Datenbanktransaktion. Der `outbox`-Dienst veröffentlicht den Auftrag wiederholbar an Redis. Die eigentliche Verarbeitung passiert **komplett getrennt** im `worker`-Container. Ein vorübergehender Redis-Ausfall kann dadurch keinen bereits bestätigten Job verlieren.
 
 ---
 
@@ -121,14 +131,14 @@ docker compose build
 docker compose up -d
 ```
 
-Das startet: `api`, `worker`, `postgres`, `redis` (und im Standard-Compose-File zusätzlich ein Mock-Paperless für Testzwecke — für den echten Betrieb könnt ihr diesen Dienst ignorieren oder aus der Compose-Datei entfernen, sobald `PAPERLESS_BASE_URL` auf eure echte Instanz zeigt). Kein gesondertes OCR-Image nötig — der Worker verwendet dasselbe Image wie die API.
+Das startet: `api`, `worker`, `outbox`, `postgres`, `redis` (und im Standard-Compose-File zusätzlich ein Mock-Paperless für Testzwecke). Kein gesondertes OCR-Image nötig — API, Worker und Outbox verwenden dasselbe gehärtete Non-Root-Image.
 
 ### 3.4 Datenbank-Migrationen
 
-Die Migrationen laufen beim Start des `api`-Containers automatisch (`alembic upgrade head` ist Teil des Start-Kommandos). Manuell nachziehen, falls nötig:
+Die Migrationen laufen beim Start des `api`-Containers automatisch und werden bei PostgreSQL durch ein Advisory Lock serialisiert. Manuell nachziehen, falls nötig:
 
 ```bash
-docker compose exec api alembic upgrade head
+docker compose exec api python -m core.db.migrate
 ```
 
 Danach das erste persönliche Administratorkonto interaktiv anlegen:
@@ -146,6 +156,23 @@ curl http://localhost:8080/ready
 
 `/ready` prüft zusätzlich Datenbank, Redis, Paperless-Erreichbarkeit und — falls aktiviert — Ollama. Erst wenn hier alles `true` zurückgibt, ist das System vollständig betriebsbereit.
 
+### 3.6 Kubernetes / Helm
+
+Das produktionsnahe Helm-Chart liegt unter `deploy/helm/ezeus-ai-2`. Es enthält API, Worker, transaktionalen Outbox-Dispatcher, Migrationen, PostgreSQL, Redis, optional Ollama, HPA/PDB, NetworkPolicies, Ingress und optionalen OIDC-Schutz über oauth2-proxy.
+
+```bash
+docker build --tag registry.example/ezeus-ai-2:0.2.0 .
+docker push registry.example/ezeus-ai-2:0.2.0
+cp deploy/helm/ezeus-ai-2/values-production.example.yaml values-production.yaml
+# Image-Registry, Hosts, CIDRs und existingSecret in values-production.yaml ersetzen
+helm upgrade --install ezeus deploy/helm/ezeus-ai-2 \
+  --namespace ezeus --create-namespace \
+  --values values-production.yaml \
+  --wait --timeout 10m
+```
+
+Produktive Secrets gehören in ein vorhandenes Sealed/External Secret; sie dürfen nicht in der Values-Datei stehen. Die vollständige Anleitung und das Schlüsselschema stehen in [der Helm-Dokumentation](deploy/helm/ezeus-ai-2/README.md).
+
 ---
 
 ## 4. Konfiguration (.env)
@@ -155,6 +182,7 @@ curl http://localhost:8080/ready
 | `APP_ENV` | `development` oder `production`. In `production` werden Beispiel-Secrets abgelehnt. |
 | `APP_HOST` / `APP_PORT` | Bind-Adresse der API (Standard `0.0.0.0:8080`) |
 | `APP_LOG_LEVEL` | Log-Level, z. B. `INFO` |
+| `FORWARDED_ALLOW_IPS` | Vertrauenswürdige Reverse-Proxy-Adressen; im Helm-Cluster `*`, da NetworkPolicies den Service abschirmen |
 | `POSTGRES_PASSWORD` | Passwort für die interne Datenbank |
 | `DATABASE_URL` | Vollständige DB-Verbindung (muss zum Passwort passen) |
 | `REDIS_URL` | Verbindung zur Warteschlange |
@@ -170,8 +198,16 @@ curl http://localhost:8080/ready
 | `OLLAMA_MODEL` | Modellname, z. B. `qwen3:4b` |
 | `OLLAMA_TIMEOUT_SECONDS` | Maximale Wartezeit auf eine KI-Antwort |
 | `OLLAMA_MAX_INPUT_CHARS` | Wie viel Dokumenttext maximal an das Modell geschickt wird (längerer Text wird gekürzt) |
+| `OLLAMA_MAX_RESPONSE_BYTES` | Harte maximale Antwortgröße von Ollama |
 | `JOB_MAX_RETRIES` | Wie oft ein fehlgeschlagener Job automatisch wiederholt wird |
 | `JOB_RETRY_DELAYS_SECONDS` | Wartezeiten zwischen den Wiederholungsversuchen, z. B. `30,120,600` |
+| `CELERY_CONCURRENCY` | Worker-Prozesse je Compose-Container (Standard `2`) |
+| `RATE_LIMIT_*` | Anwendungslimiter; im Helm-Deployment zusätzlich ingress-nginx-Limits |
+| `OUTBOUND_ALLOWED_HOSTS` | Optionale feste Host-Allowlist; sobald gesetzt, ist sie auch für verwaltete Instanzen verbindlich |
+| `OUTBOUND_PRIVATE_ALLOWED_HOSTS` | Explizite Ausnahme für interne FQDNs; allowlist-geprüfte Kubernetes-Kurznamen dürfen ClusterIPs nutzen, Loopback/Link-Local bleiben gesperrt |
+| `PAPERLESS_MAX_DOWNLOAD_BYTES` / `PAPERLESS_MAX_TEXT_CHARS` | Harte Streaming- und OCR-Textgrenzen |
+| `REGEX_HARD_TIMEOUT_SECONDS` | Echte Zeitunterbrechung pro regulärem Ausdruck |
+| `OUTBOX_*` | Polling-, Claim- und Backoff-Grenzen des Queue-Outbox-Dispatchers |
 
 ---
 
@@ -281,40 +317,36 @@ Der Webhook-Handler vergleicht das mitgeschickte Geheimnis mit dem konfigurierte
 
 ### Schritt 3 — Auftrag (Job) wird angelegt (wo: eZEUS `api`-Container, in Postgres gespeichert)
 
-Anhand der `event_id` wird geprüft, ob dieses Ereignis bereits bekannt ist (Schutz gegen doppelte Verarbeitung, z. B. wenn Paperless denselben Webhook zweimal sendet). Ist es neu, wird ein Datenbankeintrag für das Dokument (falls noch nicht vorhanden) sowie ein neuer **Job** mit Status `RECEIVED` angelegt.
+Anhand der `event_id` wird geprüft, ob dieses Ereignis bereits bekannt ist (Schutz gegen doppelte Verarbeitung). Ist es neu, werden Dokument, **Job** und Queue-Outbox atomar in PostgreSQL gespeichert; der Job erhält Status `QUEUED`.
 
 ### Schritt 4 — Job wird in die Warteschlange eingereiht (wo: Redis)
 
-Der neue Job wird an die Warteschlange (Redis, verwaltet über Celery) übergeben, Status wechselt zu `QUEUED`. Der Webhook antwortet Paperless-ngx sofort mit HTTP 202 — die eigentliche Verarbeitung läuft danach **unabhängig und asynchron** weiter, Paperless muss nicht warten.
+Der Outbox-Dispatcher übergibt den dauerhaft gespeicherten Job an Redis/Celery. Scheitert Redis vorübergehend, bleibt das Ereignis mit Backoff in PostgreSQL und wird erneut veröffentlicht. Der Webhook antwortet Paperless-ngx sofort mit HTTP 202 — die Verarbeitung läuft danach unabhängig weiter.
 
 ### Schritt 5 — Ein Worker übernimmt den Job (wo: eZEUS `worker`-Container)
 
 Ein freier Worker-Prozess holt sich den Job aus der Warteschlange, Status wechselt zu `RUNNING`. Ab hier läuft die eigentliche Verarbeitung in klar getrennten, einzeln protokollierten Phasen:
 
-**Phase A — Metadaten laden.** Der Worker fragt bei Paperless-ngx per `GET /api/documents/128/` die aktuellen Metadaten ab (Dateiname, Dokumenttyp, MIME-Type) und liest dabei gleichzeitig den von Paperless bereits erkannten OCR-Text aus.
+**Phase A — Dokument laden (`LOAD_DOCUMENT`).** Der Worker fragt bei Paperless-ngx per `GET /api/documents/128/` Metadaten und den bereits erkannten OCR-Text ab. MIME-Typ, Antwortgröße und Textlänge werden begrenzt; eine Originaldatei wird nicht geladen.
 
-**Phase B — Textquelle bestimmen.** Hat Paperless-ngx bereits einen Text zum Dokument gespeichert, wird dieser direkt als Extraktionsgrundlage verwendet. Die Phasen B (Download), C (OCR) und D (OCR-Schreiben) werden in diesem Fall übersprungen — eZEUS führt keine eigene Texterkennung durch. Ist kein Text vorhanden, werden alle drei Phasen als übersprungen markiert und der Job endet mit einem Warnhinweis (kein Text verfügbar).
+**Phase B — Text lesen (`READ_DOCUMENT_TEXT`).** Vorhandener Paperless-Text wird direkt als Extraktionsgrundlage verwendet. Ist er leer, läuft der sichere Ablauf mit leerer Textquelle weiter und endet wegen fehlender Pflichtfelder mit Warnhinweis. Eigene Download-, OCR- oder OCR-Schreibphasen existieren nicht mehr.
 
-**Phase C — OCR (übersprungen).** Entfällt; die Texterkennung übernimmt vollständig Paperless-ngx.
+**Phase C — passende Konfiguration auswählen (`SELECT_TEMPLATE`).** Für verwaltete Instanzen wird die aktive Feldkonfiguration geladen; andernfalls werden Paperless-Custom-Fields oder eine passende Templateversion verwendet. Fehlt jede Konfiguration, endet der Job regulär mit Warnhinweis.
 
-**Phase D — OCR-Text zurückschreiben (übersprungen).** Entfällt; eZEUS schreibt keinen OCR-Text zurück.
-
-**Phase E — passende Vorlage auswählen.** Anhand des Dokumenttyps (aus Phase A) sucht das System die dazu passende, aktive Standard-Vorlage (siehe Abschnitt 6). Gibt es keine passende Vorlage, endet der Job hier regulär — nicht als Fehler, sondern mit dem Hinweis „keine Extraktionsregeln vorhanden“.
-
-**Phase F — Felder extrahieren (hier, und nur hier, kann KI beteiligt sein).** Für jedes in der Vorlage definierte Feld werden die konfigurierten Provider durchlaufen:
+**Phase D — Felder extrahieren (`EXTRACT_FIELDS`; hier, und nur hier, kann KI beteiligt sein).** Für jedes konfigurierte Feld werden die Provider durchlaufen:
 - `regex` — sucht nach einem festen Textmuster (z. B. „Rechnungsnummer: gefolgt von Zeichen“). Schnell, vorhersagbar, für gut strukturierte Dokumente ideal.
 - `keyword` — sucht nach Schlüsselwörtern in der Nähe des gesuchten Wertes.
 - `ollama` — **nur wenn `OLLAMA_ENABLED=true` und im Feld konfiguriert:** Der erkannte Text wird an ein lokales KI-Modell geschickt, das gezielt nach dem gesuchten Wert gefragt wird (mit fester, niedriger „Kreativität“, damit es keine Werte erfindet). Wird für Fälle genutzt, bei denen feste Muster nicht zuverlässig greifen, weil der Text zu variabel ist.
 
 Jeder Provider liefert null, einen oder mehrere Kandidatenwerte mit einer Konfidenz (Vertrauenswert) zurück — alle werden zunächst nur gespeichert, noch nicht übernommen.
 
-**Phase G — Kandidaten validieren.** Jeder Kandidat durchläuft die in der Vorlage hinterlegten Prüfungen (z. B. `monetary_amount` normalisiert „1.234,56 EUR“ zu „1234.56“; `date` prüft ein gültiges Datumsformat; `not_empty` verlangt einen nicht-leeren Wert). Liefern mehrere Provider für dasselbe Feld **unterschiedliche** Werte, wird bewusst **kein** Wert übernommen — das System rät nicht, sondern markiert den Konflikt.
+**Phase E — Kandidaten validieren (`VALIDATE_RESULTS`).** Jeder Kandidat durchläuft die hinterlegten Prüfungen (z. B. `monetary_amount` normalisiert „1.234,56 EUR“ zu „1234.56“; `date` prüft ein gültiges Datumsformat; `not_empty` verlangt einen nicht-leeren Wert). Liefern mehrere Provider für dasselbe Feld **unterschiedliche** Werte, wird bewusst **kein** Wert übernommen — das System rät nicht, sondern markiert den Konflikt.
 
-**Phase H — aktuellen Stand erneut laden.** Direkt vor dem Schreiben holt der Worker den Dokumentenstand ein weiteres Mal von Paperless-ngx. Das verkleinert das Zeitfenster, in dem jemand anderes das Dokument zwischenzeitlich bearbeitet haben könnte.
+**Phase F — aktuellen Stand erneut laden (`RELOAD_METADATA`).** Direkt vor dem Schreiben holt der Worker den Dokumentenstand ein weiteres Mal von Paperless-ngx. Das verkleinert das Zeitfenster, in dem jemand anderes das Dokument zwischenzeitlich bearbeitet haben könnte.
 
-**Phase I — Ergebnisse schreiben.** Nur Felder, die in Paperless-ngx **zu diesem Zeitpunkt noch leer** sind, werden mit den validierten Werten befüllt. Bereits vorhandene oder manuell eingetragene Werte werden nie überschrieben. Jede tatsächlich vorgenommene Änderung wird mit Alt- und Neuwert im Audit-Log festgehalten.
+**Phase G — Ergebnisse schreiben (`WRITE_METADATA`).** Nur Felder, die in Paperless-ngx **zu diesem Zeitpunkt noch leer** sind, werden mit den validierten Werten befüllt. Bereits vorhandene oder manuell eingetragene Werte werden nie überschrieben. Titel und Korrespondent werden nur nach den dafür geltenden Regeln gesetzt. Jede tatsächlich vorgenommene Änderung wird mit Alt- und Neuwert im Audit-Log festgehalten.
 
-**Phase J — Abschluss.** Der Job-Status wechselt zu `COMPLETED` (oder `COMPLETED_WITH_WARNINGS`, falls z. B. keine Vorlage gefunden oder kein Text verfügbar war). Tritt in irgendeiner Phase ein Fehler auf, wird nur diese Phase als `FAILED` markiert, der Job erhält Status `FAILED` mit Fehlerart und -meldung.
+**Phase H — Aufräumen und Abschluss (`CLEANUP`, `COMPLETE`).** Der Job-Status wechselt zu `COMPLETED` oder `COMPLETED_WITH_WARNINGS`. Tritt in irgendeiner Phase ein Fehler auf, wird die aktive Phase als `FAILED` markiert; der Job erhält Status `FAILED` mit redigierter Fehlerart und -meldung.
 
 ### Schritt 6 — Ergebnis ist sichtbar (wo: Paperless-ngx und eZEUS-Dashboard)
 
@@ -352,11 +384,11 @@ Automatische Wiederholungsversuche sind zusätzlich über `JOB_MAX_RETRIES` und 
 ## 10. Bekannte Einschränkungen
 
 - Es gibt noch keine mitgelieferte Vorlage für Lieferscheine oder andere Dokumenttypen außer dem Rechnungs-Beispiel — eigene Vorlagen müssen selbst angelegt werden (siehe Abschnitt 6).
-- Die Admin-Oberfläche und die Log-API sind innerhalb der Anwendung selbst nicht durch eine eigene Benutzerverwaltung geschützt; ein produktiver Zugriff braucht einen authentifizierenden TLS-Reverse-Proxy davor.
+- Dashboard, Log-API und OpenAPI benötigen am Netzrand Authentifizierung. Das Helm-Chart liefert dafür optional oauth2-proxy/OIDC; bei Compose muss ein entsprechender TLS-Reverse-Proxy vorgeschaltet werden.
 - Das Dashboard zeigt den konfigurierten Modellnamen. Das beweist weder den physischen Standort des Modells noch, dass es gerade geladen ist oder für den letzten Job verwendet wurde.
 - Liefert Paperless-ngx keinen OCR-Text (z. B. bei Bilddateien ohne OCR-Konfiguration), findet eZEUS keine Felder und schließt den Job mit Warnhinweis ab.
-- Datenbankstatus und Celery-Nachricht werden nicht über eine gemeinsame Transaktion koordiniert.
-- Es gibt noch keinen vollständigen Lasttest und keine vollständigen Malware-, PDF-Bomb- oder End-to-End-Sicherheitstests — für den produktiven Einsatz vor dem Rollout selbst prüfen.
+- Ein belastbarer Last-/Kapazitätstest mit der konkreten Clustergröße bleibt Betreiberaufgabe.
+- eZEUS lädt oder parst keine Dokumentbinärdateien mehr. Malware- und PDF-Bomb-Prüfung der Originaldatei liegt daher bei Paperless-ngx; eZEUS begrenzt den übernommenen MIME-Typ und OCR-Text sowie Containerressourcen.
 
 
 ---
@@ -425,13 +457,14 @@ dem Button „Workflow einrichten“ bzw. der manuellen Pflege vorbehalten.
 - `core/jobs`: Auftragserstellung und Statusübergänge
 - `core/models`: persistente SQLAlchemy-Modelle
 - `core/orchestration`: Verarbeitungspipeline
-- `core/queue`: Celery-Konfiguration und Queue-Adapter
+- `core/queue`: Celery-Konfiguration, Queue-Adapter und transaktionaler Outbox-Dispatcher
 - `core/templates`: Template-Schema und Auswahl
 - `core/validation`: Validierungs- und Normalisierungslogik
 - `plugins`: Extraktions-, LLM- und Validierungsbausteine
 - `webhooks`: Paperless-Webhook, Schema und Secret-Prüfung
 - `infrastructure/migrations`: Alembic-Konfiguration und Migrationen
-- `scripts`: Hilfsskript zur Erzeugung der PDF-Testdatei
+- `scripts`: Hilfsskripte und echter Container-Smoke-Test
+- `deploy/helm/ezeus-ai-2`: Kubernetes-/Helm-Deployment
 - `tests`: Unit-, API- und Integrationstests
 - `docs`: ergänzende Architektur-, Betriebs- und Sicherheitsdokumentation
 
@@ -442,7 +475,7 @@ Die API startet über `apps.api.main:app`. Celery lädt `core.queue.celery_app:c
 Vollständige Tests:
 
 ```bash
-APP_ENV=test python -m pytest
+make test
 ```
 
 Unter PowerShell:
@@ -464,6 +497,9 @@ Compose-Konfiguration prüfen:
 
 ```bash
 docker compose config --quiet
+make container-smoke
+make smoke-down
+make helm-check
 ```
 
 Weitere Informationen stehen in [docs/testing.md](docs/testing.md).
@@ -489,13 +525,15 @@ Weitere Informationen stehen in [docs/testing.md](docs/testing.md).
 - `.env` und lokale Varianten sind durch `.gitignore` ausgeschlossen.
 - Reale Tokens, Passwörter und Schlüssel dürfen nicht versioniert oder in Images eingebettet werden.
 - TLS-Prüfung für Paperless ist standardmäßig aktiv.
-- Dashboard, Log-Endpunkt und OpenAPI-Dokumentation besitzen keine eigene Benutzerverwaltung. Ein produktiver Zugriff benötigt einen authentifizierenden TLS-Reverse-Proxy.
+- Dashboard, Log-Endpunkt und OpenAPI werden im Helm-Deployment über den optionalen oauth2-proxy/OIDC-Ingress geschützt. Bei Compose ist ein authentifizierender TLS-Reverse-Proxy erforderlich.
 - Administrationskonten verwenden Scrypt-Passworthashes und die Rollen `admin` und `viewer`. Es gibt keinen gemeinsamen Bootstrap-Schlüssel in der HTTP-API.
 - Der Paperless-Mock ist ausschließlich für lokale Entwicklung und Tests vorgesehen.
 - Container-Netze, Datenbank und Redis dürfen im Produktivbetrieb nicht öffentlich erreichbar sein.
 - Der Quellcode enthält keine produktiven Zugangsdaten. Die Werte in `.env.example` sind erkennbare Platzhalter.
+- Ausgehende Paperless-/Ollama-Aufrufe verwenden Host-Allowlisting, DNS-/Privatnetzschutz und harte Streaming-Grenzen.
+- CI prüft Lockfiles, Tests, Ruff, mypy, Bandit, `pip-audit`, Helm/kubeconform, Gitleaks, Trivy und einen realen Compose-Workflow.
 
-Weitere bekannte Sicherheitslücken und ausstehende Maßnahmen stehen in [docs/security.md](docs/security.md) und im [CODE_REVIEW_REPORT.md](CODE_REVIEW_REPORT.md).
+Die umgesetzten Schutzmaßnahmen und verbleibenden Betreiberpflichten stehen in [docs/security.md](docs/security.md); der historische Bericht samt Auflösungsmatrix steht in [CODE_REVIEW_REPORT.md](CODE_REVIEW_REPORT.md).
 
 ## 16. Backup und Wiederherstellung
 
@@ -527,4 +565,4 @@ Eine Wiederherstellung muss zunächst in einer getrennten Umgebung getestet werd
 
 ## 18. Lizenz
 
-Im Repository ist derzeit keine Lizenzdatei vorhanden. Ohne ausdrückliche Lizenz werden keine Nutzungs-, Änderungs- oder Weitergaberechte eingeräumt.
+Das Projekt ist derzeit proprietär/source-available. Die Datei [LICENSE](LICENSE) räumt ohne vorherige schriftliche Genehmigung keine Nutzungs-, Änderungs- oder Weitergaberechte ein. Drittanbieter-Komponenten behalten ihre jeweiligen Lizenzen.

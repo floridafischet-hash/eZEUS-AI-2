@@ -7,6 +7,14 @@ from core.config.settings import get_settings
 from plugins.llm.ollama import OllamaExtractionProvider
 
 
+@pytest.fixture(autouse=True)
+def _resolve_ollama_service(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "core.security.outbound.resolve_hosts",
+        lambda _host: ["10.96.0.42"],
+    )
+
+
 @pytest.mark.asyncio
 async def test_ollama_provider_returns_structured_candidate(
     monkeypatch: pytest.MonkeyPatch,

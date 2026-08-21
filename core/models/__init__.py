@@ -6,6 +6,7 @@ from core.models.instance_field_config import InstanceFieldConfig
 from core.models.job import Job
 from core.models.job_phase import JobPhaseEntry
 from core.models.paperless_instance import PaperlessInstance
+from core.models.queue_outbox import QueueOutbox
 from core.models.template import Template
 
 __all__ = [
@@ -17,5 +18,6 @@ __all__ = [
     "Job",
     "JobPhaseEntry",
     "PaperlessInstance",
+    "QueueOutbox",
     "Template",
 ]

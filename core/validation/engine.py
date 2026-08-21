@@ -40,9 +40,7 @@ class ValidationEngine:
         if kind == "monetary_amount":
             normalized = re.sub(r"[^\d,.-]", "", text)
             if "," in normalized and "." in normalized:
-                decimal_separator = (
-                    "," if normalized.rfind(",") > normalized.rfind(".") else "."
-                )
+                decimal_separator = "," if normalized.rfind(",") > normalized.rfind(".") else "."
                 thousands_separator = "." if decimal_separator == "," else ","
                 normalized = normalized.replace(thousands_separator, "").replace(
                     decimal_separator, "."

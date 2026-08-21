@@ -307,8 +307,7 @@ async def test_plain_invoice_heading_is_not_an_identifier() -> None:
         ("ENDSUMME brutto\n3.867,50 €", "3.867,50"),
         ("Gesamtbetrag brutto: 28.441,00 EUR", "28.441,00"),
         (
-            "Gesamtnetto 97,45 €\nzzgl. 19 % MwSt 18,52 €\n"
-            "Gesamtrechnungsbetrag 115,97 €",
+            "Gesamtnetto 97,45 €\nzzgl. 19 % MwSt 18,52 €\nGesamtrechnungsbetrag 115,97 €",
             "115,97",
         ),
         (

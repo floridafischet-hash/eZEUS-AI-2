@@ -30,24 +30,53 @@ Webhook-Secrets werden mit konstantem Zeitverhalten verglichen. Paperless-TLS
 ist standardmäßig aktiv. Die API läuft nicht als Root. Vor jedem Schreiben wird
 der Remotezustand erneut geladen.
 
-Vor einem Produktivbetrieb fehlen noch:
+## Umgesetzte technische Schutzmaßnahmen
 
-- Rate Limiting am Reverse Proxy
-- SSRF-Schutz durch eine administrativ feste Paperless-URL
-- Malware-, PDF-Bomb- und Ressourcenlimits auf Betriebssystemebene
-- Streaming-Begrenzung von Downloads vor dem vollständigen Einlesen in den Speicher
-- Dependency-, Container- und Secret-Scanning
-- strukturierte Log-Redaktion und eine Security-Abnahme
+- Der Helm-Ingress begrenzt Requests und Verbindungen; die Anwendung besitzt
+  zusätzlich einen Burst-fähigen Limiter. Proxy-Header werden nur nach
+  expliziter Aktivierung vertraut.
+- Ausgehende Paperless- und Ollama-URLs werden gegen Host-Allowlisten geprüft.
+  DNS-Ziele in privaten Netzen benötigen eine explizite Operator-Ausnahme;
+  nur allowlist-geprüfte Kubernetes-Kurznamen dürfen private ClusterIPs nutzen.
+  Loopback, Link-Local, Multicast und Cloud-Metadatenbereiche bleiben gesperrt.
+  Pagination darf Origin, Schema oder Port nicht wechseln.
+- Paperless-/Ollama-Antworten werden gestreamt und bereits beim Überschreiten
+  der Grenze abgebrochen. MIME-Typ und Länge des übernommenen Paperless-OCR-
+  Texts werden geprüft.
+- Reguläre Ausdrücke laufen mit einer echten Engine-Frist; ein katastrophales
+  Muster kann die Verarbeitung nicht unbegrenzt blockieren.
+- Jobs und Queue-Ereignisse werden transaktional über PostgreSQL koordiniert.
+  Der Outbox-Dispatcher stellt mit Claim-Timeout und Backoff zu; doppelte
+  Celery-Zustellungen werden idempotent verworfen.
+- Fehlermeldungen werden vor Persistierung und Anzeige strukturiert von
+  Authorization-Headern, Tokens, Passwörtern und URL-Zugangsdaten bereinigt.
+- Das eZEUS-Anwendungsimage läuft ohne Root, ohne Linux-Capabilities, mit
+  `readOnlyRootFilesystem`, Seccomp und CPU-/Speicherlimits. Build-Werkzeuge
+  werden aus dem finalen Image entfernt.
+- CI prüft Hash-Lockfiles, Bandit, `pip-audit`, Gitleaks, Trivy (High/Critical),
+  CycloneDX-SBOM mit 30-tägiger Artefaktaufbewahrung, Helm und
+  Kubernetes-Manifeste sowie einen realen
+  Container-Workflow.
+
+## Verbleibende Betriebsgrenzen
+
+eZEUS lädt und parst keine Dokumentbinärdateien. Dadurch liegt die Malware- und
+PDF-Bomb-Prüfung der Originaldatei bei Paperless-ngx und dessen Importkette.
+Betreiber müssen dort Scanner, Größen-/Seitenlimits und Quarantäne passend zur
+eigenen Bedrohungslage konfigurieren. Vor dem Rollout bleiben außerdem ein
+Lasttest mit der tatsächlichen Clustergröße, Restore-Test, Secret-Rotation und
+eine installationsbezogene Security-Abnahme erforderlich.
 
 ## Repository- und Log-Hygiene
 
 - `.env` und `.env.*` werden ignoriert; ausschließlich `.env.example` darf
   versioniert werden.
-- `.env.example` enthält nur eindeutig markierte, nicht funktionsfähige
-  Beispielwerte.
+- `.env.example` enthält nur eindeutig markierte lokale Entwicklungswerte;
+  der Produktionsmodus lehnt sie ab.
 - Produktive Tokens und Passwörter müssen über eine lokale Secret-Datei oder
   einen Secret Manager injiziert werden.
-- Das Dashboard gibt keine Dokumentinhalte, OCR-Texte, Secrets,
-  Phase-Metadaten oder vollständigen Fehlertexte aus.
+- Das Dashboard gibt keine Dokumentinhalte, OCR-Texte oder Secrets aus.
+  Angezeigte Phasen-Metadaten sind auf technische Ablaufdaten begrenzt;
+  Fehlertexte werden vor Speicherung und Ausgabe redigiert.
 - Konkrete Server-Adressen, Benutzernamen und installationsspezifische Pfade
   gehören nicht in Repository-Dokumentationen.

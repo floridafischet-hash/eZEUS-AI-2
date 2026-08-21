@@ -18,9 +18,7 @@ from core.security.admin_auth import AdminPrincipal, require_admin_secret, requi
 router = APIRouter(tags=["field-configuration"])
 
 
-def _instance_or_404(
-    db: Session, slug: str
-) -> PaperlessInstance:
+def _instance_or_404(db: Session, slug: str) -> PaperlessInstance:
     instance = FieldConfigurationService(db).instance_by_slug(slug)
     if instance is None:
         raise HTTPException(status_code=404, detail="Paperless-Instanz nicht gefunden")

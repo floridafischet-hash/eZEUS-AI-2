@@ -20,10 +20,7 @@ def hash_password(password: str) -> str:
     )
     salt_text = base64.urlsafe_b64encode(salt).decode()
     digest_text = base64.urlsafe_b64encode(digest).decode()
-    return (
-        f"scrypt${SCRYPT_N}${SCRYPT_R}${SCRYPT_P}"
-        f"${salt_text}${digest_text}"
-    )
+    return f"scrypt${SCRYPT_N}${SCRYPT_R}${SCRYPT_P}${salt_text}${digest_text}"
 
 
 def verify_password(password: str, encoded: str) -> bool:
