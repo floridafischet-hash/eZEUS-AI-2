@@ -57,3 +57,29 @@ def test_celery_hard_time_limit_must_exceed_soft_limit() -> None:
             ollama_timeout_seconds=300,
             celery_task_time_limit_seconds=360,
         )
+
+
+def test_database_pool_settings_are_configurable() -> None:
+    settings = Settings(
+        db_pool_size=8,
+        db_max_overflow=3,
+        db_pool_timeout_seconds=12.5,
+    )
+    assert settings.db_pool_size == 8
+    assert settings.db_max_overflow == 3
+    assert settings.db_pool_timeout_seconds == 12.5
+
+
+@pytest.mark.parametrize(
+    ("override", "message"),
+    [
+        ({"db_pool_size": 0}, "DB_POOL_SIZE must be positive"),
+        ({"db_max_overflow": -1}, "DB_MAX_OVERFLOW must not be negative"),
+        ({"db_pool_timeout_seconds": 0}, "DB_POOL_TIMEOUT_SECONDS must be positive"),
+    ],
+)
+def test_database_pool_settings_reject_invalid_values(
+    override: dict[str, object], message: str
+) -> None:
+    with pytest.raises(ValidationError, match=message):
+        Settings(**override)

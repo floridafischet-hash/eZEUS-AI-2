@@ -13,7 +13,14 @@ elif settings.database_url.startswith("postgresql"):
     connect_args = {"connect_timeout": 5}
 else:
     connect_args = {}
-engine = create_engine(settings.database_url, pool_pre_ping=True, connect_args=connect_args)
+engine = create_engine(
+    settings.database_url,
+    pool_pre_ping=True,
+    pool_size=settings.db_pool_size,
+    max_overflow=settings.db_max_overflow,
+    pool_timeout=settings.db_pool_timeout_seconds,
+    connect_args=connect_args,
+)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, class_=Session)
 
 

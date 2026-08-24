@@ -10,6 +10,9 @@ Alle Werte werden über Umgebungsvariablen gelesen.
 - `DATABASE_URL`: SQLAlchemy-Datenbank-URL; alternativ baut eZEUS sie aus
   `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_USER`, `POSTGRES_DATABASE` und
   `POSTGRES_PASSWORD`
+- `DB_POOL_SIZE`, `DB_MAX_OVERFLOW`, `DB_POOL_TIMEOUT_SECONDS`: dauerhafte
+  Verbindungen, kurzfristige Zusatzverbindungen und maximale Wartezeit pro
+  SQLAlchemy-Pool
 - `REDIS_URL`: Celery-Broker und Result-Backend
 - `PAPERLESS_BASE_URL`: Paperless-API-Basisadresse
 - `PAPERLESS_API_TOKEN`: API-Token; in Produktion Pflicht

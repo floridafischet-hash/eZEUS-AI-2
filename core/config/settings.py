@@ -31,6 +31,9 @@ class Settings(BaseSettings):
     postgres_user: str = "ezeus"
     postgres_database: str = "ezeus"
     postgres_password: str = ""
+    db_pool_size: int = 5
+    db_max_overflow: int = 5
+    db_pool_timeout_seconds: float = 30.0
     redis_url: str = "redis://localhost:6379/0"
 
     paperless_base_url: str = "http://localhost:8000"
@@ -173,6 +176,12 @@ class Settings(BaseSettings):
                     ) from exc
         if self.cloud_ai_globally_allowed and self.local_only:
             raise ValueError("Cloud AI cannot be enabled while LOCAL_ONLY is true")
+        if self.db_pool_size <= 0:
+            raise ValueError("DB_POOL_SIZE must be positive")
+        if self.db_max_overflow < 0:
+            raise ValueError("DB_MAX_OVERFLOW must not be negative")
+        if self.db_pool_timeout_seconds <= 0:
+            raise ValueError("DB_POOL_TIMEOUT_SECONDS must be positive")
         if self.ollama_timeout_seconds <= 0:
             raise ValueError("OLLAMA_TIMEOUT_SECONDS must be positive")
         if self.celery_task_time_limit_seconds <= self.ollama_timeout_seconds + 60:

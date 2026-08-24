@@ -70,6 +70,32 @@ The singular `CREDENTIAL_ENCRYPTION_KEY` remains supported for existing
 installations. When the plural variable contains at least one key, it takes
 precedence over the singular variable.
 
+## Database connection pools
+
+`config.DB_POOL_SIZE` controls the persistent SQLAlchemy connections per
+application process. `config.DB_MAX_OVERFLOW` permits that many additional,
+temporary connections when the pool is busy, and
+`config.DB_POOL_TIMEOUT_SECONDS` controls how long a request waits for a free
+connection before failing.
+
+Size against PostgreSQL `max_connections`, not just against a single pod. A
+conservative upper bound is:
+
+```text
+(API replicas + worker replicas * Celery concurrency + outbox processes
+ + sweeper processes) * (DB_POOL_SIZE + DB_MAX_OVERFLOW)
+ + migration/administration reserve
+ <= PostgreSQL max_connections
+```
+
+Keep at least 10–20 connections reserved for migrations, monitoring,
+administration and rolling overlap. HPA maxima and temporarily doubled pods
+during a rollout must fit the budget as well. Celery concurrency can create
+multiple worker processes per pod, each with its own pool. If the calculated
+peak is too high, reduce the per-process pool/overflow values, worker
+concurrency or replica maxima, or place a transaction pooler such as PgBouncer
+in front of PostgreSQL.
+
 ## Production checklist
 
 - `image.tag` pinned to a specific version, not `latest`.
