@@ -33,3 +33,20 @@ CELERY_QUEUE_DEPTH = Gauge(
     "Number of tasks waiting in a Celery queue",
     ["queue"],
 )
+
+OUTBOX_DEPTH = Gauge(
+    "ezeus_outbox_depth",
+    "Current number of outbox events by status",
+    ["status"],
+)
+
+STALLED_JOBS = Gauge(
+    "ezeus_stalled_jobs",
+    "Current jobs beyond the configured non-terminal age bound",
+    ["status"],
+)
+
+BROKER_REACHABLE = Gauge(
+    "ezeus_broker_reachable",
+    "Whether the API can reach the Redis broker",
+)

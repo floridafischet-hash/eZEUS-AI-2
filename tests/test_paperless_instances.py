@@ -196,21 +196,37 @@ def test_only_disabled_instance_can_be_deleted_and_deletion_is_audited(
         assert deleted.content == b""
 
         with session_factory() as db:
-            assert db.get(PaperlessInstance, UUID(created["id"])) is None
+            retained = db.get(PaperlessInstance, UUID(created["id"]))
+            assert retained is not None
+            assert retained.deleted_at is not None
+            assert retained.enabled is False
             update_audit = db.scalar(
                 select(AuditEntry).where(AuditEntry.action == "UPDATE_PAPERLESS_INSTANCE")
             )
             assert update_audit is not None
-            assert update_audit.instance_id is None
+            assert update_audit.instance_id == retained.id
             delete_audit = db.scalar(
                 select(AuditEntry).where(AuditEntry.action == "DELETE_PAPERLESS_INSTANCE")
             )
             assert delete_audit is not None
             assert delete_audit.actor == "test-admin"
-            assert delete_audit.instance_id is None
+            assert delete_audit.instance_id == retained.id
             assert delete_audit.old_value["name"] == "Zu löschende Instanz"
 
         assert client.delete(endpoint, headers=ADMIN_HEADERS).status_code == 404
+
+        replacement = client.post(
+            "/api/paperless-instances",
+            headers=ADMIN_HEADERS,
+            json={
+                "name": "Neue Instanz am selben Host",
+                "base_url": "https://delete.example.test",
+                "api_token": "replacement-token",
+                "webhook_secret": "replacement-secret-long-enough",
+            },
+        )
+        assert replacement.status_code == 201
+        assert replacement.json()["slug"] == "delete-example-test-2"
     finally:
         app.dependency_overrides.clear()
         get_settings.cache_clear()

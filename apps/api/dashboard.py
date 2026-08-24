@@ -326,7 +326,11 @@ def processing_logs(
     instance_slug: Annotated[str | None, Query(max_length=64)] = None,
     before: Annotated[str | None, Query(max_length=80)] = None,
 ) -> dict[str, object]:
-    instances = db.scalars(select(PaperlessInstance).order_by(PaperlessInstance.base_url)).all()
+    instances = db.scalars(
+        select(PaperlessInstance)
+        .where(PaperlessInstance.deleted_at.is_(None))
+        .order_by(PaperlessInstance.base_url)
+    ).all()
     instances_by_slug = {instance.slug: instance for instance in instances}
     jobs_query = select(Job).join(Document)
     if instance_slug:

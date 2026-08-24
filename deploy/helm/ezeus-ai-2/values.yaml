@@ -331,6 +331,11 @@ metrics:
     enabled: false
     interval: "30s"
     labels: {}
+  prometheusRule:
+    enabled: false
+    labels: {}
+    outboxBacklogThreshold: 100
+    failureRateThreshold: 0.1
 
 nodeSelector: {}
 tolerations: []

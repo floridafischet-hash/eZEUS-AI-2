@@ -138,7 +138,12 @@ class FieldConfigurationService:
         self.db = db
 
     def instance_by_slug(self, slug: str) -> PaperlessInstance | None:
-        return self.db.scalar(select(PaperlessInstance).where(PaperlessInstance.slug == slug))
+        return self.db.scalar(
+            select(PaperlessInstance).where(
+                PaperlessInstance.slug == slug,
+                PaperlessInstance.deleted_at.is_(None),
+            )
+        )
 
     def ensure_defaults(self, instance: PaperlessInstance) -> list[InstanceFieldConfig]:
         existing = self.list_fields(instance.id)

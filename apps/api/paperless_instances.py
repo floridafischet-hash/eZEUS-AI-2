@@ -1,5 +1,6 @@
 import re
 import secrets
+from datetime import UTC, datetime
 from typing import Annotated
 from urllib.parse import urlparse
 from uuid import UUID
@@ -7,7 +8,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import HTMLResponse
 from pydantic import AnyHttpUrl, BaseModel, Field
-from sqlalchemy import select, update
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -89,6 +90,15 @@ def _serialize(instance: PaperlessInstance) -> dict[str, object]:
     }
 
 
+def _active_instance(db: Session, instance_id: UUID) -> PaperlessInstance | None:
+    return db.scalar(
+        select(PaperlessInstance).where(
+            PaperlessInstance.id == instance_id,
+            PaperlessInstance.deleted_at.is_(None),
+        )
+    )
+
+
 def _workflow_url(instance: PaperlessInstance) -> str:
     public_base_url = get_settings().public_webhook_base_url.rstrip("/")
     if not public_base_url:
@@ -115,7 +125,11 @@ async def _provision_workflow(instance: PaperlessInstance) -> dict[str, object]:
     dependencies=[Depends(require_admin_secret)],
 )
 def list_instances(db: Annotated[Session, Depends(get_db)]) -> dict[str, object]:
-    instances = db.scalars(select(PaperlessInstance).order_by(PaperlessInstance.name)).all()
+    instances = db.scalars(
+        select(PaperlessInstance)
+        .where(PaperlessInstance.deleted_at.is_(None))
+        .order_by(PaperlessInstance.name)
+    ).all()
     return {"instances": [_serialize(item) for item in instances]}
 
 
@@ -175,7 +189,7 @@ def update_instance(
     db: Annotated[Session, Depends(get_db)],
     principal: Annotated[AdminPrincipal, Depends(require_admin_secret)],
 ) -> dict[str, object]:
-    instance = db.get(PaperlessInstance, instance_id)
+    instance = _active_instance(db, instance_id)
     if instance is None:
         raise HTTPException(status_code=404, detail="Paperless-Instanz nicht gefunden")
     changes = payload.model_dump(exclude_unset=True)
@@ -237,7 +251,7 @@ def delete_instance(
     db: Annotated[Session, Depends(get_db)],
     principal: Annotated[AdminPrincipal, Depends(require_admin_secret)],
 ) -> None:
-    instance = db.get(PaperlessInstance, instance_id)
+    instance = _active_instance(db, instance_id)
     if instance is None:
         raise HTTPException(status_code=404, detail="Paperless-Instanz nicht gefunden")
     if instance.enabled:
@@ -254,24 +268,20 @@ def delete_instance(
         "verify_tls": instance.verify_tls,
         "enabled": instance.enabled,
     }
-    # Historische Audit-Einträge bleiben erhalten, dürfen die endgültige
-    # Löschung der Instanz aber nicht über ihren Fremdschlüssel blockieren.
-    db.execute(
-        update(AuditEntry).where(AuditEntry.instance_id == instance.id).values(instance_id=None)
-    )
+    instance.deleted_at = datetime.now(UTC)
     db.add(
         AuditEntry(
             actor=principal.username,
             action="DELETE_PAPERLESS_INSTANCE",
             entity_type="paperless_instance",
             entity_id=str(instance.id),
+            instance_id=instance.id,
             target_system="paperless",
             old_value=deleted_instance,
             new_value=None,
             details={"deleted_instance": deleted_instance},
         )
     )
-    db.delete(instance)
     db.commit()
 
 
@@ -283,7 +293,7 @@ async def test_instance(
     instance_id: UUID,
     db: Annotated[Session, Depends(get_db)],
 ) -> dict[str, object]:
-    instance = db.get(PaperlessInstance, instance_id)
+    instance = _active_instance(db, instance_id)
     if instance is None:
         raise HTTPException(status_code=404, detail="Paperless-Instanz nicht gefunden")
     try:
@@ -359,7 +369,7 @@ async def provision_instance_workflow(
     instance_id: UUID,
     db: Annotated[Session, Depends(get_db)],
 ) -> dict[str, object]:
-    instance = db.get(PaperlessInstance, instance_id)
+    instance = _active_instance(db, instance_id)
     if instance is None:
         raise HTTPException(status_code=404, detail="Paperless-Instanz nicht gefunden")
     try:

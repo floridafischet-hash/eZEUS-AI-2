@@ -1,4 +1,4 @@
-"""Drop ocr_artifacts table and remove legacy OCR phase records."""
+"""Drop OCR artifacts while retaining legacy OCR phase history."""
 
 import sqlalchemy as sa
 from alembic import op
@@ -14,7 +14,14 @@ def upgrade() -> None:
     inspector = sa.inspect(bind)
 
     if bind.dialect.name == "postgresql":
-        op.execute(sa.text("DELETE FROM job_phases WHERE phase::text IN ('RUN_OCR', 'WRITE_OCR')"))
+        op.execute(
+            sa.text(
+                "UPDATE job_phases SET metadata = "
+                "jsonb_set(COALESCE(metadata::jsonb, '{}'::jsonb), '{legacy_phase}', "
+                "to_jsonb(phase::text))::json "
+                "WHERE phase::text IN ('RUN_OCR', 'WRITE_OCR')"
+            )
+        )
         op.execute(
             sa.text(
                 "DO $$ BEGIN "
@@ -28,12 +35,24 @@ def upgrade() -> None:
                 "END IF; END $$"
             )
         )
-    else:
-        op.execute(sa.text("DELETE FROM job_phases WHERE phase IN ('RUN_OCR', 'WRITE_OCR')"))
         op.execute(
             sa.text(
                 "UPDATE job_phases SET phase = 'READ_DOCUMENT_TEXT' "
-                "WHERE phase = 'DOWNLOAD_DOCUMENT'"
+                "WHERE phase::text IN ('RUN_OCR', 'WRITE_OCR')"
+            )
+        )
+    else:
+        op.execute(
+            sa.text(
+                "UPDATE job_phases SET metadata = "
+                "json_set(COALESCE(metadata, '{}'), '$.legacy_phase', phase) "
+                "WHERE phase IN ('RUN_OCR', 'WRITE_OCR')"
+            )
+        )
+        op.execute(
+            sa.text(
+                "UPDATE job_phases SET phase = 'READ_DOCUMENT_TEXT' "
+                "WHERE phase IN ('DOWNLOAD_DOCUMENT', 'RUN_OCR', 'WRITE_OCR')"
             )
         )
 
@@ -49,11 +68,26 @@ def downgrade() -> None:
         op.execute(
             sa.text("ALTER TYPE jobphase RENAME VALUE 'READ_DOCUMENT_TEXT' TO 'DOWNLOAD_DOCUMENT'")
         )
+        op.execute(
+            sa.text(
+                "UPDATE job_phases SET phase = (metadata->>'legacy_phase')::jobphase, "
+                "metadata = (metadata::jsonb - 'legacy_phase')::json "
+                "WHERE metadata->>'legacy_phase' IN ('RUN_OCR', 'WRITE_OCR')"
+            )
+        )
     else:
         op.execute(
             sa.text(
                 "UPDATE job_phases SET phase = 'DOWNLOAD_DOCUMENT' "
                 "WHERE phase = 'READ_DOCUMENT_TEXT'"
+            )
+        )
+        op.execute(
+            sa.text(
+                "UPDATE job_phases SET phase = json_extract(metadata, '$.legacy_phase'), "
+                "metadata = json_remove(metadata, '$.legacy_phase') "
+                "WHERE json_extract(metadata, '$.legacy_phase') "
+                "IN ('RUN_OCR', 'WRITE_OCR')"
             )
         )
     op.create_table(

@@ -1,4 +1,6 @@
-from sqlalchemy import Boolean, String
+from datetime import datetime
+
+from sqlalchemy import Boolean, DateTime, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from core.db.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
@@ -16,6 +18,7 @@ class PaperlessInstance(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     verify_tls: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     allow_title_overwrite: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
 
     field_configs = relationship(
         "InstanceFieldConfig",

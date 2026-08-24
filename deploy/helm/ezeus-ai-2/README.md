@@ -167,6 +167,12 @@ headroom below the pod memory limit for Redis process overhead and AOF buffers.
 
 See `values-production.example.yaml` for a full example.
 
+When the Prometheus Operator is installed, enable both
+`metrics.serviceMonitor.enabled` and `metrics.prometheusRule.enabled`. The
+included rules alert on broker loss, stalled jobs, an outbox backlog and a
+sustained job failure rate. Tune the backlog and failure-rate thresholds under
+`metrics.prometheusRule` for the expected installation volume.
+
 ## Schema upgrades
 
 The PostgreSQL advisory lock serializes Alembic processes; it does not make an
@@ -176,6 +182,14 @@ API, worker and outbox Deployments to zero, take and verify a database backup,
 then run `helm upgrade`. Resume traffic only after migrations, rollout and
 `/ready` have succeeded. Additive, explicitly backward-compatible migrations
 may use the normal rolling path.
+
+Migration `0007_remove_ocr_artifacts` removes the obsolete OCR artifact table
+and maps retired OCR phase names to `READ_DOCUMENT_TEXT`. The phase rows,
+timestamps, errors and metadata are retained; their original phase name is
+stored in `metadata.legacy_phase` so a downgrade can restore it. Databases that
+already ran an older form of migration 0007 may already have lost those phase
+rows, and no later migration can reconstruct them. Take and verify a PostgreSQL
+backup before upgrading any installation that predates this release.
 
 ## Included manifests
 

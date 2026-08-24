@@ -1,0 +1,43 @@
+{{- if .Values.metrics.prometheusRule.enabled -}}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ include "ezeus.fullname" . }}
+  labels:
+    {{- include "ezeus.labels" . | nindent 4 }}
+    {{- with .Values.metrics.prometheusRule.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  groups:
+    - name: ezeus.rules
+      rules:
+        - alert: EzeusBrokerUnavailable
+          expr: ezeus_broker_reachable == 0
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: eZEUS cannot reach its Redis broker
+        - alert: EzeusStalledJobs
+          expr: sum(ezeus_stalled_jobs) > 0
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: eZEUS has jobs beyond the configured processing age
+        - alert: EzeusOutboxBacklog
+          expr: sum(ezeus_outbox_depth{status=~"PENDING|PROCESSING"}) > {{ .Values.metrics.prometheusRule.outboxBacklogThreshold }}
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: eZEUS queue outbox backlog is growing
+        - alert: EzeusHighJobFailureRate
+          expr: sum(rate(ezeus_jobs_total{status="FAILED"}[10m])) / clamp_min(sum(rate(ezeus_jobs_total[10m])), 0.000001) > {{ .Values.metrics.prometheusRule.failureRateThreshold }}
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: eZEUS job failure rate is above its configured threshold
+{{- end }}

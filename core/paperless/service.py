@@ -33,6 +33,7 @@ def get_enabled_instance(db: Session, slug: str) -> PaperlessInstance | None:
         select(PaperlessInstance).where(
             PaperlessInstance.slug == slug,
             PaperlessInstance.enabled.is_(True),
+            PaperlessInstance.deleted_at.is_(None),
         )
     )
 
@@ -46,6 +47,7 @@ def find_enabled_instance_by_webhook_secret(
     instances = db.scalars(
         select(PaperlessInstance).where(
             PaperlessInstance.enabled.is_(True),
+            PaperlessInstance.deleted_at.is_(None),
             PaperlessInstance.webhook_secret_hmac == lookup_hmac,
         )
     )

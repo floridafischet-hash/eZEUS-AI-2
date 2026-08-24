@@ -21,10 +21,10 @@ CURRENT_PHASES = (
     "COMPLETE",
 )
 
-LEGACY_PHASES = (
+DOWNGRADE_TRANSITION_PHASES = (
     "RECEIVE_EVENT",
     "LOAD_DOCUMENT",
-    "DOWNLOAD_DOCUMENT",
+    "READ_DOCUMENT_TEXT",
     "RUN_OCR",
     "WRITE_OCR",
     "SELECT_TEMPLATE",
@@ -75,15 +75,6 @@ def downgrade() -> None:
         return
     op.execute(sa.text("ALTER TABLE jobs ALTER COLUMN phase TYPE varchar USING phase::text"))
     op.execute(sa.text("ALTER TABLE job_phases ALTER COLUMN phase TYPE varchar USING phase::text"))
-    op.execute(
-        sa.text(
-            "UPDATE jobs SET phase = 'DOWNLOAD_DOCUMENT' WHERE phase::text = 'READ_DOCUMENT_TEXT'"
-        )
-    )
-    op.execute(
-        sa.text(
-            "UPDATE job_phases SET phase = 'DOWNLOAD_DOCUMENT' "
-            "WHERE phase::text = 'READ_DOCUMENT_TEXT'"
-        )
-    )
-    _recreate_postgresql_enum(LEGACY_PHASES, columns_are_varchar=True)
+    # Keep READ_DOCUMENT_TEXT during this transition. Migration 0007 owns the
+    # rename back to DOWNLOAD_DOCUMENT and can therefore downgrade atomically.
+    _recreate_postgresql_enum(DOWNGRADE_TRANSITION_PHASES, columns_are_varchar=True)

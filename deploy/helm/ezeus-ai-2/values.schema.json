@@ -208,6 +208,33 @@
         }
       }
     },
+    "metrics": {
+      "type": "object",
+      "required": ["serviceMonitor", "prometheusRule"],
+      "properties": {
+        "serviceMonitor": {
+          "type": "object",
+          "required": ["enabled", "interval", "labels"],
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "interval": { "type": "string" },
+            "labels": { "type": "object" }
+          }
+        },
+        "prometheusRule": {
+          "type": "object",
+          "required": [
+            "enabled", "labels", "outboxBacklogThreshold", "failureRateThreshold"
+          ],
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "labels": { "type": "object" },
+            "outboxBacklogThreshold": { "type": "integer", "minimum": 1 },
+            "failureRateThreshold": { "type": "number", "exclusiveMinimum": 0, "maximum": 1 }
+          }
+        }
+      }
+    },
     "extraVolumes": { "type": "array" },
     "extraVolumeMounts": { "type": "array" },
     "nodeSelector": { "type": "object" },
