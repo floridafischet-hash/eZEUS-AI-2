@@ -95,3 +95,65 @@ def test_worker_claim_deduplicates_normal_delivery_and_recovers_redelivery() -> 
         job = db.get(Job, job_id)
         assert job is not None
         assert job.worker_id == "worker-2"
+
+
+def test_busy_instance_is_downgraded_without_delaying_other_instance() -> None:
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    settings = Settings(max_concurrent_jobs_per_instance=2)
+    queue = RecordingQueue()
+
+    with Session(engine) as db:
+        for document_id in ("a-1", "a-2"):
+            db.add(
+                Job(
+                    document=Document(
+                        connector="paperless:instance-a",
+                        external_document_id=document_id,
+                    ),
+                    status=JobStatus.RUNNING,
+                    priority=JobPriority.NORMAL,
+                )
+            )
+        overloaded_job = Job(
+            document=Document(
+                connector="paperless:instance-a",
+                external_document_id="a-new",
+            ),
+            status=JobStatus.RECEIVED,
+            priority=JobPriority.NORMAL,
+        )
+        other_instance_job = Job(
+            document=Document(
+                connector="paperless:instance-b",
+                external_document_id="b-new",
+            ),
+            status=JobStatus.RECEIVED,
+            priority=JobPriority.NORMAL,
+        )
+        db.add_all([overloaded_job, other_instance_job])
+        db.flush()
+
+        overloaded_event = add_job_to_outbox(db, overloaded_job, settings=settings)
+        other_event = add_job_to_outbox(db, other_instance_job, settings=settings)
+        db.commit()
+
+        assert overloaded_job.priority == JobPriority.LOW
+        assert overloaded_event.priority == JobPriority.LOW.value
+        assert other_instance_job.priority == JobPriority.NORMAL
+        assert other_event.priority == JobPriority.NORMAL.value
+        other_job_id = other_instance_job.id
+
+        result = publish_outbox_event(
+            db,
+            event_id=other_event.id,
+            adapter=queue,  # type: ignore[arg-type]
+            settings=settings,
+        )
+
+    assert result.published == 1
+    assert queue.calls == [(other_job_id, JobPriority.NORMAL)]

@@ -60,6 +60,7 @@ class Settings(BaseSettings):
 
     job_max_retries: int = 3
     job_retry_delays_seconds: Annotated[tuple[int, ...], NoDecode] = Field(default=(30, 120, 600))
+    max_concurrent_jobs_per_instance: int = 10
 
     rate_limit_enabled: bool = True
     rate_limit_requests_per_minute: int = 120
@@ -205,6 +206,8 @@ class Settings(BaseSettings):
             raise ValueError("Ollama input and response limits must be positive")
         if self.job_max_retries < 0:
             raise ValueError("JOB_MAX_RETRIES must not be negative")
+        if self.max_concurrent_jobs_per_instance <= 0:
+            raise ValueError("MAX_CONCURRENT_JOBS_PER_INSTANCE must be positive")
         if self.rate_limit_requests_per_minute <= 0:
             raise ValueError("RATE_LIMIT_REQUESTS_PER_MINUTE must be positive")
         if self.rate_limit_burst < 0:

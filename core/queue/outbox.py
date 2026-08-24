@@ -7,13 +7,13 @@ from datetime import UTC, datetime, timedelta
 from threading import Event
 from uuid import UUID
 
-from sqlalchemy import or_, select
-
-from core.metrics import QUEUE_DEPTH
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from core.config.settings import Settings, get_settings
 from core.db.session import SessionLocal
+from core.metrics import QUEUE_DEPTH
+from core.models.document import Document
 from core.models.enums import JobPriority, JobStatus
 from core.models.job import Job
 from core.models.queue_outbox import QueueOutbox
@@ -33,8 +33,47 @@ class DispatchResult:
     failed: int = 0
 
 
-def add_job_to_outbox(db: Session, job: Job) -> QueueOutbox:
-    event = QueueOutbox(job_id=job.id, priority=job.priority.value, status=PENDING)
+ACTIVE_JOB_STATUSES = (
+    JobStatus.RECEIVED,
+    JobStatus.QUEUED,
+    JobStatus.RUNNING,
+    JobStatus.RETRY_WAITING,
+)
+
+
+def _queue_priority(db: Session, job: Job, settings: Settings) -> JobPriority:
+    if job.priority != JobPriority.NORMAL:
+        return job.priority
+    connector = db.scalar(select(Document.connector).where(Document.id == job.document_id))
+    if connector is None:
+        return job.priority
+    in_flight = db.scalar(
+        select(func.count(Job.id))
+        .join(Document, Job.document_id == Document.id)
+        .where(
+            Document.connector == connector,
+            Job.id != job.id,
+            Job.status.in_(ACTIVE_JOB_STATUSES),
+        )
+    )
+    if int(in_flight or 0) < settings.max_concurrent_jobs_per_instance:
+        return job.priority
+    logger.info(
+        "Routing job to low-priority queue because instance is at its in-flight limit",
+        extra={
+            "job_id": str(job.id),
+            "instance_slug": connector.removeprefix("paperless:"),
+        },
+    )
+    return JobPriority.LOW
+
+
+def add_job_to_outbox(
+    db: Session, job: Job, *, settings: Settings | None = None
+) -> QueueOutbox:
+    priority = _queue_priority(db, job, settings or get_settings())
+    job.priority = priority
+    event = QueueOutbox(job_id=job.id, priority=priority.value, status=PENDING)
     job.status = JobStatus.QUEUED
     db.add(event)
     return event

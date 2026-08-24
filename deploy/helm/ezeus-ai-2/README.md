@@ -105,6 +105,16 @@ peak is too high, reduce the per-process pool/overflow values, worker
 concurrency or replica maxima, or place a transaction pooler such as PgBouncer
 in front of PostgreSQL.
 
+## Per-instance queue fairness
+
+`config.MAX_CONCURRENT_JOBS_PER_INSTANCE` limits how many non-terminal jobs an
+individual Paperless instance may have before newly received NORMAL jobs are
+routed to the LOW queue. Other instances continue to enter the NORMAL queue,
+so one large tenant backlog cannot monopolize normal-priority capacity. Set
+the limit in relation to `worker.replicaCount * Celery concurrency`; a value
+around two to five times the available worker slots usually allows useful
+parallelism without letting one instance dominate the normal queue.
+
 ## Production checklist
 
 - `image.tag` pinned to a specific version, not `latest`.

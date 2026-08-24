@@ -84,3 +84,8 @@ def test_database_pool_settings_reject_invalid_values(
 ) -> None:
     with pytest.raises(ValidationError, match=message):
         Settings(**override)
+
+
+def test_instance_job_limit_must_be_positive() -> None:
+    with pytest.raises(ValidationError, match="MAX_CONCURRENT_JOBS_PER_INSTANCE"):
+        Settings(max_concurrent_jobs_per_instance=0)

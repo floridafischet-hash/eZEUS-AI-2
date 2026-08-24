@@ -27,6 +27,8 @@ Alle Werte werden über Umgebungsvariablen gelesen.
   Verwaltungsseite angezeigten Webhook-URLs
 - `PAPERLESS_VERIFY_TLS`: standardmäßig `true`
 - `JOB_MAX_RETRIES`, `JOB_RETRY_DELAYS_SECONDS`: technische Retries
+- `MAX_CONCURRENT_JOBS_PER_INSTANCE`: maximale Anzahl bereits aktiver Jobs
+  einer Paperless-Instanz, bevor weitere Jobs in die LOW-Queue geroutet werden
 - `CELERY_CONCURRENCY`: Worker-Prozesse pro Compose-Container (Standard `2`;
   im Helm-Chart über `worker.args` gesetzt)
 - `LOCAL_ONLY`: verhindert Cloud-Verarbeitung
