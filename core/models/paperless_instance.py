@@ -14,6 +14,7 @@ class PaperlessInstance(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     webhook_secret_encrypted: Mapped[str] = mapped_column(String(4096), nullable=False)
     verify_tls: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    allow_title_overwrite: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
     field_configs = relationship(
         "InstanceFieldConfig",

@@ -8,6 +8,8 @@ from threading import Event
 from uuid import UUID
 
 from sqlalchemy import or_, select
+
+from core.metrics import QUEUE_DEPTH
 from sqlalchemy.orm import Session, sessionmaker
 
 from core.config.settings import Settings, get_settings
@@ -91,12 +93,14 @@ def publish_outbox_event(
         event.available_at = datetime.now(UTC) + timedelta(seconds=delay)
         db.commit()
         logger.warning("Queue outbox publish failed for event %s: %s", event.id, event.last_error)
+        QUEUE_DEPTH.labels(outcome="failed").inc()
         return DispatchResult(failed=1)
     event.status = PUBLISHED
     event.claimed_at = None
     event.published_at = datetime.now(UTC)
     event.last_error = None
     db.commit()
+    QUEUE_DEPTH.labels(outcome="published").inc()
     return DispatchResult(published=1)
 
 
@@ -119,6 +123,8 @@ def dispatch_pending(
 
 
 def run_dispatcher() -> None:
+    from core.logging import configure_logging
+    configure_logging()
     runtime = get_settings()
     stop = Event()
 

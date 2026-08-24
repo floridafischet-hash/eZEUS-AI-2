@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from datetime import UTC, datetime
 from uuid import UUID
 
@@ -14,6 +15,8 @@ from core.models.job import Job
 from core.orchestration.orchestrator import Orchestrator
 from core.queue.celery_app import celery_app
 from core.security.redaction import redact_sensitive_text
+
+logger = logging.getLogger(__name__)
 
 
 def _claim_job(
@@ -42,21 +45,32 @@ def _claim_job(
 def process_document_job(self: Task, job_id: str) -> None:
     settings = get_settings()
     parsed_job_id = UUID(job_id)
+    worker_id = str(self.request.hostname)
+    extra = {"job_id": job_id, "worker_id": worker_id}
+    logger.info("Task received", extra=extra)
     try:
         with SessionLocal() as db:
             delivery_info = self.request.delivery_info or {}
             if not _claim_job(
                 db,
                 parsed_job_id,
-                str(self.request.hostname),
+                worker_id,
                 redelivered=bool(delivery_info.get("redelivered")),
             ):
+                logger.info("Task skipped (not claimable)", extra=extra)
                 return
+            logger.info("Task claimed, starting processing", extra=extra)
             asyncio.run(Orchestrator(db).process(parsed_job_id))
+        logger.info("Task completed", extra=extra)
     except ConnectorError as exc:
         if not exc.retryable or self.request.retries >= settings.job_max_retries:
+            logger.error("Task failed (not retryable): %s", type(exc).__name__,
+                         exc_info=exc, extra=extra)
             raise
         delay_index = min(self.request.retries, len(settings.job_retry_delays_seconds) - 1)
+        retry_delay = settings.job_retry_delays_seconds[delay_index]
+        logger.warning("Task retrying in %ds (attempt %d): %s", retry_delay,
+                        self.request.retries + 1, type(exc).__name__, extra=extra)
         with SessionLocal() as db:
             job = db.get(Job, parsed_job_id)
             if job:
@@ -69,5 +83,5 @@ def process_document_job(self: Task, job_id: str) -> None:
                 db.commit()
         raise self.retry(
             exc=exc,
-            countdown=settings.job_retry_delays_seconds[delay_index],
+            countdown=retry_delay,
         ) from exc

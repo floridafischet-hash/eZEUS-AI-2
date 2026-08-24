@@ -1,6 +1,9 @@
 from celery import Celery
 
 from core.config.settings import get_settings
+from core.logging import configure_logging
+
+configure_logging()
 
 settings = get_settings()
 celery_app = Celery("ezeus", broker=settings.redis_url, backend=settings.redis_url)

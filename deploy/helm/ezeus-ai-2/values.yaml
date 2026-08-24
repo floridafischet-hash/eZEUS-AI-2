@@ -167,6 +167,12 @@ outbox:
     requests: { cpu: 25m, memory: 64Mi }
     limits: { cpu: 250m, memory: 256Mi }
 
+sweeper:
+  enabled: true
+  resources:
+    requests: { cpu: 25m, memory: 64Mi }
+    limits: { cpu: 250m, memory: 256Mi }
+
 migrations:
   enabled: true
   # Optional post-install/pre-upgrade hook for an already reachable external DB.
@@ -294,6 +300,12 @@ networkPolicy:
 # Extra volumes/volumeMounts injected into api and worker pods
 extraVolumes: []
 extraVolumeMounts: []
+
+metrics:
+  serviceMonitor:
+    enabled: false
+    interval: "30s"
+    labels: {}
 
 nodeSelector: {}
 tolerations: []

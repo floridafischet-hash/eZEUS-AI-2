@@ -5,9 +5,13 @@ from pathlib import Path
 
 import httpx
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import PlainTextResponse
 from fastapi.staticfiles import StaticFiles
+from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
 from redis import Redis
 from sqlalchemy import select, text
+
+from core.logging import configure_logging
 
 from apps.api.admin import router as admin_router
 from apps.api.admin_users import router as admin_users_router
@@ -20,8 +24,12 @@ from core.config.settings import get_settings
 from core.db.session import engine
 from core.models.instance_field_config import InstanceFieldConfig
 from core.security.outbound import OutboundRequestError, stream_capped, validate_outbound_url
+import core.metrics as _metrics  # noqa: F401 — registers Prometheus collectors
 from core.security.rate_limit import RateLimitMiddleware
 from webhooks.paperless.router import router as paperless_webhook_router
+
+
+configure_logging()
 
 
 @asynccontextmanager
@@ -85,6 +93,11 @@ async def _paperless_readiness() -> bool:
         return await PaperlessConnector().health_check()
     except ConnectorError:
         return False
+
+
+@app.get("/metrics", response_class=PlainTextResponse, include_in_schema=False)
+def metrics() -> PlainTextResponse:
+    return PlainTextResponse(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
 @app.get("/health")

@@ -1,0 +1,45 @@
+{{- if .Values.sweeper.enabled -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ezeus.fullname" . }}-sweeper
+  labels:
+    {{- include "ezeus.labels" . | nindent 4 }}
+    app.kubernetes.io/component: sweeper
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "ezeus.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: sweeper
+  template:
+    metadata:
+      labels:
+        {{- include "ezeus.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: sweeper
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+    spec:
+      serviceAccountName: {{ include "ezeus.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: sweeper
+          image: {{ include "ezeus.imageRef" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["python", "-m", "core.queue.sweeper"]
+          envFrom:
+            - configMapRef:
+                name: {{ include "ezeus.fullname" . }}-config
+            - secretRef:
+                name: {{ include "ezeus.secretName" . }}
+          resources: {{- toYaml .Values.sweeper.resources | nindent 12 }}
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+{{- end }}

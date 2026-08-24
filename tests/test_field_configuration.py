@@ -143,7 +143,8 @@ def basic_headers(username: str, password: str) -> dict[str, str]:
     }
 
 
-def test_trusted_proxy_user_uses_existing_role(field_config_client, monkeypatch) -> None:
+def test_proxy_headers_are_ignored(field_config_client, monkeypatch) -> None:
+    """Proxy-user header path was removed; requests must authenticate via credentials."""
     client, session_factory, _ = field_config_client
     monkeypatch.setenv("PROXY_AUTH_SECRET", "trusted-proxy-secret")
     get_settings.cache_clear()
@@ -164,16 +165,7 @@ def test_trusted_proxy_user_uses_existing_role(field_config_client, monkeypatch)
             "X-EZEUS-Proxy-Secret": "trusted-proxy-secret",
         },
     )
-    assert response.status_code == 200
-
-    spoofed = client.get(
-        "/api/admin-users",
-        headers={
-            "X-EZEUS-Proxy-User": "florian",
-            "X-EZEUS-Proxy-Secret": "wrong-secret",
-        },
-    )
-    assert spoofed.status_code == 401
+    assert response.status_code == 401
 
 
 def test_url_slug_selects_tenant_and_requires_administrator(
@@ -285,8 +277,10 @@ def test_preview_validates_fields_without_saving(field_config_client) -> None:
 
 @pytest.mark.asyncio
 async def test_runtime_extraction_uses_only_tenant_configuration(
-    field_config_client,
+    field_config_client, monkeypatch,
 ) -> None:
+    monkeypatch.setenv("OLLAMA_ENABLED", "true")
+    get_settings.cache_clear()
     client, session_factory, _ = field_config_client
     instance_data = create_instance(client, "Kunde A", "kunde-a.example.test")
     endpoint = f"/api/instances/{instance_data['slug']}/field-config"
@@ -326,6 +320,35 @@ async def test_runtime_extraction_uses_only_tenant_configuration(
             regex_config,
         )
         assert [candidate.value for candidate in candidates] == ["25164"]
+
+
+def test_ollama_disabled_degrades_to_regex_only(
+    field_config_client, monkeypatch,
+) -> None:
+    monkeypatch.setenv("OLLAMA_ENABLED", "false")
+    get_settings.cache_clear()
+    client, session_factory, _ = field_config_client
+    instance_data = create_instance(client, "Kunde A", "kunde-a.example.test")
+    endpoint = f"/api/instances/{instance_data['slug']}/field-config"
+    fields = client.get(endpoint, headers=admin_headers()).json()["fields"]
+    for field in fields:
+        if field["field_key"] == "construction_site_number":
+            field["enabled"] = True
+            field["ai_enabled"] = True
+            field["external_field_id"] = "88"
+    assert client.put(endpoint, headers=admin_headers(), json={"fields": fields}).status_code == 200
+
+    with session_factory() as db:
+        instance = db.scalar(
+            select(PaperlessInstance).where(PaperlessInstance.slug == instance_data["slug"])
+        )
+        assert instance is not None
+        runtime = FieldConfigurationService(db).runtime_config(
+            instance,
+            [ConnectorCustomField("88", "Baustellennummer", "string")],
+        )
+        site = runtime.template.fields["construction_site_number"]
+        assert [provider.type for provider in site.providers] == ["regex"]
 
 
 def test_individual_accounts_enforce_roles_and_record_identity(

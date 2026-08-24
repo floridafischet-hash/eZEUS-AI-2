@@ -11,6 +11,7 @@ from core.models.enums import JobPhase, JobPriority, JobStatus
 class Job(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "jobs"
     __table_args__ = (
+        Index("ix_jobs_created_at_id", "created_at", "id"),
         Index(
             "uq_active_job_document",
             "document_id",

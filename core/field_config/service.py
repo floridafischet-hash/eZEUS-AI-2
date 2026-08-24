@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from connectors.base.interface import ConnectorCustomField, DocumentConnector
+from core.config.settings import get_settings
 from core.field_config.schemas import FieldConfigurationInput
 from core.models.audit import AuditEntry
 from core.models.instance_field_config import InstanceFieldConfig
@@ -392,7 +393,7 @@ class FieldConfigurationService:
                     escaped = re.escape(field.label)
                     patterns = [rf"(?im)^\s*{escaped}\s*[:.]?\s*(.+?)\s*$"]
                 providers.append({"type": "regex", "patterns": patterns})
-            if field.ai_enabled:
+            if field.ai_enabled and get_settings().ollama_enabled:
                 providers.append(
                     {
                         "type": "ollama",

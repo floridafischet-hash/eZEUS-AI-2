@@ -8,6 +8,9 @@ metadata:
     {{- with .Values.ingress.annotations }}
     {{- toYaml . | nindent 4 }}
     {{- end }}
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      proxy_set_header X-EZEUS-Proxy-User "";
+      proxy_set_header X-EZEUS-Proxy-Secret "";
     {{- if .Values.oauth2Proxy.enabled }}
     nginx.ingress.kubernetes.io/auth-url: {{ printf "http://%s-oauth2-proxy.%s.svc.cluster.local:4180/oauth2/auth" (include "ezeus.fullname" .) .Release.Namespace | quote }}
     nginx.ingress.kubernetes.io/auth-signin: "https://$host/oauth2/start?rd=$escaped_request_uri"

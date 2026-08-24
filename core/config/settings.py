@@ -83,6 +83,9 @@ class Settings(BaseSettings):
 
     regex_hard_timeout_seconds: float = 2.0
 
+    sweeper_interval_seconds: float = 60.0
+    sweeper_stale_threshold_seconds: int = 900
+
     outbox_poll_seconds: float = 1.0
     outbox_claim_timeout_seconds: int = 300
     outbox_batch_size: int = 50
@@ -170,6 +173,8 @@ class Settings(BaseSettings):
             raise ValueError("Paperless response limits must be positive")
         if self.regex_hard_timeout_seconds <= 0:
             raise ValueError("REGEX_HARD_TIMEOUT_SECONDS must be positive")
+        if self.sweeper_interval_seconds <= 0 or self.sweeper_stale_threshold_seconds <= 0:
+            raise ValueError("Sweeper timing values must be positive")
         if self.outbox_poll_seconds <= 0 or self.outbox_claim_timeout_seconds <= 0:
             raise ValueError("Outbox timing values must be positive")
         if self.outbox_batch_size <= 0 or self.outbox_max_backoff_seconds <= 0:

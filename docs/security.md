@@ -12,12 +12,11 @@ Vorschauen ausführen. Das erste Administratorkonto wird einmalig über
 `python -m scripts.create_admin_user <benutzername>` in einer administrativen
 Shell angelegt; die HTTP-API besitzt keinen gemeinsamen Bootstrap-Schlüssel.
 
-Bei vorgeschalteter HTTP-Basic-Authentifizierung kann der Reverse Proxy den
-bereits geprüften Benutzernamen über `X-EZEUS-Proxy-User` weiterreichen. Die
-Anwendung akzeptiert ihn nur zusammen mit dem internen
-`X-EZEUS-Proxy-Secret`, dessen Wert `PROXY_AUTH_SECRET` entsprechen muss, und
-nur wenn ein aktives Anwendungskonto mit demselben Namen existiert. Der Proxy
-muss beide eingehenden Header stets überschreiben.
+Der Ingress strippt eingehende `X-EZEUS-Proxy-User`- und
+`X-EZEUS-Proxy-Secret`-Header, damit externe Clients keine
+Proxy-Authentifizierung vortäuschen können. Die Anwendung wertet diese Header
+nicht aus; Authentifizierung erfolgt ausschließlich über Benutzername und
+Passwort (Basic Auth oder `X-EZEUS-Admin-*`-Header).
 
 Der Mandant wird serverseitig aus `{instance_slug}` beziehungsweise bei der
 Verarbeitung aus `Document.connector` bestimmt. Feldkonfigurations-Payloads
@@ -28,7 +27,9 @@ in `audit_entries` gespeichert.
 
 Webhook-Secrets werden mit konstantem Zeitverhalten verglichen. Paperless-TLS
 ist standardmäßig aktiv. Die API läuft nicht als Root. Vor jedem Schreiben wird
-der Remotezustand erneut geladen.
+der Remotezustand erneut geladen. Dokumenttitel werden nur bei leerem oder
+dateinamengleichem Titel gesetzt; ein manuell vergebener Titel bleibt erhalten,
+sofern die Instanz nicht explizit `allow_title_overwrite` aktiviert.
 
 ## Umgesetzte technische Schutzmaßnahmen
 

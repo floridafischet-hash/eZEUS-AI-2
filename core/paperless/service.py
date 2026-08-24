@@ -62,6 +62,7 @@ def connector_for_document(db: Session, connector: str) -> PaperlessConnector:
         base_url=instance.base_url,
         api_token=decrypt_credential(instance.api_token_encrypted),
         verify_tls=instance.verify_tls,
+        allow_title_overwrite=instance.allow_title_overwrite,
     )
 
 
@@ -70,4 +71,5 @@ def connector_for_instance(instance: PaperlessInstance) -> PaperlessConnector:
         base_url=instance.base_url,
         api_token=decrypt_credential(instance.api_token_encrypted),
         verify_tls=instance.verify_tls,
+        allow_title_overwrite=instance.allow_title_overwrite,
     )

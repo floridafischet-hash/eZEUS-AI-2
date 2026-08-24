@@ -1,8 +1,13 @@
+import logging
 from datetime import UTC, datetime
 from decimal import Decimal
 from uuid import UUID
 
 from sqlalchemy.orm import Session
+
+from core.metrics import JOBS_TOTAL, PHASE_DURATION_SECONDS
+
+logger = logging.getLogger(__name__)
 
 from connectors.base.interface import DocumentConnector
 from core.correspondents.matcher import match_correspondent
@@ -42,6 +47,15 @@ class Orchestrator:
         self.templates = TemplateService(db)
         self.validator = ValidationEngine()
 
+    def _log_extra(self, job: Job, phase: str | None = None) -> dict[str, object]:
+        extra: dict[str, object] = {"job_id": str(job.id)}
+        slug = instance_slug_from_connector(job.document.connector)
+        if slug:
+            extra["instance_slug"] = slug
+        if phase:
+            extra["phase"] = phase
+        return extra
+
     def _start_phase(self, job: Job, phase: JobPhase) -> JobPhaseEntry:
         job.phase = phase
         entry = JobPhaseEntry(
@@ -52,6 +66,7 @@ class Orchestrator:
         )
         self.db.add(entry)
         self.db.commit()
+        logger.info("Phase started: %s", phase.value, extra=self._log_extra(job, phase.value))
         return entry
 
     def _finish_phase(
@@ -65,6 +80,14 @@ class Orchestrator:
         entry.error = error
         entry.metadata_json = metadata or {}
         self.db.commit()
+        duration = (entry.finished_at - entry.started_at).total_seconds()
+        PHASE_DURATION_SECONDS.labels(phase=entry.phase.value, status=entry.status.value).observe(duration)
+        job = self.db.get(Job, entry.job_id)
+        extra = self._log_extra(job, entry.phase.value) if job else {"phase": entry.phase.value}
+        if error:
+            logger.warning("Phase failed: %s — %s", entry.phase.value, error, extra=extra)
+        else:
+            logger.info("Phase completed: %s", entry.phase.value, extra=extra)
 
     async def process(self, job_id: UUID) -> None:
         job = self.db.get(Job, job_id)
@@ -76,6 +99,7 @@ class Orchestrator:
         job.error_type = None
         job.error_message = None
         self.db.commit()
+        logger.info("Job started", extra=self._log_extra(job))
 
         active_phase: JobPhaseEntry | None = None
         try:
@@ -165,6 +189,8 @@ class Orchestrator:
                     job.status = JobStatus.COMPLETED_WITH_WARNINGS
                     job.finished_at = datetime.now(UTC)
                     self.db.commit()
+                    slug = instance_slug_from_connector(job.document.connector) or ""
+                    JOBS_TOTAL.labels(status=job.status.value, instance_slug=slug).inc()
                     return
                 template, config = selected
                 job.selected_template_id = template.id
@@ -368,6 +394,9 @@ class Orchestrator:
             )
             job.finished_at = datetime.now(UTC)
             self._finish_phase(active_phase)
+            slug = instance_slug_from_connector(job.document.connector) or ""
+            JOBS_TOTAL.labels(status=job.status.value, instance_slug=slug).inc()
+            logger.info("Job completed: %s", job.status.value, extra=self._log_extra(job))
         except Exception as exc:
             if active_phase and active_phase.status == PhaseStatus.RUNNING:
                 self._finish_phase(active_phase, error=type(exc).__name__)
@@ -376,6 +405,10 @@ class Orchestrator:
             job.error_message = redact_sensitive_text(exc)
             job.finished_at = datetime.now(UTC)
             self.db.commit()
+            slug = instance_slug_from_connector(job.document.connector) or ""
+            JOBS_TOTAL.labels(status=JobStatus.FAILED.value, instance_slug=slug).inc()
+            logger.error("Job failed: %s", type(exc).__name__, exc_info=exc,
+                         extra=self._log_extra(job))
             raise
 
     def _audit(

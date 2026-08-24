@@ -1,7 +1,10 @@
+import logging
 from typing import Any
 from urllib.parse import urljoin, urlparse
 
 import httpx
+
+logger = logging.getLogger(__name__)
 
 from connectors.base.errors import (
     AuthenticationError,
@@ -34,11 +37,13 @@ class PaperlessConnector(DocumentConnector):
         base_url: str | None = None,
         api_token: str | None = None,
         verify_tls: bool | None = None,
+        allow_title_overwrite: bool = False,
     ) -> None:
         settings = get_settings()
         self.base_url = (base_url or settings.paperless_base_url).rstrip("/")
         self.token = api_token if api_token is not None else settings.paperless_api_token
         self.verify_tls = verify_tls if verify_tls is not None else settings.paperless_verify_tls
+        self.allow_title_overwrite = allow_title_overwrite
         self._settings = settings
 
     def _client(self) -> httpx.AsyncClient:
@@ -84,30 +89,40 @@ class PaperlessConnector(DocumentConnector):
                     client, method, request_url, max_bytes=max_bytes, **kwargs
                 )
         except httpx.TimeoutException as exc:
+            logger.error("Paperless request timeout: %s %s", method, request_url, exc_info=exc)
             raise TimeoutError(str(exc)) from exc
         except DownloadTooLargeError as exc:
+            logger.error("Paperless response too large: %s %s", method, request_url, exc_info=exc)
             raise ValidationError(str(exc)) from exc
         except httpx.RequestError as exc:
+            logger.error("Paperless connection error: %s %s", method, request_url, exc_info=exc)
             raise ConnectionError(str(exc)) from exc
         del body
         request_url = str(response.request.url)
         if response.status_code == 401:
+            logger.warning("Paperless auth failed: HTTP 401 from %s", request_url)
             raise AuthenticationError(
                 f"Paperless authentication failed: HTTP 401 from {request_url}"
             )
         if response.status_code == 403:
+            logger.warning("Paperless authorization failed: HTTP 403 from %s", request_url)
             raise AuthorizationError(f"Paperless authorization failed: HTTP 403 from {request_url}")
         if response.status_code == 404:
+            logger.warning("Paperless resource not found: HTTP 404 from %s", request_url)
             raise NotFoundError(f"Paperless resource not found: HTTP 404 from {request_url}")
         if response.status_code == 409:
+            logger.warning("Paperless conflict: %s", request_url)
             raise ConflictError("Paperless reported a conflict")
         if response.status_code == 429:
+            logger.warning("Paperless rate limit exceeded: %s", request_url)
             raise RateLimitError("Paperless rate limit exceeded")
         if response.status_code in {400, 422}:
+            logger.warning("Paperless rejected request: HTTP %d from %s", response.status_code, request_url)
             raise ValidationError(
                 f"Paperless rejected the request: HTTP {response.status_code} from {request_url}"
             )
         if response.status_code >= 500:
+            logger.error("Paperless server error: HTTP %d from %s", response.status_code, request_url)
             raise ConnectionError(f"Paperless server error: HTTP {response.status_code}")
         try:
             response.raise_for_status()
@@ -358,6 +373,10 @@ class PaperlessConnector(DocumentConnector):
         current = await self.get_document(external_document_id)
         if current.title == title:
             return False
+        if current.title and not self.allow_title_overwrite:
+            filename_stem = current.filename.rsplit(".", 1)[0] if current.filename else None
+            if current.title != filename_stem:
+                return False
         await self._request(
             "PATCH",
             f"/api/documents/{external_document_id}/",

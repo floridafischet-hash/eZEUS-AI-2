@@ -1,10 +1,11 @@
 from datetime import UTC, datetime
 from html import escape
 from typing import Annotated
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import HTMLResponse
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session
 
 from apps.api.ui import page_shell
@@ -15,6 +16,7 @@ from core.models.job import Job
 from core.models.job_phase import JobPhaseEntry
 from core.models.paperless_instance import PaperlessInstance
 from core.paperless.service import instance_slug_from_connector
+from core.security.admin_auth import require_admin_user
 from core.security.redaction import redact_sensitive_text
 
 router = APIRouter(tags=["dashboard"])
@@ -71,8 +73,8 @@ DASHBOARD_CONTENT = """
     <div>
       <h2 id="processing-title">Verarbeitungsprotokoll</h2>
       <p class="section-copy">Bereinigte technische Abläufe ohne Dokumentinhalte,
-        Zugangsdaten oder Tokens. Es werden immer die letzten 5.000 Einträge
-        der gewählten Instanz geladen.</p>
+        Zugangsdaten oder Tokens. Zunächst werden die letzten 50 Einträge
+        der gewählten Instanz geladen; weitere lassen sich nachladen.</p>
     </div>
     <span class="status-badge success">Automatische Aktualisierung</span>
   </div>
@@ -109,6 +111,7 @@ DASHBOARD_SCRIPT = """
   const expandedJobIds = new Set();
   let logEntries = [];
   let logInstancesLoaded = false;
+  let nextCursor = null;
 
   function setText(element, value) { element.textContent = value ?? "–"; }
   function formatTime(value) {
@@ -227,27 +230,58 @@ DASHBOARD_SCRIPT = """
     });
     logInstancesLoaded = true;
   }
+  function updateLoadMoreButton() {
+    let btn = document.getElementById("load-more");
+    if (!btn) {
+      btn = document.createElement("button");
+      btn.id = "load-more"; btn.className = "btn";
+      btn.textContent = "Mehr laden";
+      btn.addEventListener("click", loadMoreLogs);
+      document.getElementById("log-body").parentElement.after(btn);
+    }
+    btn.hidden = !nextCursor;
+  }
+  async function fetchLogs(cursor) {
+    const instance = document.getElementById("log-instance").value;
+    const params = new URLSearchParams({limit: "50"});
+    if (instance) params.set("instance_slug", instance);
+    if (cursor) params.set("before", cursor);
+    const response = await fetch(`/api/logs?${params.toString()}`,
+      {headers:{"Accept":"application/json"},cache:"no-store"});
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    return response.json();
+  }
   async function loadLogs() {
     const button = document.getElementById("refresh-logs");
     const empty = document.getElementById("log-empty");
     window.ezeusUI?.setBusy(button, true, "Lädt …");
     try {
-      const instance = document.getElementById("log-instance").value;
-      const params = new URLSearchParams({limit: "5000"});
-      if (instance) params.set("instance_slug", instance);
-      const response = await fetch(`/api/logs?${params.toString()}`,
-        {headers:{"Accept":"application/json"},cache:"no-store"});
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const payload = await response.json();
+      const payload = await fetchLogs(null);
       renderInstances(payload.instances);
       logEntries = payload.entries;
+      nextCursor = payload.next_cursor;
       renderLogs();
+      updateLoadMoreButton();
       document.getElementById("refresh-info").textContent =
         `Aktualisiert ${new Date().toLocaleTimeString("de-DE")}`;
     } catch (error) {
       empty.hidden = false; empty.className = "notice error";
       empty.textContent = `Logs konnten nicht geladen werden: ${error.message}`;
     } finally { window.ezeusUI?.setBusy(button, false); }
+  }
+  async function loadMoreLogs() {
+    const btn = document.getElementById("load-more");
+    if (!nextCursor) return;
+    btn.disabled = true; btn.textContent = "Lädt …";
+    try {
+      const payload = await fetchLogs(nextCursor);
+      logEntries = logEntries.concat(payload.entries);
+      nextCursor = payload.next_cursor;
+      renderLogs();
+      updateLoadMoreButton();
+    } catch (error) {
+      btn.textContent = "Fehler – erneut versuchen";
+    } finally { btn.disabled = false; if (nextCursor) btn.textContent = "Mehr laden"; }
   }
   document.getElementById("refresh-logs").addEventListener("click", loadLogs);
   document.getElementById("log-instance").addEventListener("change", loadLogs);
@@ -285,11 +319,12 @@ def dashboard() -> str:
     )
 
 
-@router.get("/api/logs")
+@router.get("/api/logs", dependencies=[Depends(require_admin_user)])
 def processing_logs(
     db: Annotated[Session, Depends(get_db)],
-    limit: Annotated[int, Query(ge=1, le=5000)] = 5000,
+    limit: Annotated[int, Query(ge=1, le=500)] = 50,
     instance_slug: Annotated[str | None, Query(max_length=64)] = None,
+    before: Annotated[str | None, Query(max_length=80)] = None,
 ) -> dict[str, object]:
     instances = db.scalars(select(PaperlessInstance).order_by(PaperlessInstance.base_url)).all()
     instances_by_slug = {instance.slug: instance for instance in instances}
@@ -298,7 +333,27 @@ def processing_logs(
         if instance_slug not in instances_by_slug:
             raise HTTPException(status_code=404, detail="Paperless instance not found")
         jobs_query = jobs_query.where(Document.connector == f"paperless:{instance_slug}")
-    jobs = db.scalars(jobs_query.order_by(Job.created_at.desc()).limit(limit)).all()
+    if before:
+        try:
+            cursor_timestamp, cursor_id_value = before.rsplit("|", 1)
+            cursor_time = datetime.fromisoformat(cursor_timestamp)
+            cursor_id = UUID(cursor_id_value)
+        except (ValueError, TypeError):
+            raise HTTPException(
+                status_code=422, detail="Invalid 'before' cursor format"
+            ) from None
+        jobs_query = jobs_query.where(
+            or_(
+                Job.created_at < cursor_time,
+                and_(Job.created_at == cursor_time, Job.id < cursor_id),
+            )
+        )
+    jobs = db.scalars(
+        jobs_query.order_by(Job.created_at.desc(), Job.id.desc()).limit(limit + 1)
+    ).all()
+    has_more = len(jobs) > limit
+    if has_more:
+        jobs = jobs[:limit]
     now = datetime.now(UTC)
     job_ids = [job.id for job in jobs]
     phases_by_job: dict[object, list[JobPhaseEntry]] = {job_id: [] for job_id in job_ids}
@@ -344,7 +399,10 @@ def processing_logs(
                         elapsed_seconds(phase_entry.started_at, phase_finished_at, now),
                         3,
                     ),
-                    "metadata": phase_entry.metadata_json or {},
+                    "metadata": {
+                        k: redact_sensitive_text(v) if isinstance(v, str) else v
+                        for k, v in (phase_entry.metadata_json or {}).items()
+                    },
                     "error": error,
                 }
             )
@@ -368,8 +426,13 @@ def processing_logs(
                 "steps": steps,
             }
         )
+    next_cursor = (
+        f"{jobs[-1].created_at.isoformat()}|{jobs[-1].id}" if has_more and jobs else None
+    )
     return {
         "entries": entries,
+        "has_more": has_more,
+        "next_cursor": next_cursor,
         "instances": [
             {
                 "slug": instance.slug,

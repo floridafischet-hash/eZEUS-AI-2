@@ -1,8 +1,11 @@
+import logging
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
+
+logger = logging.getLogger(__name__)
 
 from core.config.settings import get_settings
 from core.db.session import get_db
@@ -34,6 +37,7 @@ def receive_paperless_webhook(
     try:
         instance = find_enabled_instance_by_webhook_secret(db, x_ezeus_webhook_secret)
     except AmbiguousWebhookSecretError as exc:
+        logger.warning("Webhook 409: ambiguous secret matches multiple instances")
         raise HTTPException(
             status_code=409,
             detail=(
@@ -50,6 +54,7 @@ def receive_paperless_webhook(
             source_prefix=str(instance.id),
         )
     if not verify_shared_secret(x_ezeus_webhook_secret, settings.paperless_webhook_secret):
+        logger.warning("Webhook 401: invalid shared secret for legacy endpoint")
         raise HTTPException(status_code=401, detail="Invalid webhook secret")
     return _accept_event(payload, response, db, connector="paperless", source_prefix="legacy")
 
@@ -64,12 +69,17 @@ def receive_instance_webhook(
 ) -> dict[str, str | bool]:
     instance = get_enabled_instance(db, instance_slug)
     if instance is None:
+        logger.warning("Webhook 404: instance not found: %s", instance_slug)
         raise HTTPException(status_code=404, detail="Paperless instance not found")
     try:
         expected_secret = decrypt_credential(instance.webhook_secret_encrypted)
     except CredentialEncryptionError as exc:
+        logger.error("Webhook 503: credential decryption failed for instance %s", instance_slug,
+                      exc_info=exc)
         raise HTTPException(status_code=503, detail="Credential service unavailable") from exc
     if not verify_shared_secret(x_ezeus_webhook_secret, expected_secret):
+        logger.warning("Webhook 401: invalid secret for instance %s", instance_slug,
+                        extra={"instance_slug": instance_slug})
         raise HTTPException(status_code=401, detail="Invalid webhook secret")
     return _accept_event(
         payload,
@@ -109,4 +119,5 @@ def _accept_event(
         }
     except SQLAlchemyError as exc:
         db.rollback()
+        logger.error("Webhook 503: job service unavailable", exc_info=exc)
         raise HTTPException(status_code=503, detail="Job service unavailable") from exc

@@ -76,7 +76,14 @@ def retry_job(
     job = db.get(Job, job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
-    if job.status not in {JobStatus.FAILED, JobStatus.COMPLETED_WITH_WARNINGS}:
+    retryable = {
+        JobStatus.FAILED,
+        JobStatus.COMPLETED_WITH_WARNINGS,
+        JobStatus.RECEIVED,
+        JobStatus.RUNNING,
+        JobStatus.RETRY_WAITING,
+    }
+    if job.status not in retryable:
         raise HTTPException(status_code=409, detail="Job is not retryable in its current state")
     job.status = JobStatus.QUEUED
     job.error_type = None
