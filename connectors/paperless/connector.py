@@ -382,39 +382,36 @@ class PaperlessConnector(DocumentConnector):
             url = str(next_url) if next_url else ""
         return correspondents
 
-    async def write_title(self, external_document_id: str, title: str) -> bool:
-        current = await self.get_document(external_document_id)
-        if current.title == title:
+    async def write_title(self, document: ConnectorDocument, title: str) -> bool:
+        if document.title == title:
             return False
-        if current.title and not self.allow_title_overwrite:
-            filename_stem = current.filename.rsplit(".", 1)[0] if current.filename else None
-            if current.title != filename_stem:
+        if document.title and not self.allow_title_overwrite:
+            filename_stem = document.filename.rsplit(".", 1)[0] if document.filename else None
+            if document.title != filename_stem:
                 return False
         await self._request(
             "PATCH",
-            f"/api/documents/{external_document_id}/",
+            f"/api/documents/{document.external_id}/",
             json={"title": title},
         )
         return True
 
     async def write_correspondent_if_empty(
-        self, external_document_id: str, correspondent_id: str
+        self, document: ConnectorDocument, correspondent_id: str
     ) -> bool:
-        current = await self.get_document(external_document_id)
-        if current.correspondent_id is not None:
+        if document.correspondent_id is not None:
             return False
         await self._request(
             "PATCH",
-            f"/api/documents/{external_document_id}/",
+            f"/api/documents/{document.external_id}/",
             json={"correspondent": int(correspondent_id)},
         )
         return True
 
     async def write_empty_fields(
-        self, external_document_id: str, values: dict[str, object]
+        self, document: ConnectorDocument, values: dict[str, object]
     ) -> dict[str, object]:
-        current = await self.get_document(external_document_id)
-        merged = dict(current.custom_fields)
+        merged = dict(document.custom_fields)
         changed = False
         written: dict[str, object] = {}
         for field_id, value in values.items():
@@ -427,5 +424,5 @@ class PaperlessConnector(DocumentConnector):
         payload = {
             "custom_fields": [{"field": int(key), "value": value} for key, value in merged.items()]
         }
-        await self._request("PATCH", f"/api/documents/{external_document_id}/", json=payload)
+        await self._request("PATCH", f"/api/documents/{document.external_id}/", json=payload)
         return written

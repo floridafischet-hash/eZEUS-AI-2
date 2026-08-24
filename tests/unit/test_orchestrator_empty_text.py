@@ -32,16 +32,16 @@ class EmptyTextConnector(DocumentConnector):
             content="   ",
         )
 
-    async def write_title(self, external_document_id: str, title: str) -> bool:
+    async def write_title(self, document: ConnectorDocument, title: str) -> bool:
         raise AssertionError("write must not be reached")
 
     async def write_correspondent_if_empty(
-        self, external_document_id: str, correspondent_id: str
+        self, document: ConnectorDocument, correspondent_id: str
     ) -> bool:
         raise AssertionError("write must not be reached")
 
     async def write_empty_fields(
-        self, external_document_id: str, values: dict[str, object]
+        self, document: ConnectorDocument, values: dict[str, object]
     ) -> dict[str, object]:
         raise AssertionError("write must not be reached")
 

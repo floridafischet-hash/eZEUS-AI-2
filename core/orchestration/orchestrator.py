@@ -309,9 +309,7 @@ class Orchestrator:
             )
 
             active_phase = self._start_phase(job, JobPhase.WRITE_METADATA)
-            changed = await connector.write_empty_fields(
-                document.external_document_id, extracted_values
-            )
+            changed = await connector.write_empty_fields(before_write, extracted_values)
             for field_id, value in changed.items():
                 self._audit(
                     job,
@@ -324,7 +322,7 @@ class Orchestrator:
             invoice_number = extracted_by_key.get("invoice_number")
             if invoice_number is not None:
                 title_written = await connector.write_title(
-                    document.external_document_id,
+                    before_write,
                     str(invoice_number),
                 )
                 if title_written:
@@ -347,7 +345,7 @@ class Orchestrator:
                 )
                 if correspondent_match is not None:
                     correspondent_written = await connector.write_correspondent_if_empty(
-                        document.external_document_id,
+                        before_write,
                         correspondent_match.correspondent_id,
                     )
                     if correspondent_written:

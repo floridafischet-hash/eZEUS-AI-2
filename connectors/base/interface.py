@@ -56,16 +56,16 @@ class DocumentConnector(ABC):
     async def get_document(self, external_document_id: str) -> ConnectorDocument: ...
 
     @abstractmethod
-    async def write_title(self, external_document_id: str, title: str) -> bool: ...
+    async def write_title(self, document: ConnectorDocument, title: str) -> bool: ...
 
     @abstractmethod
     async def write_correspondent_if_empty(
-        self, external_document_id: str, correspondent_id: str
+        self, document: ConnectorDocument, correspondent_id: str
     ) -> bool: ...
 
     @abstractmethod
     async def write_empty_fields(
-        self, external_document_id: str, values: dict[str, object]
+        self, document: ConnectorDocument, values: dict[str, object]
     ) -> dict[str, object]: ...
 
     async def list_custom_fields(self) -> list[ConnectorCustomField]:
