@@ -54,7 +54,7 @@ container-smoke:
 		-e SMOKE_ADMIN_PASSWORD=smoke-admin-password api \
 		python scripts/create_admin_user.py smoke-admin --password-env SMOKE_ADMIN_PASSWORD \
 		--if-not-exists
-	$(PYTHON) scripts/container_smoke_test.py \
+	python3 scripts/container_smoke_test.py \
 		--base-url http://127.0.0.1:$(SMOKE_API_PORT) \
 		--mock-url http://127.0.0.1:$(SMOKE_PAPERLESS_PORT) \
 		--admin-password smoke-admin-password
