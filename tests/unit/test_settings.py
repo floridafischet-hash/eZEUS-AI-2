@@ -41,3 +41,19 @@ def test_production_accepts_valid_fernet_key() -> None:
         credential_encryption_key=Fernet.generate_key().decode(),
     )
     assert settings.app_env == "production"
+
+
+def test_celery_hard_time_limit_is_independently_configurable() -> None:
+    settings = Settings(
+        ollama_timeout_seconds=10,
+        celery_task_time_limit_seconds=123,
+    )
+    assert settings.celery_task_time_limit_seconds == 123
+
+
+def test_celery_hard_time_limit_must_exceed_soft_limit() -> None:
+    with pytest.raises(ValidationError, match="must exceed the Celery soft time limit"):
+        Settings(
+            ollama_timeout_seconds=300,
+            celery_task_time_limit_seconds=360,
+        )

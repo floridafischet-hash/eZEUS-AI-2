@@ -53,6 +53,8 @@ config:
   OLLAMA_MAX_INPUT_CHARS: "24000"
   OLLAMA_MAX_RESPONSE_BYTES: "1048576"
   OLLAMA_KEEP_ALIVE: "10m"
+  # Independent Celery hard limit; must exceed OLLAMA_TIMEOUT_SECONDS + 60.
+  CELERY_TASK_TIME_LIMIT_SECONDS: "420"
   JOB_MAX_RETRIES: "3"
   JOB_RETRY_DELAYS_SECONDS: "30,120,600"
   # Rate limit defaults (per client IP).

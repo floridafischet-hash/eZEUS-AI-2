@@ -52,6 +52,7 @@ class Settings(BaseSettings):
     ollama_max_input_chars: int = 24_000
     ollama_max_response_bytes: int = 1_048_576
     ollama_keep_alive: str = "10m"
+    celery_task_time_limit_seconds: int = 420
 
     job_max_retries: int = 3
     job_retry_delays_seconds: Annotated[tuple[int, ...], NoDecode] = Field(default=(30, 120, 600))
@@ -174,6 +175,10 @@ class Settings(BaseSettings):
             raise ValueError("Cloud AI cannot be enabled while LOCAL_ONLY is true")
         if self.ollama_timeout_seconds <= 0:
             raise ValueError("OLLAMA_TIMEOUT_SECONDS must be positive")
+        if self.celery_task_time_limit_seconds <= self.ollama_timeout_seconds + 60:
+            raise ValueError(
+                "CELERY_TASK_TIME_LIMIT_SECONDS must exceed the Celery soft time limit"
+            )
         if self.ollama_max_input_chars < 1000 or self.ollama_max_response_bytes <= 0:
             raise ValueError("Ollama input and response limits must be positive")
         if self.job_max_retries < 0:

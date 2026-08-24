@@ -30,6 +30,8 @@ Alle Werte werden über Umgebungsvariablen gelesen.
   `http://ollama:11434`
 - `OLLAMA_MODEL`: lokales Modell, produktiv `qwen3:4b`
 - `OLLAMA_TIMEOUT_SECONDS`: Zeitlimit pro Modellaufruf
+- `CELERY_TASK_TIME_LIMIT_SECONDS`: unabhängiges hartes Celery-Task-Limit;
+  muss größer als das Soft-Limit (`OLLAMA_TIMEOUT_SECONDS + 60`) sein
 - `OLLAMA_MAX_INPUT_CHARS`: maximale Textmenge pro Feldextraktion (längerer Paperless-Text wird gekürzt)
 - `OLLAMA_MAX_RESPONSE_BYTES`: maximale gestreamte Ollama-Antwortgröße
 - `OLLAMA_KEEP_ALIVE`: Vorhaltezeit des geladenen Modells
