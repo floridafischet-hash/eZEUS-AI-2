@@ -21,6 +21,8 @@ Alle Werte werden über Umgebungsvariablen gelesen.
   vertrauenswürdigen Authentifizierungs-Proxy
 - `CREDENTIAL_ENCRYPTION_KEY`: URL-sicherer Fernet-Schlüssel zur Verschlüsselung
   gespeicherter Paperless-Zugangsdaten; in Produktion Pflicht
+- `WEBHOOK_LOOKUP_HMAC_KEY`: separater stabiler Schlüssel (mindestens 32 Byte)
+  für den indexierten Lookup des unscoped Webhook-Secrets; in Produktion Pflicht
 - `PUBLIC_WEBHOOK_BASE_URL`: optionale öffentliche Basisadresse für die auf der
   Verwaltungsseite angezeigten Webhook-URLs
 - `PAPERLESS_VERIFY_TLS`: standardmäßig `true`

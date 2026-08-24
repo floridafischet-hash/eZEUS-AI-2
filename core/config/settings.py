@@ -42,6 +42,7 @@ class Settings(BaseSettings):
     proxy_auth_secret: str = ""
     credential_encryption_key: str = ""
     credential_encryption_keys: Annotated[tuple[str, ...], NoDecode] = Field(default=())
+    webhook_lookup_hmac_key: str = ""
     public_webhook_base_url: str = ""
     paperless_verify_tls: bool = True
 
@@ -129,6 +130,15 @@ class Settings(BaseSettings):
         legacy_key = self.credential_encryption_key.strip()
         return (legacy_key,) if legacy_key else ()
 
+    @property
+    def effective_webhook_lookup_hmac_key(self) -> str:
+        configured = self.webhook_lookup_hmac_key.strip()
+        if configured:
+            return configured
+        if self.app_env != "production" and self.effective_credential_encryption_keys:
+            return self.effective_credential_encryption_keys[0]
+        return ""
+
     @model_validator(mode="after")
     def validate_runtime_configuration(self) -> "Settings":
         if not self.database_url:
@@ -153,6 +163,7 @@ class Settings(BaseSettings):
                         "CREDENTIAL_ENCRYPTION_KEYS",
                         ",".join(self.effective_credential_encryption_keys),
                     ),
+                    ("WEBHOOK_LOOKUP_HMAC_KEY", self.effective_webhook_lookup_hmac_key),
                 )
                 if _is_insecure_placeholder(value)
             ]
@@ -174,6 +185,8 @@ class Settings(BaseSettings):
                     raise ValueError(
                         "CREDENTIAL_ENCRYPTION_KEYS must contain valid Fernet keys"
                     ) from exc
+            if len(self.effective_webhook_lookup_hmac_key.encode()) < 32:
+                raise ValueError("WEBHOOK_LOOKUP_HMAC_KEY must contain at least 32 bytes")
         if self.cloud_ai_globally_allowed and self.local_only:
             raise ValueError("Cloud AI cannot be enabled while LOCAL_ONLY is true")
         if self.db_pool_size <= 0:

@@ -31,5 +31,6 @@ eZEUS-AI-2 is installed as release {{ .Release.Name }} in namespace {{ .Release.
 
 Important:
 - Override .Values.secrets.CREDENTIAL_ENCRYPTION_KEYS (or the legacy singular key) with a real Fernet key before going to production.
+- Set .Values.secrets.WEBHOOK_LOOKUP_HMAC_KEY to an independent stable random value of at least 32 bytes.
 - If APP_ENV=production, placeholder secrets ("change-me", empty, or "example-*") will refuse to start.
 - Configure your external Paperless URL via external.paperlessBaseUrl or per-instance in the admin UI.

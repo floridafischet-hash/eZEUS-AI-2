@@ -25,6 +25,7 @@ from core.security.credentials import (
     decrypt_credential,
     encrypt_credential,
 )
+from core.security.webhook_lookup import webhook_secret_hmac
 
 router = APIRouter(tags=["paperless-instances"])
 SLUG_PATTERN = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$")
@@ -136,6 +137,7 @@ async def create_instance(
         base_url=base_url,
         api_token_encrypted=encrypt_credential(payload.api_token),
         webhook_secret_encrypted=encrypt_credential(webhook_secret),
+        webhook_secret_hmac=webhook_secret_hmac(webhook_secret),
         verify_tls=True,
         enabled=True,
     )
@@ -192,7 +194,9 @@ def update_instance(
     if "api_token" in changes:
         instance.api_token_encrypted = encrypt_credential(str(changes["api_token"]))
     if "webhook_secret" in changes:
-        instance.webhook_secret_encrypted = encrypt_credential(str(changes["webhook_secret"]))
+        webhook_secret = str(changes["webhook_secret"])
+        instance.webhook_secret_encrypted = encrypt_credential(webhook_secret)
+        instance.webhook_secret_hmac = webhook_secret_hmac(webhook_secret)
     if "verify_tls" in changes:
         instance.verify_tls = bool(changes["verify_tls"])
     if "enabled" in changes:

@@ -58,6 +58,7 @@ def test_rotation_reencrypts_every_paperless_credential_with_primary_key(
                 base_url="https://paperless.example.test",
                 api_token_encrypted=old_fernet.encrypt(b"api-token").decode(),
                 webhook_secret_encrypted=old_fernet.encrypt(b"webhook-secret").decode(),
+                webhook_secret_hmac="0" * 64,
             )
         )
         db.commit()

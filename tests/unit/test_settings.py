@@ -39,6 +39,7 @@ def test_production_accepts_valid_fernet_key() -> None:
         paperless_api_token="strong-api-token",
         paperless_webhook_secret="strong-webhook-secret",
         credential_encryption_key=Fernet.generate_key().decode(),
+        webhook_lookup_hmac_key="a-strong-independent-hmac-key-123456",
     )
     assert settings.app_env == "production"
 

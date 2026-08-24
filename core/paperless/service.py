@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from connectors.paperless.connector import PaperlessConnector
 from core.models.paperless_instance import PaperlessInstance
 from core.security.credentials import CredentialEncryptionError, decrypt_credential
+from core.security.webhook_lookup import webhook_secret_hmac
 from webhooks.paperless.security import verify_shared_secret
 
 logger = logging.getLogger(__name__)
@@ -41,7 +42,13 @@ def find_enabled_instance_by_webhook_secret(
 ) -> PaperlessInstance | None:
     if provided_secret is None:
         return None
-    instances = db.scalars(select(PaperlessInstance).where(PaperlessInstance.enabled.is_(True)))
+    lookup_hmac = webhook_secret_hmac(provided_secret)
+    instances = db.scalars(
+        select(PaperlessInstance).where(
+            PaperlessInstance.enabled.is_(True),
+            PaperlessInstance.webhook_secret_hmac == lookup_hmac,
+        )
+    )
     matching_instance: PaperlessInstance | None = None
     for instance in instances:
         try:

@@ -32,7 +32,7 @@ docker push registry.example/ezeus-ai-2:0.2.0
    External Secrets or the platform secret manager. It must contain
    `DATABASE_URL` (for an external DB), `PAPERLESS_API_TOKEN`,
    `PAPERLESS_WEBHOOK_SECRET`, `CREDENTIAL_ENCRYPTION_KEYS` (or the legacy
-   `CREDENTIAL_ENCRYPTION_KEY`), and, when OIDC is
+   `CREDENTIAL_ENCRYPTION_KEY`), `WEBHOOK_LOOKUP_HMAC_KEY`, and, when OIDC is
    enabled, `OAUTH2_PROXY_CLIENT_SECRET` and `OAUTH2_PROXY_COOKIE_SECRET`.
 4. Install the release:
 
@@ -69,6 +69,15 @@ To rotate without downtime:
 The singular `CREDENTIAL_ENCRYPTION_KEY` remains supported for existing
 installations. When the plural variable contains at least one key, it takes
 precedence over the singular variable.
+
+`WEBHOOK_LOOKUP_HMAC_KEY` is a separate stable secret used to index unscoped
+webhook requests without decrypting every instance credential. Generate at
+least 32 random bytes (for example with `python -c 'import secrets;
+print(secrets.token_urlsafe(32))'`), back it up with the encryption keyring and
+provide it before upgrading to the migration that adds the lookup column. The
+migration decrypts each existing webhook secret once to backfill the index.
+Changing this HMAC key later requires a coordinated rebuild of every stored
+lookup value; changing it alone makes unscoped webhook lookups fail.
 
 ## Database connection pools
 

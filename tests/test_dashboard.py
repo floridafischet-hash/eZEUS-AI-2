@@ -111,6 +111,7 @@ def populated_log_db() -> Generator[Session, None, None]:
             base_url="https://a.example.test",
             api_token_encrypted="encrypted",
             webhook_secret_encrypted="encrypted",
+            webhook_secret_hmac="1" * 64,
         )
         second = PaperlessInstance(
             name="Kunde B",
@@ -118,6 +119,7 @@ def populated_log_db() -> Generator[Session, None, None]:
             base_url="https://b.example.test",
             api_token_encrypted="encrypted",
             webhook_secret_encrypted="encrypted",
+            webhook_secret_hmac="2" * 64,
         )
         first_document = Document(
             connector="paperless:kunde-a",
