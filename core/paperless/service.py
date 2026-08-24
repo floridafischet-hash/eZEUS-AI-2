@@ -1,10 +1,14 @@
+import logging
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from connectors.paperless.connector import PaperlessConnector
 from core.models.paperless_instance import PaperlessInstance
-from core.security.credentials import decrypt_credential
+from core.security.credentials import CredentialEncryptionError, decrypt_credential
 from webhooks.paperless.security import verify_shared_secret
+
+logger = logging.getLogger(__name__)
 
 CONNECTOR_PREFIX = "paperless:"
 
@@ -40,9 +44,15 @@ def find_enabled_instance_by_webhook_secret(
     instances = db.scalars(select(PaperlessInstance).where(PaperlessInstance.enabled.is_(True)))
     matching_instance: PaperlessInstance | None = None
     for instance in instances:
-        if verify_shared_secret(
-            provided_secret, decrypt_credential(instance.webhook_secret_encrypted)
-        ):
+        try:
+            expected_secret = decrypt_credential(instance.webhook_secret_encrypted)
+        except CredentialEncryptionError:
+            logger.warning(
+                "Skipping Paperless instance with unreadable webhook credential",
+                extra={"instance_slug": instance.slug},
+            )
+            continue
+        if verify_shared_secret(provided_secret, expected_secret):
             if matching_instance is not None:
                 raise AmbiguousWebhookSecretError(
                     "Webhook secret matches multiple Paperless instances"
