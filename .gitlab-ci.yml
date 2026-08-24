@@ -1,0 +1,71 @@
+stages:
+  - sync
+
+sync_from_github:
+  stage: sync
+
+  image:
+    name: alpine/git:latest
+    entrypoint: [""]
+
+  tags:
+    - docker
+
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+    - if: '$CI_PIPELINE_SOURCE == "web"'
+
+  variables:
+    GIT_STRATEGY: fetch
+    GITHUB_REPO: "floridafischet-hash/eZEUS-AI-2"
+    SYNC_BRANCH: "main"
+
+  before_script:
+    - git config user.name "GitLab Sync Bot"
+    - git config user.email "gitlab-sync@localhost"
+
+  script:
+    - git remote remove github 2>/dev/null || true
+
+    - >
+      git remote add github
+      "https://${GITHUB_USERNAME}:${GITHUB_TOKEN}@github.com/${GITHUB_REPO}.git"
+
+    - git fetch origin "${SYNC_BRANCH}" --prune
+    - git fetch github "${SYNC_BRANCH}" --prune --tags
+
+    - GITLAB_SHA="$(git rev-parse "origin/${SYNC_BRANCH}")"
+    - GITHUB_SHA="$(git rev-parse "github/${SYNC_BRANCH}")"
+
+    - 'echo "GitLab ${SYNC_BRANCH}: ${GITLAB_SHA}"'
+    - 'echo "GitHub ${SYNC_BRANCH}: ${GITHUB_SHA}"'
+
+    - |
+      if [ "${GITLAB_SHA}" = "${GITHUB_SHA}" ]; then
+        echo "GitHub und GitLab sind bereits synchron."
+        exit 0
+      fi
+
+    - |
+      if git merge-base --is-ancestor "origin/${SYNC_BRANCH}" "github/${SYNC_BRANCH}"; then
+        echo "GitLab liegt hinter GitHub. Fast-Forward ist möglich."
+      else
+        echo "FEHLER: GitHub und GitLab haben unterschiedliche Commit-Verläufe."
+        echo "Synchronisierung wird sicherheitshalber abgebrochen."
+        echo "Es wird nichts überschrieben."
+        exit 1
+      fi
+
+    - git checkout -B "${SYNC_BRANCH}" "github/${SYNC_BRANCH}"
+
+    - >
+      git push
+      "https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git"
+      "${SYNC_BRANCH}:${SYNC_BRANCH}"
+
+    - >
+      git push
+      "https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git"
+      --tags
+
+    - echo "Synchronisierung erfolgreich abgeschlossen."
