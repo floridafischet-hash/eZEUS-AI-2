@@ -167,9 +167,7 @@ def test_processing_logs_reject_unknown_instance_and_excessive_limit() -> None:
     app.dependency_overrides[get_db] = populated_log_db
     try:
         client = TestClient(app)
-        unknown_instance = client.get(
-            "/api/logs?instance_slug=missing", headers=ADMIN_HEADERS
-        )
+        unknown_instance = client.get("/api/logs?instance_slug=missing", headers=ADMIN_HEADERS)
         assert unknown_instance.status_code == 404
         assert client.get("/api/logs?limit=501", headers=ADMIN_HEADERS).status_code == 422
     finally:

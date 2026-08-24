@@ -71,9 +71,7 @@ async def test_identical_title_skips_write() -> None:
 async def test_none_title_is_written() -> None:
     connector = _connector(allow_title_overwrite=False)
     with patch.object(connector, "_request", new_callable=AsyncMock) as mock_req:
-        result = await connector.write_title(
-            _doc(title=None, filename="scan.pdf"), "Neuer Titel"
-        )
+        result = await connector.write_title(_doc(title=None, filename="scan.pdf"), "Neuer Titel")
     assert result is True
     mock_req.assert_called_once()
 
@@ -112,6 +110,4 @@ async def test_correspondent_write_uses_provided_document_snapshot() -> None:
         written = await connector.write_correspondent_if_empty(document, "7")
 
     assert written is True
-    mock_req.assert_awaited_once_with(
-        "PATCH", "/api/documents/42/", json={"correspondent": 7}
-    )
+    mock_req.assert_awaited_once_with("PATCH", "/api/documents/42/", json={"correspondent": 7})

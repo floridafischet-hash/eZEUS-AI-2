@@ -50,9 +50,14 @@ container-smoke:
 	HOST_PORT=$(SMOKE_API_PORT) MOCK_PAPERLESS_PORT=$(SMOKE_PAPERLESS_PORT) \
 		docker compose -p $(SMOKE_PROJECT) --env-file .env.example up -d --build --wait \
 		--wait-timeout 180
+	docker compose -p $(SMOKE_PROJECT) --env-file .env.example exec -T \
+		-e SMOKE_ADMIN_PASSWORD=smoke-admin-password api \
+		python scripts/create_admin_user.py smoke-admin --password-env SMOKE_ADMIN_PASSWORD \
+		--if-not-exists
 	$(PYTHON) scripts/container_smoke_test.py \
 		--base-url http://127.0.0.1:$(SMOKE_API_PORT) \
-		--mock-url http://127.0.0.1:$(SMOKE_PAPERLESS_PORT)
+		--mock-url http://127.0.0.1:$(SMOKE_PAPERLESS_PORT) \
+		--admin-password smoke-admin-password
 
 smoke-down:
 	HOST_PORT=$(SMOKE_API_PORT) MOCK_PAPERLESS_PORT=$(SMOKE_PAPERLESS_PORT) \

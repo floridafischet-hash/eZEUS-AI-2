@@ -181,12 +181,22 @@
     },
     "networkPolicy": {
       "type": "object",
-      "required": ["enabled", "allowedIngressNamespaces", "egressCidrs"],
+      "required": [
+        "enabled",
+        "allowedIngressNamespaces",
+        "ingressControllerPodLabels",
+        "egressCidrs"
+      ],
       "properties": {
         "enabled": { "type": "boolean" },
         "allowedIngressNamespaces": {
           "type": "array",
           "items": { "type": "string", "minLength": 1 }
+        },
+        "ingressControllerPodLabels": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": { "type": "string", "minLength": 1 }
         },
         "egressCidrs": {
           "type": "array",

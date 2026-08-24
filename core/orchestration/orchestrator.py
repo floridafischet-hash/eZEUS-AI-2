@@ -81,9 +81,9 @@ class Orchestrator:
         entry.metadata_json = metadata or {}
         self.db.commit()
         duration = (entry.finished_at - entry.started_at).total_seconds()
-        PHASE_DURATION_SECONDS.labels(
-            phase=entry.phase.value, status=entry.status.value
-        ).observe(duration)
+        PHASE_DURATION_SECONDS.labels(phase=entry.phase.value, status=entry.status.value).observe(
+            duration
+        )
         job = self.db.get(Job, entry.job_id)
         extra = self._log_extra(job, entry.phase.value) if job else {"phase": entry.phase.value}
         if error:
@@ -404,8 +404,9 @@ class Orchestrator:
             self.db.commit()
             slug = instance_slug_from_connector(job.document.connector) or ""
             JOBS_TOTAL.labels(status=JobStatus.FAILED.value, instance_slug=slug).inc()
-            logger.error("Job failed: %s", type(exc).__name__, exc_info=exc,
-                         extra=self._log_extra(job))
+            logger.error(
+                "Job failed: %s", type(exc).__name__, exc_info=exc, extra=self._log_extra(job)
+            )
             raise
         finally:
             await connector.close()

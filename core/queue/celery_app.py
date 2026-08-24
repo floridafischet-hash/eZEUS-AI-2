@@ -12,6 +12,7 @@ celery_app.conf.update(
     worker_prefetch_multiplier=1,
     task_reject_on_worker_lost=True,
     task_track_started=True,
+    worker_hijack_root_logger=False,
     timezone="UTC",
     task_soft_time_limit=settings.ollama_timeout_seconds + 60,
     task_time_limit=settings.celery_task_time_limit_seconds,

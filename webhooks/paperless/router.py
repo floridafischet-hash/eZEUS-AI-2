@@ -5,8 +5,6 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-logger = logging.getLogger(__name__)
-
 from core.config.settings import get_settings
 from core.db.session import get_db
 from core.events.document_imported import DocumentImportedEvent
@@ -22,6 +20,8 @@ from core.queue.outbox import publish_outbox_event
 from core.security.credentials import CredentialEncryptionError, decrypt_credential
 from webhooks.paperless.schemas import PaperlessWebhookPayload
 from webhooks.paperless.security import verify_shared_secret
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/webhooks/paperless", tags=["webhooks"])
 
@@ -74,12 +74,16 @@ def receive_instance_webhook(
     try:
         expected_secret = decrypt_credential(instance.webhook_secret_encrypted)
     except CredentialEncryptionError as exc:
-        logger.error("Webhook 503: credential decryption failed for instance %s", instance_slug,
-                      exc_info=exc)
+        logger.error(
+            "Webhook 503: credential decryption failed for instance %s", instance_slug, exc_info=exc
+        )
         raise HTTPException(status_code=503, detail="Credential service unavailable") from exc
     if not verify_shared_secret(x_ezeus_webhook_secret, expected_secret):
-        logger.warning("Webhook 401: invalid secret for instance %s", instance_slug,
-                        extra={"instance_slug": instance_slug})
+        logger.warning(
+            "Webhook 401: invalid secret for instance %s",
+            instance_slug,
+            extra={"instance_slug": instance_slug},
+        )
         raise HTTPException(status_code=401, detail="Invalid webhook secret")
     return _accept_event(
         payload,

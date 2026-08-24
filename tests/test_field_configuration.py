@@ -283,7 +283,8 @@ def test_preview_validates_fields_without_saving(field_config_client) -> None:
 
 @pytest.mark.asyncio
 async def test_runtime_extraction_uses_only_tenant_configuration(
-    field_config_client, monkeypatch,
+    field_config_client,
+    monkeypatch,
 ) -> None:
     monkeypatch.setenv("OLLAMA_ENABLED", "true")
     get_settings.cache_clear()
@@ -329,7 +330,8 @@ async def test_runtime_extraction_uses_only_tenant_configuration(
 
 
 def test_ollama_disabled_degrades_to_regex_only(
-    field_config_client, monkeypatch,
+    field_config_client,
+    monkeypatch,
 ) -> None:
     monkeypatch.setenv("OLLAMA_ENABLED", "false")
     get_settings.cache_clear()

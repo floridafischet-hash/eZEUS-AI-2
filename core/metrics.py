@@ -1,4 +1,4 @@
-from prometheus_client import Counter, Histogram, Info
+from prometheus_client import Counter, Gauge, Histogram, Info
 
 app_info = Info("ezeus", "eZEUS-AI-2 application info")
 app_info.info({"version": "0.2.0"})
@@ -22,8 +22,14 @@ WEBHOOK_REQUESTS_TOTAL = Counter(
     ["status_code", "instance_slug"],
 )
 
-QUEUE_DEPTH = Counter(
+OUTBOX_EVENTS_TOTAL = Counter(
     "ezeus_outbox_events_total",
     "Outbox events by outcome",
     ["outcome"],
+)
+
+CELERY_QUEUE_DEPTH = Gauge(
+    "ezeus_celery_queue_depth",
+    "Number of tasks waiting in a Celery queue",
+    ["queue"],
 )

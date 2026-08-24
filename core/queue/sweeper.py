@@ -7,7 +7,7 @@ from datetime import UTC, datetime, timedelta
 from threading import Event
 
 from sqlalchemy import select
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import Session
 
 from core.config.settings import Settings, get_settings
 from core.db.session import SessionLocal
@@ -59,7 +59,10 @@ def sweep_stale_jobs(
             job.status = JobStatus.FAILED
             job.finished_at = datetime.now(UTC)
             job.error_type = "StalledJob"
-            job.error_message = f"Job stalled in {job.status.value} after {job.retry_count} retries (worker: {job.worker_id})"
+            job.error_message = (
+                f"Job stalled in {job.status.value} after {job.retry_count} retries "
+                f"(worker: {job.worker_id})"
+            )
             db.commit()
             failed += 1
             logger.info("Failed stale job %s (max retries exhausted)", job.id)
@@ -68,6 +71,7 @@ def sweep_stale_jobs(
 
 def run_sweeper() -> None:
     from core.logging import configure_logging
+
     configure_logging()
     runtime = get_settings()
     stop = Event()
@@ -77,8 +81,11 @@ def run_sweeper() -> None:
 
     signal.signal(signal.SIGTERM, request_stop)
     signal.signal(signal.SIGINT, request_stop)
-    logger.info("Job sweeper started (interval=%.0fs, threshold=%ds)",
-                runtime.sweeper_interval_seconds, runtime.sweeper_stale_threshold_seconds)
+    logger.info(
+        "Job sweeper started (interval=%.0fs, threshold=%ds)",
+        runtime.sweeper_interval_seconds,
+        runtime.sweeper_stale_threshold_seconds,
+    )
     while not stop.is_set():
         try:
             with SessionLocal() as db:

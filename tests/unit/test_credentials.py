@@ -72,8 +72,7 @@ def test_rotation_reencrypts_every_paperless_credential_with_primary_key(
             new_fernet = Fernet(new_key.encode())
             assert new_fernet.decrypt(instance.api_token_encrypted.encode()) == b"api-token"
             assert (
-                new_fernet.decrypt(instance.webhook_secret_encrypted.encode())
-                == b"webhook-secret"
+                new_fernet.decrypt(instance.webhook_secret_encrypted.encode()) == b"webhook-secret"
             )
         finally:
             get_settings.cache_clear()

@@ -339,9 +339,7 @@ def processing_logs(
             cursor_time = datetime.fromisoformat(cursor_timestamp)
             cursor_id = UUID(cursor_id_value)
         except (ValueError, TypeError):
-            raise HTTPException(
-                status_code=422, detail="Invalid 'before' cursor format"
-            ) from None
+            raise HTTPException(status_code=422, detail="Invalid 'before' cursor format") from None
         jobs_query = jobs_query.where(
             or_(
                 Job.created_at < cursor_time,
@@ -426,9 +424,7 @@ def processing_logs(
                 "steps": steps,
             }
         )
-    next_cursor = (
-        f"{jobs[-1].created_at.isoformat()}|{jobs[-1].id}" if has_more and jobs else None
-    )
+    next_cursor = f"{jobs[-1].created_at.isoformat()}|{jobs[-1].id}" if has_more and jobs else None
     return {
         "entries": entries,
         "has_more": has_more,

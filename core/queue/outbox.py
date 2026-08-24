@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from core.config.settings import Settings, get_settings
 from core.db.session import SessionLocal
-from core.metrics import QUEUE_DEPTH
+from core.metrics import OUTBOX_EVENTS_TOTAL
 from core.models.document import Document
 from core.models.enums import JobPriority, JobStatus
 from core.models.job import Job
@@ -68,9 +68,7 @@ def _queue_priority(db: Session, job: Job, settings: Settings) -> JobPriority:
     return JobPriority.LOW
 
 
-def add_job_to_outbox(
-    db: Session, job: Job, *, settings: Settings | None = None
-) -> QueueOutbox:
+def add_job_to_outbox(db: Session, job: Job, *, settings: Settings | None = None) -> QueueOutbox:
     priority = _queue_priority(db, job, settings or get_settings())
     job.priority = priority
     event = QueueOutbox(job_id=job.id, priority=priority.value, status=PENDING)
@@ -132,14 +130,14 @@ def publish_outbox_event(
         event.available_at = datetime.now(UTC) + timedelta(seconds=delay)
         db.commit()
         logger.warning("Queue outbox publish failed for event %s: %s", event.id, event.last_error)
-        QUEUE_DEPTH.labels(outcome="failed").inc()
+        OUTBOX_EVENTS_TOTAL.labels(outcome="failed").inc()
         return DispatchResult(failed=1)
     event.status = PUBLISHED
     event.claimed_at = None
     event.published_at = datetime.now(UTC)
     event.last_error = None
     db.commit()
-    QUEUE_DEPTH.labels(outcome="published").inc()
+    OUTBOX_EVENTS_TOTAL.labels(outcome="published").inc()
     return DispatchResult(published=1)
 
 
@@ -163,6 +161,7 @@ def dispatch_pending(
 
 def run_dispatcher() -> None:
     from core.logging import configure_logging
+
     configure_logging()
     runtime = get_settings()
     stop = Event()

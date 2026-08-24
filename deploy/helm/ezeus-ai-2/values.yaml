@@ -312,9 +312,12 @@ oauth2Proxy:
 
 networkPolicy:
   enabled: true
-  # If specified, only these ingress namespaces can talk to the api service.
+  # Only matching ingress-controller pods in these namespaces can reach the
+  # API. oauth2-proxy pods from this release are allowed separately.
   allowedIngressNamespaces:
     - ingress-nginx
+  ingressControllerPodLabels:
+    app.kubernetes.io/name: ingress-nginx
   # Exact egress destinations (Paperless outside the cluster etc.). Never use
   # an unrestricted 0.0.0.0/0 or ::/0 range; the values schema rejects both.
   egressCidrs: []

@@ -19,6 +19,22 @@ spec:
       ports:
         - port: 8080
           protocol: TCP
+    {{- if .Values.ingress.enabled }}
+    # ingress-nginx performs auth_request against oauth2-proxy, but forwards
+    # the accepted browser/webhook request to the API itself.
+    - from:
+        - namespaceSelector:
+            matchExpressions:
+              - key: kubernetes.io/metadata.name
+                operator: In
+                values: {{ toJson .Values.networkPolicy.allowedIngressNamespaces }}
+          podSelector:
+            matchLabels:
+              {{- toYaml .Values.networkPolicy.ingressControllerPodLabels | nindent 14 }}
+      ports:
+        - port: 8080
+          protocol: TCP
+    {{- end }}
   egress:
     - to:
         - podSelector:

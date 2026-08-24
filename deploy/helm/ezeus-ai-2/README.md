@@ -146,7 +146,11 @@ headroom below the pod memory limit for Redis process overhead and AOF buffers.
   After migrating every Paperless instance, set
   `ingress.webhooks.unscopedEnabled=false` to disable external access to the
   legacy unscoped endpoint (`POST /webhooks/paperless`).
-- `networkPolicy.enabled=true` and `allowedIngressNamespaces` scoped to your ingress-nginx namespace.
+- `networkPolicy.enabled=true`, `allowedIngressNamespaces` scoped to your
+  ingress namespace, and `ingressControllerPodLabels` matching only its
+  controller pods. ingress-nginx forwards authenticated and webhook traffic
+  directly to the API; allowing only oauth2-proxy would make every Ingress
+  route unreachable.
 - `networkPolicy.egressCidrs` contains the exact Paperless, database, Redis,
   Ollama and OIDC ranges required by this installation. The TEST-NET range in
   the example is intentionally non-functional. Unrestricted `0.0.0.0/0` and

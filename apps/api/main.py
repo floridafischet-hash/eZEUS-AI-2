@@ -2,6 +2,7 @@ import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import cast
 
 import httpx
 from fastapi import FastAPI, HTTPException
@@ -96,6 +97,21 @@ async def _paperless_readiness() -> bool:
 
 @app.get("/metrics", response_class=PlainTextResponse, include_in_schema=False)
 def metrics() -> PlainTextResponse:
+    settings = get_settings()
+    client = Redis.from_url(
+        settings.redis_url,
+        socket_connect_timeout=READINESS_TIMEOUT_SECONDS,
+        socket_timeout=READINESS_TIMEOUT_SECONDS,
+    )
+    try:
+        for queue in ("high", "normal", "low"):
+            depth = cast(int, client.llen(queue))
+            _metrics.CELERY_QUEUE_DEPTH.labels(queue=queue).set(depth)
+    except Exception:
+        for queue in ("high", "normal", "low"):
+            _metrics.CELERY_QUEUE_DEPTH.labels(queue=queue).set(float("nan"))
+    finally:
+        client.close()
     return PlainTextResponse(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
@@ -107,11 +123,20 @@ def health() -> dict[str, str]:
 @app.get("/ready")
 async def ready() -> dict[str, object]:
     settings = get_settings()
-    database_result, redis_ready, paperless_ready = await asyncio.gather(
-        asyncio.to_thread(_database_readiness),
-        asyncio.to_thread(_redis_readiness, settings.redis_url),
-        _paperless_readiness(),
-    )
+    try:
+        database_result, redis_ready, paperless_ready = await asyncio.wait_for(
+            asyncio.gather(
+                asyncio.to_thread(_database_readiness),
+                asyncio.to_thread(_redis_readiness, settings.redis_url),
+                _paperless_readiness(),
+            ),
+            timeout=READINESS_TIMEOUT_SECONDS,
+        )
+    except TimeoutError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail={"status": "not_ready", "checks": {"dependency_timeout": False}},
+        ) from exc
     database_ready, ai_fields_enabled = database_result
     checks: dict[str, bool] = {
         "database": database_ready,

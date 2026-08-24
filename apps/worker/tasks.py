@@ -64,13 +64,19 @@ def process_document_job(self: Task, job_id: str) -> None:
         logger.info("Task completed", extra=extra)
     except ConnectorError as exc:
         if not exc.retryable or self.request.retries >= settings.job_max_retries:
-            logger.error("Task failed (not retryable): %s", type(exc).__name__,
-                         exc_info=exc, extra=extra)
+            logger.error(
+                "Task failed (not retryable): %s", type(exc).__name__, exc_info=exc, extra=extra
+            )
             raise
         delay_index = min(self.request.retries, len(settings.job_retry_delays_seconds) - 1)
         retry_delay = settings.job_retry_delays_seconds[delay_index]
-        logger.warning("Task retrying in %ds (attempt %d): %s", retry_delay,
-                        self.request.retries + 1, type(exc).__name__, extra=extra)
+        logger.warning(
+            "Task retrying in %ds (attempt %d): %s",
+            retry_delay,
+            self.request.retries + 1,
+            type(exc).__name__,
+            extra=extra,
+        )
         with SessionLocal() as db:
             job = db.get(Job, parsed_job_id)
             if job:

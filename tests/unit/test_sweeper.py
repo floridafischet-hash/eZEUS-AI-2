@@ -37,7 +37,10 @@ def _settings(**overrides: object) -> Settings:
 
 
 def _create_stale_job(
-    db: Session, status: JobStatus, minutes_old: int = 30, retry_count: int = 0,
+    db: Session,
+    status: JobStatus,
+    minutes_old: int = 30,
+    retry_count: int = 0,
 ) -> Job:
     doc = Document(connector="paperless:test", external_document_id=str(uuid4()), filename="t.pdf")
     db.add(doc)
