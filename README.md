@@ -1,10 +1,10 @@
 # eZEUS-AI-2
 
-eZEUS-AI-2 ist eine lokale und mandantenfaehige Verarbeitungspipeline fuer
+eZEUS-AI-2 ist eine lokale und mandantenfähige Verarbeitungspipeline für
 Paperless-ngx. Die Anwendung reagiert auf Webhooks, liest den bereits von
 Paperless erkannten Dokumenttext, extrahiert konfigurierte Werte und schreibt
-gepruefte Ergebnisse zurueck. Vorhandene manuelle Angaben werden dabei
-geschuetzt.
+geprüfte Ergebnisse zurück. Vorhandene manuelle Angaben werden dabei
+geschützt.
 
 Die OCR bleibt Aufgabe von Paperless-ngx. eZEUS-AI-2 bringt keine zweite
 Texterkennung mit. Fuer einfache und gut strukturierte Dokumente reichen
