@@ -5,18 +5,16 @@ from uuid import UUID
 
 from sqlalchemy.orm import Session
 
-from core.metrics import JOBS_TOTAL, PHASE_DURATION_SECONDS
-
-logger = logging.getLogger(__name__)
-
 from connectors.base.interface import DocumentConnector
 from core.correspondents.matcher import match_correspondent
 from core.field_config.service import FieldConfigurationService, RuntimeFieldConfiguration
+from core.metrics import JOBS_TOTAL, PHASE_DURATION_SECONDS
 from core.models.audit import AuditEntry
 from core.models.enums import JobPhase, JobStatus, PhaseStatus
 from core.models.extraction import ExtractionResult
 from core.models.job import Job
 from core.models.job_phase import JobPhaseEntry
+from core.orchestration.exceptions import RetryableEmptyTextError
 from core.paperless.service import (
     connector_for_document,
     get_enabled_instance,
@@ -32,6 +30,8 @@ from plugins.base.interfaces import ExtractionCandidate
 from plugins.extraction.keyword import KeywordExtractionProvider
 from plugins.extraction.regex import RegexExtractionProvider
 from plugins.llm.ollama import OllamaExtractionProvider
+
+logger = logging.getLogger(__name__)
 
 PROVIDERS = {
     "regex": RegexExtractionProvider,
@@ -81,7 +81,9 @@ class Orchestrator:
         entry.metadata_json = metadata or {}
         self.db.commit()
         duration = (entry.finished_at - entry.started_at).total_seconds()
-        PHASE_DURATION_SECONDS.labels(phase=entry.phase.value, status=entry.status.value).observe(duration)
+        PHASE_DURATION_SECONDS.labels(
+            phase=entry.phase.value, status=entry.status.value
+        ).observe(duration)
         job = self.db.get(Job, entry.job_id)
         extra = self._log_extra(job, entry.phase.value) if job else {"phase": entry.phase.value}
         if error:
@@ -132,11 +134,8 @@ class Orchestrator:
                     },
                 )
             else:
-                extraction_text = ""
-                extraction_source = "none"
-                self._finish_phase(
-                    active_phase,
-                    metadata={"source": "none", "reason": "Kein Textinhalt in Paperless vorhanden"},
+                raise RetryableEmptyTextError(
+                    "Paperless document text is empty; OCR may still be pending"
                 )
 
             active_phase = self._start_phase(job, JobPhase.SELECT_TEMPLATE)
