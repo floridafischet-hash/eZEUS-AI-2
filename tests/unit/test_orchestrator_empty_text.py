@@ -16,6 +16,11 @@ from core.orchestration.orchestrator import Orchestrator
 
 
 class EmptyTextConnector(DocumentConnector):
+    closed = False
+
+    async def close(self) -> None:
+        self.closed = True
+
     async def health_check(self) -> bool:
         return True
 
@@ -56,7 +61,8 @@ async def test_empty_paperless_text_raises_retryable_error() -> None:
         db.commit()
 
         orchestrator = Orchestrator(db)
-        orchestrator.connector = EmptyTextConnector()
+        connector = EmptyTextConnector()
+        orchestrator.connector = connector
         with pytest.raises(RetryableEmptyTextError, match="OCR may still be pending"):
             await orchestrator.process(job.id)
 
@@ -71,6 +77,7 @@ async def test_empty_paperless_text_raises_retryable_error() -> None:
         )
         assert read_phase is not None
         assert read_phase.status == PhaseStatus.FAILED
+        assert connector.closed is True
 
 
 def test_empty_text_error_uses_worker_retry_contract() -> None:

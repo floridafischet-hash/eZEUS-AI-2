@@ -43,6 +43,12 @@ class FakeCustomFieldConnector:
             ),
         ]
 
+    async def __aenter__(self) -> "FakeCustomFieldConnector":
+        return self
+
+    async def __aexit__(self, *_args: object) -> None:
+        return None
+
     async def list_custom_fields(self) -> list[ConnectorCustomField]:
         return list(self.fields)
 

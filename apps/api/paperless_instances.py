@@ -96,17 +96,17 @@ def _workflow_url(instance: PaperlessInstance) -> str:
 
 
 async def _provision_workflow(instance: PaperlessInstance) -> dict[str, object]:
-    connector = PaperlessConnector(
+    async with PaperlessConnector(
         base_url=instance.base_url,
         api_token=decrypt_credential(instance.api_token_encrypted),
         verify_tls=instance.verify_tls,
-    )
-    if not await connector.health_check():
-        raise ConnectorError("Paperless-Verbindung ist nicht erreichbar")
-    return await connector.ensure_ezeus_workflow(
-        webhook_url=_workflow_url(instance),
-        webhook_secret=decrypt_credential(instance.webhook_secret_encrypted),
-    )
+    ) as connector:
+        if not await connector.health_check():
+            raise ConnectorError("Paperless-Verbindung ist nicht erreichbar")
+        return await connector.ensure_ezeus_workflow(
+            webhook_url=_workflow_url(instance),
+            webhook_secret=decrypt_credential(instance.webhook_secret_encrypted),
+        )
 
 
 @router.get(
@@ -288,19 +288,23 @@ async def test_instance(
             api_token=decrypt_credential(instance.api_token_encrypted),
             verify_tls=instance.verify_tls,
         )
-        reachable = await connector.health_check()
-    except (ConnectorError, CredentialEncryptionError) as exc:
+    except CredentialEncryptionError as exc:
         return {"reachable": False, "webhook_configured": False, "detail": str(exc)}
+    async with connector:
+        try:
+            reachable = await connector.health_check()
+        except (ConnectorError, CredentialEncryptionError) as exc:
+            return {"reachable": False, "webhook_configured": False, "detail": str(exc)}
 
-    try:
-        webhook_url = _workflow_url(instance)
-        workflow = await connector.find_webhook_workflow(webhook_url)
-    except (ConnectorError, CredentialEncryptionError) as exc:
-        return {
-            "reachable": reachable,
-            "webhook_configured": False,
-            "detail": f"Verbindung erfolgreich, Workflow-Prüfung fehlgeschlagen: {exc}",
-        }
+        try:
+            webhook_url = _workflow_url(instance)
+            workflow = await connector.find_webhook_workflow(webhook_url)
+        except (ConnectorError, CredentialEncryptionError) as exc:
+            return {
+                "reachable": reachable,
+                "webhook_configured": False,
+                "detail": f"Verbindung erfolgreich, Workflow-Prüfung fehlgeschlagen: {exc}",
+            }
 
     if workflow is None:
         return {

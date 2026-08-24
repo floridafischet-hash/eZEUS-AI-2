@@ -1,5 +1,7 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+from types import TracebackType
+from typing import Self
 
 
 @dataclass(slots=True)
@@ -32,6 +34,21 @@ class ConnectorCorrespondent:
 
 
 class DocumentConnector(ABC):
+    async def __aenter__(self) -> Self:
+        return self
+
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
+        await self.close()
+
+    @abstractmethod
+    async def close(self) -> None:
+        """Release connector resources."""
+
     @abstractmethod
     async def health_check(self) -> bool: ...
 

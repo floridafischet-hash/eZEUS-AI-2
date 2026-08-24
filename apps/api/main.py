@@ -7,12 +7,11 @@ import httpx
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import PlainTextResponse
 from fastapi.staticfiles import StaticFiles
-from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from redis import Redis
 from sqlalchemy import select, text
 
-from core.logging import configure_logging
-
+import core.metrics as _metrics  # noqa: F401 — registers Prometheus collectors
 from apps.api.admin import router as admin_router
 from apps.api.admin_users import router as admin_users_router
 from apps.api.dashboard import router as dashboard_router
@@ -22,12 +21,11 @@ from connectors.base.errors import ConnectorError
 from connectors.paperless.connector import PaperlessConnector
 from core.config.settings import get_settings
 from core.db.session import engine
+from core.logging import configure_logging
 from core.models.instance_field_config import InstanceFieldConfig
 from core.security.outbound import OutboundRequestError, stream_capped, validate_outbound_url
-import core.metrics as _metrics  # noqa: F401 — registers Prometheus collectors
 from core.security.rate_limit import RateLimitMiddleware
 from webhooks.paperless.router import router as paperless_webhook_router
-
 
 configure_logging()
 
@@ -90,7 +88,8 @@ def _redis_readiness(redis_url: str) -> bool:
 
 async def _paperless_readiness() -> bool:
     try:
-        return await PaperlessConnector().health_check()
+        async with PaperlessConnector() as connector:
+            return await connector.health_check()
     except ConnectorError:
         return False
 

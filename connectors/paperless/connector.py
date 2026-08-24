@@ -4,8 +4,6 @@ from urllib.parse import urljoin, urlparse
 
 import httpx
 
-logger = logging.getLogger(__name__)
-
 from connectors.base.errors import (
     AuthenticationError,
     AuthorizationError,
@@ -30,6 +28,8 @@ from core.security.outbound import (
     validate_outbound_url,
 )
 
+logger = logging.getLogger(__name__)
+
 
 class PaperlessConnector(DocumentConnector):
     def __init__(
@@ -45,14 +45,22 @@ class PaperlessConnector(DocumentConnector):
         self.verify_tls = verify_tls if verify_tls is not None else settings.paperless_verify_tls
         self.allow_title_overwrite = allow_title_overwrite
         self._settings = settings
+        self._http_client: httpx.AsyncClient | None = None
 
     def _client(self) -> httpx.AsyncClient:
-        return httpx.AsyncClient(
-            base_url=self.base_url,
-            headers={"Authorization": f"Token {self.token}"},
-            timeout=30.0,
-            verify=self.verify_tls,
-        )
+        if self._http_client is None or self._http_client.is_closed:
+            self._http_client = httpx.AsyncClient(
+                base_url=self.base_url,
+                headers={"Authorization": f"Token {self.token}"},
+                timeout=30.0,
+                verify=self.verify_tls,
+            )
+        return self._http_client
+
+    async def close(self) -> None:
+        if self._http_client is not None:
+            await self._http_client.aclose()
+            self._http_client = None
 
     def _validated_request_url(self, url: str) -> str:
         absolute_url = urljoin(f"{self.base_url}/", url)
@@ -84,10 +92,9 @@ class PaperlessConnector(DocumentConnector):
         request_url = self._validated_request_url(url)
         max_bytes = self._settings.paperless_max_download_bytes
         try:
-            async with self._client() as client:
-                response, body = await stream_capped(
-                    client, method, request_url, max_bytes=max_bytes, **kwargs
-                )
+            response, body = await stream_capped(
+                self._client(), method, request_url, max_bytes=max_bytes, **kwargs
+            )
         except httpx.TimeoutException as exc:
             logger.error("Paperless request timeout: %s %s", method, request_url, exc_info=exc)
             raise TimeoutError(str(exc)) from exc
@@ -117,12 +124,18 @@ class PaperlessConnector(DocumentConnector):
             logger.warning("Paperless rate limit exceeded: %s", request_url)
             raise RateLimitError("Paperless rate limit exceeded")
         if response.status_code in {400, 422}:
-            logger.warning("Paperless rejected request: HTTP %d from %s", response.status_code, request_url)
+            logger.warning(
+                "Paperless rejected request: HTTP %d from %s",
+                response.status_code,
+                request_url,
+            )
             raise ValidationError(
                 f"Paperless rejected the request: HTTP {response.status_code} from {request_url}"
             )
         if response.status_code >= 500:
-            logger.error("Paperless server error: HTTP %d from %s", response.status_code, request_url)
+            logger.error(
+                "Paperless server error: HTTP %d from %s", response.status_code, request_url
+            )
             raise ConnectionError(f"Paperless server error: HTTP {response.status_code}")
         try:
             response.raise_for_status()

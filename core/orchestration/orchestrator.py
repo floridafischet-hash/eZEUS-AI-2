@@ -409,6 +409,8 @@ class Orchestrator:
             logger.error("Job failed: %s", type(exc).__name__, exc_info=exc,
                          extra=self._log_extra(job))
             raise
+        finally:
+            await connector.close()
 
     def _audit(
         self, job: Job, action: str, field: str, old_value: object, new_value: object

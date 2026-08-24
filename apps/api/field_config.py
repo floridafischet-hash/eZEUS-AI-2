@@ -36,11 +36,12 @@ async def get_field_configuration(
     service = FieldConfigurationService(db)
     instance = _instance_or_404(db, instance_slug)
     try:
-        fields = await service.import_paperless_fields(
-            instance,
-            connector_for_instance(instance),
-            actor=principal.username,
-        )
+        async with connector_for_instance(instance) as connector:
+            fields = await service.import_paperless_fields(
+                instance,
+                connector,
+                actor=principal.username,
+            )
     except ConnectorError as exc:
         raise HTTPException(
             status_code=502,
@@ -65,11 +66,12 @@ async def save_field_configuration(
     instance = _instance_or_404(db, instance_slug)
     try:
         fields = service.save(instance, payload.fields, actor=principal.username)
-        fields = await service.synchronize_paperless_fields(
-            instance,
-            connector_for_instance(instance),
-            actor=principal.username,
-        )
+        async with connector_for_instance(instance) as connector:
+            fields = await service.synchronize_paperless_fields(
+                instance,
+                connector,
+                actor=principal.username,
+            )
     except ConnectorError as exc:
         raise HTTPException(
             status_code=502,
