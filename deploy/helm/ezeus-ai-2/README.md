@@ -31,7 +31,8 @@ docker push registry.example/ezeus-ai-2:0.2.0
 3. Provision the Secret named by `existingSecret` through Sealed Secrets,
    External Secrets or the platform secret manager. It must contain
    `DATABASE_URL` (for an external DB), `PAPERLESS_API_TOKEN`,
-   `PAPERLESS_WEBHOOK_SECRET`, `CREDENTIAL_ENCRYPTION_KEY`, and, when OIDC is
+   `PAPERLESS_WEBHOOK_SECRET`, `CREDENTIAL_ENCRYPTION_KEYS` (or the legacy
+   `CREDENTIAL_ENCRYPTION_KEY`), and, when OIDC is
    enabled, `OAUTH2_PROXY_CLIENT_SECRET` and `OAUTH2_PROXY_COOKIE_SECRET`.
 4. Install the release:
 
@@ -44,6 +45,30 @@ helm upgrade --install ezeus deploy/helm/ezeus-ai-2 \
 
 Do not pass secrets with `--set`; command lines are commonly retained in shell
 history and process metadata.
+
+## Credential-key rotation
+
+The encryption key is required to recover every stored Paperless API token and
+webhook secret. Back it up in a separate, access-controlled secret store before
+the first deployment and before every rotation. Losing all keys in the active
+keyring makes the encrypted values unrecoverable; a database backup alone is
+not sufficient.
+
+To rotate without downtime:
+
+1. Generate a new Fernet key and retain a verified backup of the old key.
+2. Set `CREDENTIAL_ENCRYPTION_KEYS` in the Kubernetes Secret to
+   `<new-key>,<old-key>`. The first key encrypts new values; all listed keys can
+   decrypt existing values. Upgrade/restart every API and worker component.
+3. Run the re-encryption command once using the same Secret, for example in an
+   application pod: `python -m scripts.rotate_credentials`. The command updates
+   both encrypted Paperless columns in one database transaction.
+4. Verify instance connections and webhooks, then remove the old key from
+   `CREDENTIAL_ENCRYPTION_KEYS` and roll out the workloads again.
+
+The singular `CREDENTIAL_ENCRYPTION_KEY` remains supported for existing
+installations. When the plural variable contains at least one key, it takes
+precedence over the singular variable.
 
 ## Production checklist
 

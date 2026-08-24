@@ -83,6 +83,8 @@ secrets:
   PAPERLESS_API_TOKEN: "change-me"
   PAPERLESS_WEBHOOK_SECRET: "change-me"
   CREDENTIAL_ENCRYPTION_KEY: ""      # generate with: python -c "from cryptography.fernet import Fernet;print(Fernet.generate_key().decode())"
+  # Comma-separated rotation keyring; first key encrypts, all keys decrypt.
+  CREDENTIAL_ENCRYPTION_KEYS: ""
   PROXY_AUTH_SECRET: ""
   OAUTH2_PROXY_CLIENT_SECRET: ""
   OAUTH2_PROXY_COOKIE_SECRET: ""

@@ -38,6 +38,7 @@ class Settings(BaseSettings):
     paperless_webhook_secret: str = ""
     proxy_auth_secret: str = ""
     credential_encryption_key: str = ""
+    credential_encryption_keys: Annotated[tuple[str, ...], NoDecode] = Field(default=())
     public_webhook_base_url: str = ""
     paperless_verify_tls: bool = True
 
@@ -108,6 +109,7 @@ class Settings(BaseSettings):
         "outbound_allowed_hosts",
         "outbound_private_allowed_hosts",
         "allowed_document_mime_types",
+        "credential_encryption_keys",
         mode="before",
     )
     @classmethod
@@ -115,6 +117,13 @@ class Settings(BaseSettings):
         if isinstance(value, str):
             return tuple(item.strip() for item in value.split(",") if item.strip())
         return value
+
+    @property
+    def effective_credential_encryption_keys(self) -> tuple[str, ...]:
+        if self.credential_encryption_keys:
+            return self.credential_encryption_keys
+        legacy_key = self.credential_encryption_key.strip()
+        return (legacy_key,) if legacy_key else ()
 
     @model_validator(mode="after")
     def validate_runtime_configuration(self) -> "Settings":
@@ -136,7 +145,10 @@ class Settings(BaseSettings):
                 for name, value in (
                     ("PAPERLESS_API_TOKEN", self.paperless_api_token),
                     ("PAPERLESS_WEBHOOK_SECRET", self.paperless_webhook_secret),
-                    ("CREDENTIAL_ENCRYPTION_KEY", self.credential_encryption_key),
+                    (
+                        "CREDENTIAL_ENCRYPTION_KEYS",
+                        ",".join(self.effective_credential_encryption_keys),
+                    ),
                 )
                 if _is_insecure_placeholder(value)
             ]
@@ -151,10 +163,13 @@ class Settings(BaseSettings):
                 missing.append("DATABASE_URL")
             if missing:
                 raise ValueError(f"Missing secure configuration: {', '.join(missing)}")
-            try:
-                Fernet(self.credential_encryption_key.encode())
-            except (TypeError, ValueError) as exc:
-                raise ValueError("CREDENTIAL_ENCRYPTION_KEY must be a valid Fernet key") from exc
+            for key in self.effective_credential_encryption_keys:
+                try:
+                    Fernet(key.encode())
+                except (TypeError, ValueError) as exc:
+                    raise ValueError(
+                        "CREDENTIAL_ENCRYPTION_KEYS must contain valid Fernet keys"
+                    ) from exc
         if self.cloud_ai_globally_allowed and self.local_only:
             raise ValueError("Cloud AI cannot be enabled while LOCAL_ONLY is true")
         if self.ollama_timeout_seconds <= 0:
