@@ -58,7 +58,24 @@
       }
     },
     "postgres": { "$ref": "#/definitions/statefulService" },
-    "redis": { "$ref": "#/definitions/statefulService" },
+    "redis": {
+      "allOf": [
+        { "$ref": "#/definitions/statefulService" },
+        {
+          "type": "object",
+          "required": ["maxmemory", "maxmemoryPolicy"],
+          "properties": {
+            "maxmemory": { "type": "string", "pattern": "^[1-9][0-9]*(kb|mb|gb)$" },
+            "maxmemoryPolicy": {
+              "enum": [
+                "noeviction", "allkeys-lru", "allkeys-lfu", "allkeys-random",
+                "volatile-lru", "volatile-lfu", "volatile-random", "volatile-ttl"
+              ]
+            }
+          }
+        }
+      ]
+    },
     "ollama": {
       "allOf": [
         { "$ref": "#/definitions/statefulService" },

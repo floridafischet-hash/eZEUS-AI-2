@@ -31,6 +31,8 @@ Alle Werte werden über Umgebungsvariablen gelesen.
   einer Paperless-Instanz, bevor weitere Jobs in die LOW-Queue geroutet werden
 - `CELERY_CONCURRENCY`: Worker-Prozesse pro Compose-Container (Standard `2`;
   im Helm-Chart über `worker.args` gesetzt)
+- `CELERY_RESULT_EXPIRES_SECONDS`: TTL gespeicherter Celery-Task-Ergebnisse;
+  Standard `3600` Sekunden
 - `LOCAL_ONLY`: verhindert Cloud-Verarbeitung
 - `OLLAMA_ENABLED`: aktiviert den lokalen LLM-Extraktionsprovider
 - `OLLAMA_BASE_URL`: interne Ollama-API, standardmäßig

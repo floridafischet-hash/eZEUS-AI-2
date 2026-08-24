@@ -115,6 +115,22 @@ the limit in relation to `worker.replicaCount * Celery concurrency`; a value
 around two to five times the available worker slots usually allows useful
 parallelism without letting one instance dominate the normal queue.
 
+## Redis memory and Celery results
+
+Celery task results expire after `config.CELERY_RESULT_EXPIRES_SECONDS`
+(default: one hour). The bundled Redis has `redis.maxmemory=384mb`, leaving
+headroom below its default 512 MiB container limit, and uses
+`redis.maxmemoryPolicy=noeviction`.
+
+Do not switch the shared broker/result Redis to `allkeys-lru`: Redis could
+evict queued or unacknowledged Celery messages and silently lose work. With
+`noeviction`, writes fail visibly at the memory boundary; the transactional
+outbox retries broker publication while existing messages remain intact. If
+the result TTL and correct memory sizing are insufficient, use separate
+managed Redis instances for broker and result backend rather than enabling an
+all-keys eviction policy. When changing `redis.maxmemory`, keep operational
+headroom below the pod memory limit for Redis process overhead and AOF buffers.
+
 ## Production checklist
 
 - `image.tag` pinned to a specific version, not `latest`.

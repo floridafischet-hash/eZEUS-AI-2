@@ -57,6 +57,7 @@ class Settings(BaseSettings):
     ollama_max_response_bytes: int = 1_048_576
     ollama_keep_alive: str = "10m"
     celery_task_time_limit_seconds: int = 420
+    celery_result_expires_seconds: int = 3600
 
     job_max_retries: int = 3
     job_retry_delays_seconds: Annotated[tuple[int, ...], NoDecode] = Field(default=(30, 120, 600))
@@ -202,6 +203,8 @@ class Settings(BaseSettings):
             raise ValueError(
                 "CELERY_TASK_TIME_LIMIT_SECONDS must exceed the Celery soft time limit"
             )
+        if self.celery_result_expires_seconds <= 0:
+            raise ValueError("CELERY_RESULT_EXPIRES_SECONDS must be positive")
         if self.ollama_max_input_chars < 1000 or self.ollama_max_response_bytes <= 0:
             raise ValueError("Ollama input and response limits must be positive")
         if self.job_max_retries < 0:

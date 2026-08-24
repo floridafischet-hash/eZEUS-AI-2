@@ -89,3 +89,8 @@ def test_database_pool_settings_reject_invalid_values(
 def test_instance_job_limit_must_be_positive() -> None:
     with pytest.raises(ValidationError, match="MAX_CONCURRENT_JOBS_PER_INSTANCE"):
         Settings(max_concurrent_jobs_per_instance=0)
+
+
+def test_celery_result_expiry_must_be_positive() -> None:
+    with pytest.raises(ValidationError, match="CELERY_RESULT_EXPIRES_SECONDS"):
+        Settings(celery_result_expires_seconds=0)

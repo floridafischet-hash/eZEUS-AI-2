@@ -15,5 +15,6 @@ celery_app.conf.update(
     timezone="UTC",
     task_soft_time_limit=settings.ollama_timeout_seconds + 60,
     task_time_limit=settings.celery_task_time_limit_seconds,
+    result_expires=settings.celery_result_expires_seconds,
 )
 celery_app.autodiscover_tasks(["apps.worker"])
