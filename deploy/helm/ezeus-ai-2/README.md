@@ -53,6 +53,13 @@ history and process metadata.
 - `oauth2Proxy.enabled=true` for browser traffic; only `/oauth2`, webhook paths
   and `/health` bypass the main auth request. `/ready`, dashboard, logs and
   OpenAPI remain protected externally.
+- Webhooks have their own ingress-nginx limits. Tune
+  `ingress.webhooks.rateLimit`, `ingress.webhooks.bodySize` and optionally
+  `ingress.webhooks.allowedSourceRanges` to match the Paperless senders.
+- Prefer the per-instance URLs (`POST /webhooks/paperless/{instance-slug}`).
+  After migrating every Paperless instance, set
+  `ingress.webhooks.unscopedEnabled=false` to disable external access to the
+  legacy unscoped endpoint (`POST /webhooks/paperless`).
 - `networkPolicy.enabled=true` and `allowedIngressNamespaces` scoped to your ingress-nginx namespace.
 - `networkPolicy.egressCidrs` contains the exact Paperless, database, Redis,
   Ollama and OIDC ranges required by this installation. The TEST-NET range in

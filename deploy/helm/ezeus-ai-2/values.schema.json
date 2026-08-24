@@ -111,7 +111,31 @@
           }
         },
         "tls": { "type": "array" },
-        "publicWebhookPaths": { "type": "array", "items": { "type": "string" } }
+        "webhooks": {
+          "type": "object",
+          "required": ["unscopedEnabled", "bodySize", "rateLimit", "allowedSourceRanges"],
+          "properties": {
+            "unscopedEnabled": { "type": "boolean" },
+            "bodySize": { "type": "string", "pattern": "^[1-9][0-9]*(k|m|g)?$" },
+            "rateLimit": {
+              "type": "object",
+              "required": ["enabled", "requestsPerSecond", "burstMultiplier", "connections"],
+              "properties": {
+                "enabled": { "type": "boolean" },
+                "requestsPerSecond": { "type": "integer", "minimum": 1 },
+                "burstMultiplier": { "type": "integer", "minimum": 1 },
+                "connections": { "type": "integer", "minimum": 1 }
+              }
+            },
+            "allowedSourceRanges": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[0-9a-fA-F:.]+/[0-9]{1,3}$"
+              }
+            }
+          }
+        }
       }
     },
     "oauth2Proxy": {

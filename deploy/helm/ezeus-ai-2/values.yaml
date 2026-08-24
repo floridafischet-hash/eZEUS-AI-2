@@ -267,15 +267,22 @@ ingress:
     - secretName: ezeus-tls
       hosts:
         - ezeus.example.com
-  # If set, the ingress rewrites /webhooks/* to bypass the oauth2-proxy auth-url
-  # so Paperless-ngx can post webhooks without user login.
-  publicWebhookPaths:
-    - /webhooks/paperless
-    - /webhooks/paperless/
-    - /health
+  # Webhooks use a dedicated Ingress so their limits do not affect browser traffic.
+  webhooks:
+    # Disable the legacy POST /webhooks/paperless route externally once every
+    # Paperless instance uses /webhooks/paperless/{instance-slug}.
+    unscopedEnabled: true
+    bodySize: "256k"
+    rateLimit:
+      enabled: true
+      requestsPerSecond: 5
+      burstMultiplier: 3
+      connections: 10
+    # Optional CIDRs accepted by ingress-nginx. Empty allows every source IP.
+    allowedSourceRanges: []
 
 # oauth2-proxy is deployed as a dedicated Deployment used by ingress-nginx auth_request.
-# Webhook paths bypass it via a separate Ingress (see ingress.publicWebhookPaths).
+# Webhook paths bypass it via a dedicated, rate-limited Ingress (see ingress.webhooks).
 oauth2Proxy:
   enabled: false
   image:

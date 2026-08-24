@@ -36,6 +36,9 @@ migrations:
 ingress:
   enabled: true
   className: nginx
+  webhooks:
+    unscopedEnabled: false
+    allowedSourceRanges: [203.0.113.0/24]
   hosts:
     - host: ezeus.company.example
       paths: [{ path: /, pathType: Prefix }]
