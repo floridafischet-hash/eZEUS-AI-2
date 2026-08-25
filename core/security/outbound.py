@@ -192,9 +192,18 @@ async def stream_capped(
                 await response.aclose()
                 raise DownloadTooLargeError(url, max_bytes)
         body = bytes(buffer)
+        # ``aiter_bytes`` yields decoded content.  Keeping the original
+        # content-encoding on the buffered response would make httpx decode
+        # the already decoded body a second time when callers access it.
+        headers = response.headers.multi_items()
+        decoded_headers = [
+            (name, value)
+            for name, value in headers
+            if name.lower() not in {"content-encoding", "content-length"}
+        ]
         buffered_response = httpx.Response(
             status_code=response.status_code,
-            headers=response.headers,
+            headers=decoded_headers,
             content=body,
             request=response.request,
             extensions=response.extensions,

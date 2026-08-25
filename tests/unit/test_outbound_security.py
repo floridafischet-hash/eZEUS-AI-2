@@ -1,3 +1,4 @@
+import gzip
 from unittest.mock import patch
 
 import httpx
@@ -141,3 +142,23 @@ async def test_stream_capped_aborts_when_body_exceeds_limit() -> None:
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
         with pytest.raises(DownloadTooLargeError):
             await stream_capped(client, "GET", "https://x/a", max_bytes=1000)
+
+
+@pytest.mark.asyncio
+async def test_stream_capped_does_not_decode_gzip_twice() -> None:
+    payload = b'{"results": []}'
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            headers={"content-encoding": "gzip"},
+            content=gzip.compress(payload),
+            request=request,
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        response, body = await stream_capped(client, "GET", "https://x/a", max_bytes=1000)
+
+    assert body == payload
+    assert response.json() == {"results": []}
+    assert "content-encoding" not in response.headers
