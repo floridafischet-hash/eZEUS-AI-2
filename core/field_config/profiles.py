@@ -7,8 +7,8 @@ EXTRACTION_PROFILES: dict[str, dict[str, object]] = {
         "label": "Fahrzeug-ID (FIN/VIN) aus Feld E",
         "field_types": frozenset({"text"}),
         "patterns": [
-            r"(?im)^\s*E\s*[:.]?\s*"
-            r"((?:[A-HJ-NPR-Z0-9][ \t-]?){16}[A-HJ-NPR-Z0-9])(?:\s|$)",
+            r"(?im)^\s*\**E\**\s*[:.]?\s*\**"
+            r"((?:[A-HJ-NPR-Z0-9][ \t-]?){16}[A-HJ-NPR-Z0-9])\**(?:\s|$)",
         ],
         "validators": [{"type": "vehicle_identification_number"}],
     },
@@ -19,4 +19,3 @@ def extraction_profile(profile_key: str | None) -> dict[str, object] | None:
     if profile_key is None:
         return None
     return EXTRACTION_PROFILES.get(profile_key)
-

@@ -372,11 +372,13 @@ async def test_runtime_applies_selected_profile_only_to_configured_tenant_field(
             "not_empty",
             "vehicle_identification_number",
         ]
-        candidates = await RegexExtractionProvider().extract(
+        regex_config = configured.providers[0].model_dump(exclude={"type"})
+        for document_text in (
             "E\nLGXCE4CB9P2209189",
-            configured.providers[0].model_dump(exclude={"type"}),
-        )
-        assert [candidate.value for candidate in candidates] == ["LGXCE4CB9P2209189"]
+            "**E**  \n**LGXCE4CB9P2209189**",
+        ):
+            candidates = await RegexExtractionProvider().extract(document_text, regex_config)
+            assert [candidate.value for candidate in candidates] == ["LGXCE4CB9P2209189"]
         second_field = second_runtime.template.fields.get(vehicle_id["field_key"])
         assert second_field is None or all(
             validator.type != "vehicle_identification_number"
