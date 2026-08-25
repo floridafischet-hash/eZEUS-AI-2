@@ -6,6 +6,7 @@ NAVIGATION = (
     ("dashboard", "/", "Übersicht", "dashboard"),
     ("instances", "/admin/instances", "Instanzen", "instances"),
     ("users", "/api/admin-users/page", "Benutzer", "users"),
+    ("help", "/help", "Hilfe", "help"),
 )
 
 ICONS = {
@@ -17,6 +18,9 @@ ICONS = {
     ),
     "users": (
         '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 12a4.5 4.5 0 1 0 0-9 4.5 4.5 0 0 0 0 9Zm-8 9a8 8 0 0 1 16 0H4Z"/></svg>'
+    ),
+    "help": (
+        '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 18h2v2h-2v-2Zm1-16a8 8 0 1 0 0 16 8 8 0 0 0 0-16Zm0 14a6 6 0 1 1 0-12 6 6 0 0 1 0 12Zm0-10a3.5 3.5 0 0 0-3.5 3.5h2A1.5 1.5 0 1 1 12 11c-1.1 0-2 .9-2 2v2h2v-2c1.93 0 3.5-1.57 3.5-3.5S13.93 6 12 6Z"/></svg>'
     ),
     "menu": (
         '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16v2H4V6Zm0 5h16v2H4v-2Zm0 5h16v2H4v-2Z"/></svg>'

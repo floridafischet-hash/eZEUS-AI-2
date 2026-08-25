@@ -17,6 +17,7 @@ from apps.api.admin import router as admin_router
 from apps.api.admin_users import router as admin_users_router
 from apps.api.dashboard import router as dashboard_router
 from apps.api.field_config import router as field_config_router
+from apps.api.help import router as help_router
 from apps.api.paperless_instances import router as paperless_instances_router
 from apps.api.status import router as status_router
 from core.config.settings import get_settings
@@ -52,6 +53,7 @@ app.include_router(admin_users_router)
 app.include_router(paperless_instances_router)
 app.include_router(field_config_router)
 app.include_router(status_router)
+app.include_router(help_router)
 
 READINESS_TIMEOUT_SECONDS = 5.0
 
