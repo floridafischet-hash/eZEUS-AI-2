@@ -558,4 +558,5 @@ def test_field_configuration_page_loads_and_labels_paperless_fields_automaticall
     response = client.get("/admin/instances/kunde-a/fields")
     assert response.status_code == 200
     assert 'source.textContent="Paperless-Feld"' in response.text
+    assert "fields.unshift({field_key:null" in response.text
     assert "  load();" in response.text

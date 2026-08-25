@@ -328,8 +328,9 @@ def field_configuration_page(instance_slug: str) -> str:
   document.getElementById("preview").addEventListener("click",updatePreview);
   document.getElementById("save").addEventListener("click",save);
   document.getElementById("add").addEventListener("click",()=>{
-    fields.push({field_key:null,label:"Neues Feld",field_type:"text",
-      sort_order:(fields.length+1)*10,is_standard:false,enabled:true,required:false,
+    const firstSortOrder=Math.min(...fields.map(field=>field.sort_order),10);
+    fields.unshift({field_key:null,label:"Neues Feld",field_type:"text",
+      sort_order:firstSortOrder-10,is_standard:false,enabled:true,required:false,
       ocr_enabled:true,ai_enabled:false,external_field_id:null,options:[],
       extraction_instructions:null}); render();
   });
