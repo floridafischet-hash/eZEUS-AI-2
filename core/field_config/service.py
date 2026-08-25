@@ -443,8 +443,15 @@ class FieldConfigurationService:
                     (item for item in remote_fields if item.external_id == field.external_field_id),
                     None,
                 )
+            # A previous synchronization may have created the desired Paperless
+            # field before a later request failed and rolled back our database
+            # transaction.  Prefer that exact-name field over renaming the stale
+            # linked field; Paperless rejects duplicate custom-field names.
+            named_remote = remote_by_name.get(normalized_name(field.label))
+            if remote is not None and remote.name != field.label and named_remote is not None:
+                remote = named_remote
             if remote is None:
-                remote = remote_by_name.get(normalized_name(field.label))
+                remote = named_remote
             compatible_types = PAPERLESS_COMPATIBLE_TYPES[field.field_type]
             if remote is not None and remote.data_type not in compatible_types:
                 raise ValueError(

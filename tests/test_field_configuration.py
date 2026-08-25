@@ -493,6 +493,28 @@ def test_missing_paperless_custom_field_is_created_and_linked(
     assert linked["external_field_id"] == created.external_id
 
 
+def test_sync_recovers_when_desired_name_already_exists_in_paperless(
+    field_config_client,
+) -> None:
+    client, _, connector = field_config_client
+    instance = create_instance(client, "Kunde A", "kunde-a.example.test")
+    endpoint = f"/api/instances/{instance['slug']}/field-config"
+    fields = client.get(endpoint, headers=admin_headers()).json()["fields"]
+    construction_site = next(field for field in fields if field["external_field_id"] == "88")
+    construction_site["label"] = "Fahrzeug-ID"
+    construction_site["enabled"] = True
+    connector.fields.append(ConnectorCustomField("105", "Fahrzeug-ID", "string"))
+
+    saved = client.put(endpoint, headers=admin_headers(), json={"fields": fields})
+
+    assert saved.status_code == 200
+    linked = next(field for field in saved.json()["fields"] if field["label"] == "Fahrzeug-ID")
+    assert linked["external_field_id"] == "105"
+    assert next(field for field in connector.fields if field.external_id == "88").name == (
+        "Baustellennummer"
+    )
+
+
 def test_existing_paperless_fields_are_imported_without_changing_paperless(
     field_config_client,
 ) -> None:
