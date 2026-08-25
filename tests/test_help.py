@@ -10,6 +10,9 @@ def test_help_page_contains_beginner_guide() -> None:
     assert "Benutzerhandbuch" in response.text
     assert "Schnellstart" in response.text
     assert "Paperless-Instanz anlegen" in response.text
+    assert "Paperless-Webhook einrichten" in response.text
+    assert "X-EZEUS-Webhook-Secret" in response.text
+    assert "document_id" in response.text
     assert 'href="/help" aria-current="page"' in response.text
 
 
