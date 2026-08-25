@@ -27,5 +27,6 @@ class InstanceFieldConfig(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     external_field_id: Mapped[str | None] = mapped_column(String(255))
     options: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
     extraction_instructions: Mapped[str | None] = mapped_column(String(2000))
+    extraction_profile: Mapped[str | None] = mapped_column(String(64))
 
     instance = relationship("PaperlessInstance", back_populates="field_configs")

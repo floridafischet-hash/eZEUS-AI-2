@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from connectors.base.interface import ConnectorCustomField, DocumentConnector
 from core.config.settings import get_settings
+from core.field_config.profiles import extraction_profile
 from core.field_config.schemas import FieldConfigurationInput
 from core.models.audit import AuditEntry
 from core.models.instance_field_config import InstanceFieldConfig
@@ -193,6 +194,7 @@ class FieldConfigurationService:
             "external_field_id": field.external_field_id,
             "options": field.options or [],
             "extraction_instructions": field.extraction_instructions,
+            "extraction_profile": field.extraction_profile,
         }
 
     def save(
@@ -228,6 +230,7 @@ class FieldConfigurationService:
                     external_field_id=payload.external_field_id,
                     options=payload.options,
                     extraction_instructions=payload.extraction_instructions,
+                    extraction_profile=payload.extraction_profile,
                 )
                 self.db.add(field)
                 old_value: object = None
@@ -243,6 +246,7 @@ class FieldConfigurationService:
                 field.external_field_id = payload.external_field_id
                 field.options = payload.options
                 field.extraction_instructions = payload.extraction_instructions
+                field.extraction_profile = payload.extraction_profile
             self.db.flush()
             new_value = self.serialize(field)
             if old_value != new_value:
@@ -392,8 +396,13 @@ class FieldConfigurationService:
                         and option.get("id") is not None
                     }
             providers: list[dict[str, object]] = []
+            profile = extraction_profile(field.extraction_profile)
             if field.ocr_enabled:
-                patterns = STANDARD_PATTERNS.get(field.field_key)
+                patterns = (
+                    profile["patterns"]
+                    if profile is not None
+                    else STANDARD_PATTERNS.get(field.field_key)
+                )
                 if patterns is None:
                     escaped = re.escape(field.label)
                     patterns = [rf"(?im)^\s*{escaped}\s*[:.]?\s*(.+?)\s*$"]
@@ -410,7 +419,7 @@ class FieldConfigurationService:
             template_fields[field.field_key] = {
                 "target_field_id": target_id,
                 "providers": providers,
-                "validators": self._validators(field),
+                "validators": self._validators(field, profile),
                 "minimum_confidence": 0.55,
                 "selection_strategy": ("highest" if field.field_type == "money" else "first"),
                 "required": field.required,
@@ -526,11 +535,18 @@ class FieldConfigurationService:
         return next((external_by_name[name] for name in names if name in external_by_name), None)
 
     @staticmethod
-    def _validators(field: InstanceFieldConfig) -> list[dict[str, object]]:
+    def _validators(
+        field: InstanceFieldConfig,
+        profile: dict[str, object] | None = None,
+    ) -> list[dict[str, object]]:
         validators: list[dict[str, object]] = []
         if field.required:
             validators.append({"type": "not_empty"})
-        if field.field_type == "money":
+        if profile is not None:
+            configured_validators = profile.get("validators", [])
+            if isinstance(configured_validators, list):
+                validators.extend(configured_validators)
+        elif field.field_type == "money":
             validators.append({"type": "monetary_amount"})
         elif field.field_type == "number":
             validators.append({"type": "numeric_range"})

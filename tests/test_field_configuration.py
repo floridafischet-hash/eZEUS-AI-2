@@ -220,6 +220,7 @@ def test_configuration_is_saved_reloaded_and_isolated_with_audit(
             "ai_enabled": True,
             "options": ["Nord", "Süd"],
             "extraction_instructions": "Nur den ausdrücklich genannten Projektcode verwenden.",
+            "extraction_profile": None,
         }
     )
 
@@ -327,6 +328,60 @@ async def test_runtime_extraction_uses_only_tenant_configuration(
             regex_config,
         )
         assert [candidate.value for candidate in candidates] == ["25164"]
+
+
+@pytest.mark.asyncio
+async def test_runtime_applies_selected_profile_only_to_configured_tenant_field(
+    field_config_client,
+) -> None:
+    client, session_factory, connector = field_config_client
+    connector.fields.append(ConnectorCustomField("105", "Fahrzeug-ID", "string"))
+    first = create_instance(client, "Kunde A", "kunde-a.example.test")
+    second = create_instance(client, "Kunde B", "kunde-b.example.test")
+    endpoint = f"/api/instances/{first['slug']}/field-config"
+    fields = client.get(endpoint, headers=admin_headers()).json()["fields"]
+    vehicle_id = next(field for field in fields if field["label"] == "Fahrzeug-ID")
+    vehicle_id.update(
+        {
+            "enabled": True,
+            "required": True,
+            "ocr_enabled": True,
+            "extraction_profile": "vehicle_identification_number_field_e",
+        }
+    )
+    assert client.put(endpoint, headers=admin_headers(), json={"fields": fields}).status_code == 200
+
+    with session_factory() as db:
+        first_instance = db.scalar(
+            select(PaperlessInstance).where(PaperlessInstance.slug == first["slug"])
+        )
+        second_instance = db.scalar(
+            select(PaperlessInstance).where(PaperlessInstance.slug == second["slug"])
+        )
+        assert first_instance is not None
+        assert second_instance is not None
+        first_runtime = FieldConfigurationService(db).runtime_config(
+            first_instance, connector.fields
+        )
+        second_runtime = FieldConfigurationService(db).runtime_config(
+            second_instance, connector.fields
+        )
+        configured = first_runtime.template.fields[vehicle_id["field_key"]]
+        assert configured.target_field_id == 105
+        assert [validator.type for validator in configured.validators] == [
+            "not_empty",
+            "vehicle_identification_number",
+        ]
+        candidates = await RegexExtractionProvider().extract(
+            "E\nLGXCE4CB9P2209189",
+            configured.providers[0].model_dump(exclude={"type"}),
+        )
+        assert [candidate.value for candidate in candidates] == ["LGXCE4CB9P2209189"]
+        second_field = second_runtime.template.fields.get(vehicle_id["field_key"])
+        assert second_field is None or all(
+            validator.type != "vehicle_identification_number"
+            for validator in second_field.validators
+        )
 
 
 def test_ollama_disabled_degrades_to_regex_only(
@@ -561,4 +616,6 @@ def test_field_configuration_page_loads_and_labels_paperless_fields_automaticall
     assert 'const field={field_key:null,label:"Neues Feld"' in response.text
     assert "promoteEditedFields();" in response.text
     assert "markEdited(field);" in response.text
+    assert 'row.append(control("Spezialregel",profile));' in response.text
+    assert "vehicle_identification_number_field_e" in response.text
     assert "  load();" in response.text

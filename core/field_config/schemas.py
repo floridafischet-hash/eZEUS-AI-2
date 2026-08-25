@@ -3,6 +3,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from core.field_config.profiles import EXTRACTION_PROFILES, extraction_profile
+
 FieldType = Literal["text", "number", "money", "date", "boolean", "select", "textarea"]
 FIELD_KEY_PATTERN = re.compile(r"^[a-z][a-z0-9_]{1,63}$")
 
@@ -19,6 +21,7 @@ class FieldConfigurationInput(BaseModel):
     external_field_id: str | None = Field(default=None, max_length=255)
     options: list[str] = Field(default_factory=list, max_length=100)
     extraction_instructions: str | None = Field(default=None, max_length=2000)
+    extraction_profile: str | None = Field(default=None, max_length=64)
 
     @field_validator("field_key")
     @classmethod
@@ -53,6 +56,15 @@ class FieldConfigurationInput(BaseModel):
             raise ValueError("options are only supported for selection fields")
         if self.required and not self.enabled:
             raise ValueError("disabled fields cannot be required")
+        if self.extraction_profile is not None:
+            profile = extraction_profile(self.extraction_profile)
+            if profile is None:
+                raise ValueError(
+                    f"unknown extraction profile; expected one of {sorted(EXTRACTION_PROFILES)}"
+                )
+            supported_types = profile["field_types"]
+            if self.field_type not in supported_types:
+                raise ValueError("extraction profile is incompatible with this field type")
         return self
 
 

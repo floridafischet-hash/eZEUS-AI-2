@@ -180,6 +180,10 @@ def field_configuration_page(instance_slug: str) -> str:
   const types=[["text","Text"],["number","Zahl"],["money","Geldbetrag"],
     ["date","Datum"],["boolean","Ja/Nein"],["select","Auswahlfeld"],
     ["textarea","Mehrzeiliger Text"]];
+  const extractionProfiles=[
+    ["","Keine Spezialregel"],
+    ["vehicle_identification_number_field_e","Fahrzeug-ID (FIN/VIN) aus Feld E"],
+  ];
   function authHeaders(json=true) {
     const username=document.getElementById("username").value;
     const password=document.getElementById("password").value; const headers={};
@@ -241,8 +245,19 @@ def field_configuration_page(instance_slug: str) -> str:
         const option=new Option(label,value); option.selected=field.field_type===value; type.add(option);
       });
       type.addEventListener("change",()=>{field.field_type=type.value; markEdited(field);
-        if(type.value!=="select")field.options=[]; render();});
+        if(type.value!=="select")field.options=[];
+        if(type.value!=="text")field.extraction_profile=null; render();});
       row.append(control("Feldtyp",type));
+      const profile=document.createElement("select"); profile.id=`field-profile-${index}`;
+      extractionProfiles.forEach(([value,label])=>{
+        const option=new Option(label,value);
+        option.selected=(field.extraction_profile||"")===value; profile.add(option);
+      });
+      profile.disabled=field.field_type!=="text";
+      profile.addEventListener("change",()=>{
+        field.extraction_profile=profile.value||null; markEdited(field);
+      });
+      row.append(control("Spezialregel",profile));
       [["enabled","In eZEUS"],["required","Pflichtfeld"],["ocr_enabled","OCR"],
         ["ai_enabled","KI"]].forEach(([key,label])=>{
         row.append(control(label,checkbox(field,key,label),"check-control"));
@@ -344,7 +359,8 @@ def field_configuration_page(instance_slug: str) -> str:
     const field={field_key:null,label:"Neues Feld",field_type:"text",
       sort_order:firstSortOrder-10,is_standard:false,enabled:true,required:false,
       ocr_enabled:true,ai_enabled:false,external_field_id:null,options:[],
-      extraction_instructions:null}; fields.unshift(field); markEdited(field); render();
+      extraction_instructions:null,extraction_profile:null};
+    fields.unshift(field); markEdited(field); render();
   });
   load();
 </script>

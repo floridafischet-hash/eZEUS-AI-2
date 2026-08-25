@@ -57,6 +57,11 @@ class ValidationEngine:
             if len(compact) < 15 or len(compact) > 34 or int(numeric) % 97 != 1:
                 raise ValueError("Value is not a valid IBAN")
             return compact
+        if kind == "vehicle_identification_number":
+            compact = re.sub(r"[\s-]+", "", text).upper()
+            if not re.fullmatch(r"[A-HJ-NPR-Z0-9]{17}", compact):
+                raise ValueError("Value is not a valid 17-character VIN")
+            return compact
         configured_values = config.get("values", [])
         allowed_values = configured_values if isinstance(configured_values, list) else []
         if kind == "allowed_values" and value not in allowed_values:

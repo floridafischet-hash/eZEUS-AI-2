@@ -12,6 +12,7 @@ KNOWN_VALIDATORS = {
     "allowed_values",
     "length",
     "numeric_range",
+    "vehicle_identification_number",
 }
 
 
