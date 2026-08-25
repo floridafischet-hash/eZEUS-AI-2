@@ -176,7 +176,7 @@ def field_configuration_page(instance_slug: str) -> str:
   const fieldsRoot=document.getElementById("fields");
   const previewRoot=document.getElementById("preview-content");
   const message=document.getElementById("message");
-  let fields=[]; let initiallyEnabled=new Set();
+  let fields=[]; let initiallyEnabled=new Set(); let editedFields=[];
   const types=[["text","Text"],["number","Zahl"],["money","Geldbetrag"],
     ["date","Datum"],["boolean","Ja/Nein"],["select","Auswahlfeld"],
     ["textarea","Mehrzeiliger Text"]];
@@ -192,6 +192,15 @@ def field_configuration_page(instance_slug: str) -> str:
   function show(text,error=false) {
     window.ezeusUI?.announce(message,text,error?"error":"success");
   }
+  function markEdited(field) {
+    editedFields=editedFields.filter(item=>item!==field); editedFields.push(field);
+  }
+  function promoteEditedFields() {
+    if(!editedFields.length)return;
+    const edited=[...editedFields].reverse().filter(field=>fields.includes(field));
+    fields=[...edited,...fields.filter(field=>!edited.includes(field))];
+    fields.forEach((field,index)=>field.sort_order=(index+1)*10);
+  }
   function control(label,node,className="") {
     const wrap=document.createElement("div"); if(className) wrap.className=className;
     const caption=document.createElement("label"); caption.textContent=label;
@@ -200,7 +209,7 @@ def field_configuration_page(instance_slug: str) -> str:
   function checkbox(field,key,label) {
     const input=document.createElement("input"); input.type="checkbox"; input.checked=field[key];
     input.setAttribute("aria-label",`${label}: ${field.label}`);
-    input.addEventListener("change",()=>{field[key]=input.checked;
+    input.addEventListener("change",()=>{field[key]=input.checked; markEdited(field);
       if(key==="enabled") render();}); return input;
   }
   function render() {
@@ -220,7 +229,8 @@ def field_configuration_page(instance_slug: str) -> str:
         }); move.append(button);
       }); row.append(move);
       const name=document.createElement("input"); name.value=field.label; name.maxLength=128;
-      name.id=`field-name-${index}`; name.addEventListener("input",()=>field.label=name.value);
+      name.id=`field-name-${index}`; name.addEventListener("input",()=>{
+        field.label=name.value; markEdited(field);});
       const nameControl=control("Bezeichnung",name);
       if(!field.is_standard&&field.external_field_id) {
         const source=document.createElement("span"); source.className="source-badge";
@@ -230,7 +240,7 @@ def field_configuration_page(instance_slug: str) -> str:
       types.forEach(([value,label])=>{
         const option=new Option(label,value); option.selected=field.field_type===value; type.add(option);
       });
-      type.addEventListener("change",()=>{field.field_type=type.value;
+      type.addEventListener("change",()=>{field.field_type=type.value; markEdited(field);
         if(type.value!=="select")field.options=[]; render();});
       row.append(control("Feldtyp",type));
       [["enabled","In eZEUS"],["required","Pflichtfeld"],["ocr_enabled","OCR"],
@@ -239,21 +249,22 @@ def field_configuration_page(instance_slug: str) -> str:
       });
       const external=document.createElement("input"); external.value=field.external_field_id||"";
       external.id=`field-external-${index}`; external.placeholder="Paperless-ID";
-      external.addEventListener("input",()=>field.external_field_id=external.value||null);
+      external.addEventListener("input",()=>{field.external_field_id=external.value||null;
+        markEdited(field);});
       row.append(control("Paperless-ID",external));
       const details=document.createElement("div"); details.className="field-details";
       const instructions=document.createElement("textarea");
       instructions.value=field.extraction_instructions||"";
       instructions.id=`field-instructions-${index}`;
       instructions.placeholder="Optionale Hinweise für die KI-Auslesung";
-      instructions.addEventListener("input",()=>field.extraction_instructions=
-        instructions.value||null);
+      instructions.addEventListener("input",()=>{field.extraction_instructions=
+        instructions.value||null; markEdited(field);});
       details.append(control("Extraktionshinweise",instructions));
       const options=document.createElement("input"); options.value=(field.options||[]).join(", ");
       options.id=`field-options-${index}`; options.disabled=field.field_type!=="select";
       options.placeholder="Option A, Option B";
-      options.addEventListener("input",()=>field.options=options.value.split(",")
-        .map(value=>value.trim()).filter(Boolean));
+      options.addEventListener("input",()=>{field.options=options.value.split(",")
+        .map(value=>value.trim()).filter(Boolean); markEdited(field);});
       details.append(control("Auswahlwerte",options)); row.append(details); fieldsRoot.append(row);
     });
     const active=fields.filter(field=>field.enabled).length;
@@ -268,7 +279,7 @@ def field_configuration_page(instance_slug: str) -> str:
       const response=await fetch(`/api/instances/${encodeURIComponent(slug)}/field-config`,
         {headers:authHeaders(false)}); const body=await response.json();
       if(!response.ok) throw new Error(body.detail||`HTTP ${response.status}`);
-      fields=body.fields; initiallyEnabled=new Set(fields.filter(field=>field.enabled)
+      fields=body.fields; editedFields=[]; initiallyEnabled=new Set(fields.filter(field=>field.enabled)
         .map(field=>field.field_key));
       document.getElementById("instance-name").textContent=body.instance.name;
       render(); await updatePreview();
@@ -314,11 +325,12 @@ def field_configuration_page(instance_slug: str) -> str:
     if(disabled.length&&!confirm(`${disabled.length} bisher aktive Felder werden in eZEUS deaktiviert. Fortfahren?`)) return;
     const button=document.getElementById("save"); window.ezeusUI?.setBusy(button,true,"Speichert …");
     try {
+      promoteEditedFields();
       const response=await fetch(`/api/instances/${encodeURIComponent(slug)}/field-config`,{
         method:"PUT",headers:authHeaders(),body:JSON.stringify(payload())});
       const body=await response.json();
       if(!response.ok) throw new Error(body.detail||"Speichern fehlgeschlagen");
-      fields=body.fields; initiallyEnabled=new Set(fields.filter(field=>field.enabled)
+      fields=body.fields; editedFields=[]; initiallyEnabled=new Set(fields.filter(field=>field.enabled)
         .map(field=>field.field_key));
       show("Mandantenkonfiguration wurde gespeichert."); render(); await updatePreview();
     } catch(error) { show(error.message,true); }
@@ -329,10 +341,10 @@ def field_configuration_page(instance_slug: str) -> str:
   document.getElementById("save").addEventListener("click",save);
   document.getElementById("add").addEventListener("click",()=>{
     const firstSortOrder=Math.min(...fields.map(field=>field.sort_order),10);
-    fields.unshift({field_key:null,label:"Neues Feld",field_type:"text",
+    const field={field_key:null,label:"Neues Feld",field_type:"text",
       sort_order:firstSortOrder-10,is_standard:false,enabled:true,required:false,
       ocr_enabled:true,ai_enabled:false,external_field_id:null,options:[],
-      extraction_instructions:null}); render();
+      extraction_instructions:null}; fields.unshift(field); markEdited(field); render();
   });
   load();
 </script>
