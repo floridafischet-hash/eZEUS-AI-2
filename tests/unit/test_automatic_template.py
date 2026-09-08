@@ -315,6 +315,12 @@ async def test_plain_invoice_heading_is_not_an_identifier() -> None:
             "Bindung Es gelten die AGB des Lieferanten Brutto 381,63 €",
             "381,63",
         ),
+        (
+            "Total EUR exkl. MwSt. 20.457,15\n"
+            "19% 3.886,86\n"
+            "Total EUR inkl. MwSt. 24.344,01",
+            "24.344,01",
+        ),
         ("Artikel: 2 Total: 98,70\nBargeld 98,70€", "98,70"),
     ],
 )
