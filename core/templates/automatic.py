@@ -32,6 +32,10 @@ FIELD_DEFINITIONS: dict[str, dict[str, object]] = {
             r"([A-Z0-9][A-Z0-9./_-]*)\s*$",
             r"(?im)^\s*Beleg[\s.-]*(?:Nr|Nummer)\.?\s*:?\s*"
             r"([A-Z0-9][A-Z0-9./_-]*)\s*$",
+            r"(?i)Beleg(?:s)?[\s.-]*(?:Nr|Nummer)\.?"
+            r"\s*[:.]?\s*"
+            r"(?=[A-Z0-9./_-]*\d)"
+            r"([A-Z0-9][A-Z0-9./_-]*)",
             r"(?i)(?:"
             r"BV(?:[\s.-]*(?:Nr|Nummer))?\.?|"
             r"Baustellen?(?:[\s.-]*(?:Nr|Nummer))\.?"
@@ -63,12 +67,13 @@ FIELD_DEFINITIONS: dict[str, dict[str, object]] = {
             r"Gesamtbetrag\s+brutto|"
             r"Gesamtsumme|"
             r"Gesamtrechnungsbetrag|"
+            r"Rechnungssumme|"
             r"Rechnungswert\s*\(\s*brutto\s*\)|"
             r"Zahlbetrag|"
             r"Endbetrag|"
             r"Zu\s+zahlen|"
             r"(?<!Netto[ -])(?<![\w-])Rechnungsbetrag"
-            r")\s*[:.]?\s*(?:EUR|€)?\s*([\d.,]+\d{2})\s*(?:EUR|€)?",
+            r")\s*(?:EUR|€)?\s*[:.]?\s*(?:EUR|€)?\s*([\d.,]+\d{2})\s*(?:EUR|€)?",
         ],
     },
     "lieferscheinnummer": {
