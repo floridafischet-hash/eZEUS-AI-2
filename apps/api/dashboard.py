@@ -60,8 +60,9 @@ def derive_step_warnings(phase_name: str, metadata: dict[str, object]) -> list[s
         if metadata.get("fields_accepted") == 0:
             warnings.append("Kein Feld hat die Validierung bestanden.")
     if phase_name == "WRITE_METADATA":
+        fields_written = metadata.get("fields_written")
         wrote_any = (
-            (metadata.get("fields_written") or 0) > 0
+            (isinstance(fields_written, int) and fields_written > 0)
             or bool(metadata.get("title_written"))
             or bool(metadata.get("correspondent_written"))
         )
@@ -441,6 +442,7 @@ def processing_logs(
         finished_at = job.finished_at
         slug = instance_slug_from_connector(document.connector)
         steps: list[dict[str, object]] = []
+        job_warnings: list[str] = []
         for phase_entry in phase_entries:
             phase_finished_at = phase_entry.finished_at
             phase_name = phase_entry.phase.value
@@ -452,6 +454,7 @@ def processing_logs(
                 for k, v in (phase_entry.metadata_json or {}).items()
             }
             step_warnings = derive_step_warnings(phase_name, step_metadata)
+            job_warnings.extend(step_warnings)
             steps.append(
                 {
                     "phase": phase_name,
@@ -471,9 +474,6 @@ def processing_logs(
                     "error": error,
                 }
             )
-        job_warnings: list[str] = []
-        for step in steps:
-            job_warnings.extend(step.get("warnings") or [])
         entries.append(
             {
                 "job_id": str(job.id),

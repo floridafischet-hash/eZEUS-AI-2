@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from connectors.base.interface import ConnectorCustomField, DocumentConnector
 from core.config.settings import get_settings
-from core.field_config.profiles import extraction_profile
+from core.field_config.profiles import ExtractionProfile, extraction_profile
 from core.field_config.schemas import FieldConfigurationInput
 from core.models.audit import AuditEntry
 from core.models.instance_field_config import InstanceFieldConfig
@@ -538,7 +538,7 @@ class FieldConfigurationService:
     @staticmethod
     def _validators(
         field: InstanceFieldConfig,
-        profile: dict[str, object] | None = None,
+        profile: ExtractionProfile | None = None,
     ) -> list[dict[str, object]]:
         validators: list[dict[str, object]] = []
         if field.required:
