@@ -1,72 +1,145 @@
+# GitLab is the source of truth for this project. The previous `sync` stage,
+# which fast-forwarded GitHub -> GitLab, is gone: it made GitLab a read-only
+# mirror, so any change committed here (this file included) would diverge the
+# histories and permanently break its own fast-forward guard.
+#
+# What this pipeline produces is one thing: an image in the project registry,
+# tagged with the commit it was built from, for the Flux deployment in
+# flux/apps/prod/eZEUS-AI-2/deployment.yaml.
+
 stages:
-  - sync
+  - quality
+  - build
 
-sync_from_github:
-  stage: sync
+variables:
+  # Pinned like every other image this project pulls (see Makefile). Renovating
+  # these is a deliberate change, not something a rebuild does silently.
+  PYTHON_IMAGE: python:3.12-slim
+  DOCKER_IMAGE: docker:28-cli
+  DIND_IMAGE: docker:28-dind
+  TRIVY_IMAGE: aquasec/trivy:0.74.0
+  POSTGRES_IMAGE: postgres:16.15-alpine
+  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
 
-  image:
-    name: alpine/git:latest
-    entrypoint: [""]
-
+# Shared by the two Python jobs: the locked dev environment, installed exactly
+# the way the Dockerfile installs the runtime one — --require-hashes, so a
+# tampered wheel fails the job rather than the deployment.
+.python:
+  image: $PYTHON_IMAGE
   tags:
     - docker
-
-  rules:
-    - if: '$CI_PIPELINE_SOURCE == "schedule"'
-    - if: '$CI_PIPELINE_SOURCE == "web"'
-
-  variables:
-    GIT_STRATEGY: fetch
-    GIT_DEPTH: 0
-    GITHUB_REPO: "floridafischet-hash/eZEUS-AI-2"
-    SYNC_BRANCH: "main"
-
+  cache:
+    key:
+      files:
+        - requirements-dev.lock
+    paths:
+      - .cache/pip
   before_script:
-    - git config user.name "GitLab Sync Bot"
-    - git config user.email "gitlab-sync@localhost"
+    - python -m pip install --upgrade "pip==26.2.1" "setuptools==84.0.0" "wheel==0.48.0"
+    - python -m pip install --require-hashes -r requirements-dev.lock
+    - python -m pip install --no-deps --no-build-isolation .
 
+quality:
+  extends: .python
+  stage: quality
+  timeout: 20m
   script:
-    - git remote remove github 2>/dev/null || true
+    - python -m ruff format --check .
+    - python -m ruff check .
+    - python -m mypy apps connectors core plugins webhooks
+    - python -m pytest
+    - python -m bandit -q -r apps connectors core plugins scripts webhooks
+    # --strict fails on any advisory without a fix, which is the point: a known
+    # vulnerable dependency must not reach the registry.
+    - python -m pip_audit -r requirements.lock --strict
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_TAG
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
 
-    - >
-      git remote add github
-      "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPO}.git"
+# Alembic against a real PostgreSQL, not the SQLite fallback. Worth its own job:
+# every pod runs `python -m core.db.migrate` as an init container, so a
+# migration that only works on SQLite would take the whole deployment down.
+migrations:
+  extends: .python
+  stage: quality
+  timeout: 15m
+  services:
+    - name: $POSTGRES_IMAGE
+      alias: postgres
+  variables:
+    POSTGRES_DB: ezeus_migration
+    POSTGRES_USER: ezeus
+    POSTGRES_PASSWORD: migration-test-password
+    MIGRATION_TEST_DATABASE_URL: postgresql+psycopg://ezeus:migration-test-password@postgres:5432/ezeus_migration
+  script:
+    - python -m pytest tests/integration/test_migration_roundtrip.py -q
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_TAG
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
 
-    - git fetch origin "${SYNC_BRANCH}" --prune
-    - git fetch github "${SYNC_BRANCH}" --prune --tags
-
-    - GITLAB_SHA="$(git rev-parse "origin/${SYNC_BRANCH}")"
-    - GITHUB_SHA="$(git rev-parse "github/${SYNC_BRANCH}")"
-
-    - 'echo "GitLab ${SYNC_BRANCH}: ${GITLAB_SHA}"'
-    - 'echo "GitHub ${SYNC_BRANCH}: ${GITHUB_SHA}"'
-
+# Build, scan, then push — in that order on purpose. Trivy runs against the
+# local image while it is still only in the runner's daemon, so a HIGH or
+# CRITICAL finding means nothing reaches the registry, rather than being
+# discovered after Flux has already pulled it.
+#
+# Requires a privileged runner for docker-in-docker. If the `docker`-tagged
+# runners are unprivileged, swap this job for buildah (`quay.io/buildah/stable`,
+# `buildah bud` + `buildah push`), which needs no daemon and no privileges; the
+# tagging scheme below stays the same.
+build:
+  stage: build
+  image: $DOCKER_IMAGE
+  tags:
+    - docker
+  services:
+    - name: $DIND_IMAGE
+      alias: docker
+  timeout: 30m
+  variables:
+    DOCKER_HOST: tcp://docker:2376
+    DOCKER_TLS_CERTDIR: "/certs"
+    DOCKER_TLS_VERIFY: "1"
+    DOCKER_CERT_PATH: "/certs/client"
+    # The image Flux pulls. CI_REGISTRY_IMAGE resolves to
+    # gitlab.wizard.de:5050/wizard/e-zeus-ai-2 — the address already written
+    # into the Deployments.
+    IMAGE: $CI_REGISTRY_IMAGE
+  before_script:
+    - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" "$CI_REGISTRY"
+  script:
+    # Deliberately no `latest`. The four Deployments (api, worker, outbox,
+    # sweeper) must run identical code — a moving tag lets a mid-rollout push
+    # split them across two builds after one of them has already migrated the
+    # database. The commit SHA is also what the cluster convention uses
+    # (ollama-client :711f7768, paperless-orchestrator :bc093343), which makes
+    # bumping the tag in the Flux repo the explicit deploy decision.
+    - docker build --pull --tag "$IMAGE:$CI_COMMIT_SHORT_SHA" .
+    - >-
+      docker run --rm -v /var/run/docker.sock:/var/run/docker.sock
+      $TRIVY_IMAGE image --scanners vuln --exit-code 1 --ignore-unfixed
+      --severity HIGH,CRITICAL "$IMAGE:$CI_COMMIT_SHORT_SHA"
+    - >-
+      docker run --rm -v /var/run/docker.sock:/var/run/docker.sock
+      -v "$PWD:/work" $TRIVY_IMAGE image
+      --format cyclonedx --output /work/ezeus-ai-2.sbom.json "$IMAGE:$CI_COMMIT_SHORT_SHA"
+    - docker push "$IMAGE:$CI_COMMIT_SHORT_SHA"
+    # A release tag additionally gets its own immutable tag, so a version can be
+    # named in the Flux repo instead of a SHA.
     - |
-      if [ "${GITLAB_SHA}" = "${GITHUB_SHA}" ]; then
-        echo "GitHub und GitLab sind bereits synchron."
-        exit 0
+      if [ -n "$CI_COMMIT_TAG" ]; then
+        docker tag "$IMAGE:$CI_COMMIT_SHORT_SHA" "$IMAGE:$CI_COMMIT_TAG"
+        docker push "$IMAGE:$CI_COMMIT_TAG"
       fi
-
-    - |
-      if git merge-base --is-ancestor "origin/${SYNC_BRANCH}" "github/${SYNC_BRANCH}"; then
-        echo "GitLab liegt hinter GitHub. Fast-Forward ist möglich."
-      else
-        echo "FEHLER: GitHub und GitLab haben unterschiedliche Commit-Verläufe."
-        echo "Synchronisierung wird sicherheitshalber abgebrochen."
-        echo "Es wird nichts überschrieben."
-        exit 1
-      fi
-
-    - git checkout -B "${SYNC_BRANCH}" "github/${SYNC_BRANCH}"
-
-    - >
-      git push
-      "https://gitlab-ci-token:${GITLAB_PUSH_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git"
-      "${SYNC_BRANCH}:${SYNC_BRANCH}"
-
-    - >
-      git push
-      "https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git"
-      --tags
-
-    - echo "Synchronisierung erfolgreich abgeschlossen."
+    - echo "Set image to $IMAGE:$CI_COMMIT_SHORT_SHA in flux/apps/prod/eZEUS-AI-2/deployment.yaml"
+  artifacts:
+    name: ezeus-ai-2-sbom
+    paths:
+      - ezeus-ai-2.sbom.json
+    expire_in: 30 days
+  rules:
+    # Only the default branch and tags produce images. Merge requests run the
+    # quality stage but must not publish anything pullable.
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_TAG
