@@ -10,13 +10,13 @@
 stages:
   - quality
   - build
+  - scan
 
 variables:
   # Pinned like every other image this project pulls (see Makefile). Renovating
   # these is a deliberate change, not something a rebuild does silently.
   PYTHON_IMAGE: python:3.12-slim
-  DOCKER_IMAGE: docker:28-cli
-  DIND_IMAGE: docker:28-dind
+  KANIKO_IMAGE: gcr.io/kaniko-project/executor:v1.23.2-debug
   TRIVY_IMAGE: aquasec/trivy:0.74.0
   POSTGRES_IMAGE: postgres:16.15-alpine
   PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
@@ -79,35 +79,37 @@ migrations:
     - if: $CI_COMMIT_TAG
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
 
-# Build, scan, then push — in that order on purpose. Trivy runs against the
-# local image while it is still only in the runner's daemon, so a HIGH or
-# CRITICAL finding means nothing reaches the registry, rather than being
-# discovered after Flux has already pulled it.
+# Built with Kaniko, not docker-in-docker: the `docker`-tagged runners are
+# unprivileged. dind fails there before it starts — it cannot mount
+# /sys/kernel/security, never opens 2375/2376, and the job then dies on a
+# missing /certs/client/ca.pem. Kaniko builds from inside an ordinary
+# unprivileged container, so no runner configuration has to change.
 #
-# Requires a privileged runner for docker-in-docker. If the `docker`-tagged
-# runners are unprivileged, swap this job for buildah (`quay.io/buildah/stable`,
-# `buildah bud` + `buildah push`), which needs no daemon and no privileges; the
-# tagging scheme below stays the same.
+# Kaniko is archived upstream (no releases since 2024), hence the pinned
+# version. If it ever has to be replaced, making the runners privileged and
+# restoring the dind job is the smaller change; Buildah needs seccomp and
+# AppArmor exceptions in the runner config on a Docker executor.
 build:
   stage: build
-  image: $DOCKER_IMAGE
+  image:
+    name: $KANIKO_IMAGE
+    # Without this the executor binary starts instead of a shell and the
+    # script section never runs.
+    entrypoint: [""]
   tags:
     - docker
-  services:
-    - name: $DIND_IMAGE
-      alias: docker
-  timeout: 30m
+  timeout: 45m
   variables:
-    DOCKER_HOST: tcp://docker:2376
-    DOCKER_TLS_CERTDIR: "/certs"
-    DOCKER_TLS_VERIFY: "1"
-    DOCKER_CERT_PATH: "/certs/client"
     # The image Flux pulls. CI_REGISTRY_IMAGE resolves to
     # gitlab.wizard.de:5050/wizard/e-zeus-ai-2 — the address already written
     # into the Deployments.
     IMAGE: $CI_REGISTRY_IMAGE
   before_script:
-    - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" "$CI_REGISTRY"
+    # Kaniko has no `docker login`; it reads this file instead.
+    - mkdir -p /kaniko/.docker
+    - |
+      AUTH=$(printf "%s:%s" "$CI_REGISTRY_USER" "$CI_REGISTRY_PASSWORD" | base64 | tr -d '\n')
+      printf '{"auths":{"%s":{"auth":"%s"}}}' "$CI_REGISTRY" "$AUTH" > /kaniko/.docker/config.json
   script:
     # Deliberately no `latest`. The four Deployments (api, worker, outbox,
     # sweeper) must run identical code — a moving tag lets a mid-rollout push
@@ -115,31 +117,55 @@ build:
     # database. The commit SHA is also what the cluster convention uses
     # (ollama-client :711f7768, paperless-orchestrator :bc093343), which makes
     # bumping the tag in the Flux repo the explicit deploy decision.
-    - docker build --pull --tag "$IMAGE:$CI_COMMIT_SHORT_SHA" .
-    - >-
-      docker run --rm -v /var/run/docker.sock:/var/run/docker.sock
-      $TRIVY_IMAGE image --scanners vuln --exit-code 1 --ignore-unfixed
-      --severity HIGH,CRITICAL "$IMAGE:$CI_COMMIT_SHORT_SHA"
-    - >-
-      docker run --rm -v /var/run/docker.sock:/var/run/docker.sock
-      -v "$PWD:/work" $TRIVY_IMAGE image
-      --format cyclonedx --output /work/ezeus-ai-2.sbom.json "$IMAGE:$CI_COMMIT_SHORT_SHA"
-    - docker push "$IMAGE:$CI_COMMIT_SHORT_SHA"
-    # A release tag additionally gets its own immutable tag, so a version can be
-    # named in the Flux repo instead of a SHA.
+    #
+    # A release tag additionally gets its own immutable tag, so a version can
+    # be named in the Flux repo instead of a SHA.
     - |
+      DESTINATIONS="--destination $IMAGE:$CI_COMMIT_SHORT_SHA"
       if [ -n "$CI_COMMIT_TAG" ]; then
-        docker tag "$IMAGE:$CI_COMMIT_SHORT_SHA" "$IMAGE:$CI_COMMIT_TAG"
-        docker push "$IMAGE:$CI_COMMIT_TAG"
+        DESTINATIONS="$DESTINATIONS --destination $IMAGE:$CI_COMMIT_TAG"
       fi
+      /kaniko/executor \
+        --context "$CI_PROJECT_DIR" \
+        --dockerfile "$CI_PROJECT_DIR/Dockerfile" \
+        $DESTINATIONS
     - echo "Set image to $IMAGE:$CI_COMMIT_SHORT_SHA in flux/apps/prod/eZEUS-AI-2/deployment.yaml"
+  rules:
+    # Only the default branch and tags produce images. Merge requests run the
+    # quality stage but must not publish anything pullable.
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_TAG
+
+# Scanned after the push rather than before it, which the dind job could do
+# because it had the image locally. Kaniko pushes straight from its build, so
+# the only place left to scan it is the registry.
+#
+# What makes that acceptable here: nothing deploys automatically. Flux pulls
+# the tag written in deployment.yaml, and that tag is edited by hand — so a
+# red scan means the SHA never gets entered, and the image sits in the
+# registry unreferenced.
+scan:
+  stage: scan
+  image:
+    name: $TRIVY_IMAGE
+    entrypoint: [""]
+  tags:
+    - docker
+  timeout: 20m
+  variables:
+    IMAGE: $CI_REGISTRY_IMAGE
+    TRIVY_USERNAME: $CI_REGISTRY_USER
+    TRIVY_PASSWORD: $CI_REGISTRY_PASSWORD
+  script:
+    - trivy image --scanners vuln --exit-code 1 --ignore-unfixed
+      --severity HIGH,CRITICAL "$IMAGE:$CI_COMMIT_SHORT_SHA"
+    - trivy image --format cyclonedx --output ezeus-ai-2.sbom.json
+      "$IMAGE:$CI_COMMIT_SHORT_SHA"
   artifacts:
     name: ezeus-ai-2-sbom
     paths:
       - ezeus-ai-2.sbom.json
     expire_in: 30 days
   rules:
-    # Only the default branch and tags produce images. Merge requests run the
-    # quality stage but must not publish anything pullable.
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
     - if: $CI_COMMIT_TAG
