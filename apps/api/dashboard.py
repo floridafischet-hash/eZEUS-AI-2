@@ -50,17 +50,13 @@ def derive_step_warnings(phase_name: str, metadata: dict[str, object]) -> list[s
         warnings.append("Keine passende Verarbeitungsvorlage für den Dokumenttyp gefunden.")
     if phase_name == "EXTRACT_FIELDS":
         if metadata.get("candidates_found") == 0:
-            warnings.append(
-                "Keine Extraktionskandidaten aus dem Dokumenttext ermittelt."
-            )
+            warnings.append("Keine Extraktionskandidaten aus dem Dokumenttext ermittelt.")
         elif metadata.get("text_characters") == 0:
             warnings.append("Dokument enthielt keinen Text für die Extraktion.")
     if phase_name == "VALIDATE_RESULTS":
         missing = metadata.get("missing_fields") or []
         if isinstance(missing, list) and missing:
-            warnings.append(
-                "Fehlende Pflichtfelder: " + ", ".join(str(item) for item in missing)
-            )
+            warnings.append("Fehlende Pflichtfelder: " + ", ".join(str(item) for item in missing))
         if metadata.get("fields_accepted") == 0:
             warnings.append("Kein Feld hat die Validierung bestanden.")
     if phase_name == "WRITE_METADATA":
@@ -70,9 +66,7 @@ def derive_step_warnings(phase_name: str, metadata: dict[str, object]) -> list[s
             or bool(metadata.get("correspondent_written"))
         )
         if not wrote_any and metadata:
-            warnings.append(
-                "Keine Metadaten in Paperless geschrieben (keine übernehmbaren Werte)."
-            )
+            warnings.append("Keine Metadaten in Paperless geschrieben (keine übernehmbaren Werte).")
     return warnings
 
 
