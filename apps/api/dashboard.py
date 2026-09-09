@@ -44,6 +44,38 @@ def elapsed_seconds(started_at: datetime, finished_at: datetime | None, now: dat
     return max((endpoint - started_at).total_seconds(), 0)
 
 
+def derive_step_warnings(phase_name: str, metadata: dict[str, object]) -> list[str]:
+    warnings: list[str] = []
+    if phase_name == "SELECT_TEMPLATE" and metadata.get("selected") is False:
+        warnings.append("Keine passende Verarbeitungsvorlage für den Dokumenttyp gefunden.")
+    if phase_name == "EXTRACT_FIELDS":
+        if metadata.get("candidates_found") == 0:
+            warnings.append(
+                "Keine Extraktionskandidaten aus dem Dokumenttext ermittelt."
+            )
+        elif metadata.get("text_characters") == 0:
+            warnings.append("Dokument enthielt keinen Text für die Extraktion.")
+    if phase_name == "VALIDATE_RESULTS":
+        missing = metadata.get("missing_fields") or []
+        if isinstance(missing, list) and missing:
+            warnings.append(
+                "Fehlende Pflichtfelder: " + ", ".join(str(item) for item in missing)
+            )
+        if metadata.get("fields_accepted") == 0:
+            warnings.append("Kein Feld hat die Validierung bestanden.")
+    if phase_name == "WRITE_METADATA":
+        wrote_any = (
+            (metadata.get("fields_written") or 0) > 0
+            or bool(metadata.get("title_written"))
+            or bool(metadata.get("correspondent_written"))
+        )
+        if not wrote_any and metadata:
+            warnings.append(
+                "Keine Metadaten in Paperless geschrieben (keine übernehmbaren Werte)."
+            )
+    return warnings
+
+
 DASHBOARD_CONTENT = """
 <section class="metric-grid" aria-label="Systemstatus">
   <article class="metric-card">
@@ -147,6 +179,23 @@ DASHBOARD_SCRIPT = """
     appendText(summary, "Versuche", String(entry.retry_count + 1));
     appendText(summary, "Gesamtstatus", entry.status);
     details.appendChild(summary);
+    if (entry.warnings && entry.warnings.length) {
+      const wrap = document.createElement("div");
+      wrap.className = "warning-box";
+      const title = document.createElement("div");
+      title.className = "warning-title";
+      title.textContent = `Warnungen (${entry.warnings.length})`;
+      wrap.appendChild(title);
+      const list = document.createElement("ul");
+      list.className = "warning-list";
+      entry.warnings.forEach((message) => {
+        const item = document.createElement("li");
+        item.textContent = message;
+        list.appendChild(item);
+      });
+      wrap.appendChild(list);
+      details.appendChild(wrap);
+    }
     const steps = document.createElement("div"); steps.className = "steps";
     entry.steps.forEach((step, index) => {
       const element = document.createElement("div");
@@ -162,6 +211,23 @@ DASHBOARD_SCRIPT = """
         appendText(explanation, "Details",
           Object.entries(step.metadata).map(([key,value]) => `${key}: ${value ?? "–"}`).join(" | "),
           "step-meta");
+      }
+      if (step.warnings && step.warnings.length) {
+        const w = document.createElement("div");
+        w.className = "warning-box step-warning";
+        const t = document.createElement("div");
+        t.className = "warning-title";
+        t.textContent = "Warnung";
+        w.appendChild(t);
+        const ul = document.createElement("ul");
+        ul.className = "warning-list";
+        step.warnings.forEach((message) => {
+          const li = document.createElement("li");
+          li.textContent = message;
+          ul.appendChild(li);
+        });
+        w.appendChild(ul);
+        explanation.appendChild(w);
       }
       if (step.error) appendText(explanation, "Fehler", step.error, "error-box");
       element.append(timing, explanation); steps.appendChild(element);
@@ -387,6 +453,11 @@ def processing_logs(
             error = phase_entry.error
             if error and job.error_message:
                 error = redact_sensitive_text(f"{error}: {job.error_message}")
+            step_metadata = {
+                k: redact_sensitive_text(v) if isinstance(v, str) else v
+                for k, v in (phase_entry.metadata_json or {}).items()
+            }
+            step_warnings = derive_step_warnings(phase_name, step_metadata)
             steps.append(
                 {
                     "phase": phase_name,
@@ -401,13 +472,14 @@ def processing_logs(
                         elapsed_seconds(phase_entry.started_at, phase_finished_at, now),
                         3,
                     ),
-                    "metadata": {
-                        k: redact_sensitive_text(v) if isinstance(v, str) else v
-                        for k, v in (phase_entry.metadata_json or {}).items()
-                    },
+                    "metadata": step_metadata,
+                    "warnings": step_warnings,
                     "error": error,
                 }
             )
+        job_warnings: list[str] = []
+        for step in steps:
+            job_warnings.extend(step.get("warnings") or [])
         entries.append(
             {
                 "job_id": str(job.id),
@@ -425,6 +497,7 @@ def processing_logs(
                 ),
                 "worker_id": job.worker_id,
                 "retry_count": job.retry_count,
+                "warnings": job_warnings,
                 "steps": steps,
             }
         )

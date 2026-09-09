@@ -74,7 +74,8 @@ STANDARD_PATTERNS: dict[str, list[str]] = {
     "construction_site_number": [
         r"(?i)(?:BV(?:[\s.-]*(?:Nr|Nummer))?\.?|"
         r"Baustellen?(?:[\s.-]*(?:Nr|Nummer))\.?)"
-        r"\s*[:.]?\s*([A-Z0-9][A-Z0-9./_-]*)"
+        r"\s*[:.]?\s*([A-Z0-9][A-Z0-9./_-]*)",
+        r"(?im)^\s*#\s*(2[456]\d{3})\b\s*$",
     ],
 }
 

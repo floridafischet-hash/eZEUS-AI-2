@@ -30,8 +30,10 @@ FIELD_DEFINITIONS: dict[str, dict[str, object]] = {
             r"([A-Z0-9][A-Z0-9./_-]*)\s*$",
             r"(?im)^\s*Bon[\s.-]*(?:Nr|Nummer)\.?\s*:\s*"
             r"([A-Z0-9][A-Z0-9./_-]*)\s*$",
-            r"(?im)^\s*Beleg[\s.-]*(?:Nr|Nummer)\.?\s*:?\s*"
-            r"([A-Z0-9][A-Z0-9./_-]*)\s*$",
+            r"(?i)Beleg(?:s)?[\s.-]*(?:Nr|Nummer)\.?"
+            r"\s*[:.]?\s*"
+            r"(?=[A-Z0-9./_-]*\d)"
+            r"([A-Z0-9][A-Z0-9./_-]*)",
             r"(?i)(?:"
             r"BV(?:[\s.-]*(?:Nr|Nummer))?\.?|"
             r"Baustellen?(?:[\s.-]*(?:Nr|Nummer))\.?"
@@ -44,6 +46,8 @@ FIELD_DEFINITIONS: dict[str, dict[str, object]] = {
         "validators": [{"type": "not_empty"}, {"type": "monetary_amount"}],
         "selection_strategy": "highest",
         "patterns": [
+            r"(?im)^\s*Total\s+(?:EUR|€)\s+inkl\.?\s*(?:MwSt|USt)\.?\s*[:.]?\s*"
+            r"([\d.,]+\d{2})\s*(?:EUR|€)?\s*$",
             r"(?im)^\s*Gesamt\s+"
             r"(?:[\d.,]+\d{2}\s*(?:EUR|€)?\s+)?"
             r"([\d.,]+\d{2})\s*(?:EUR|€)?\s*$",
@@ -63,12 +67,13 @@ FIELD_DEFINITIONS: dict[str, dict[str, object]] = {
             r"Gesamtbetrag\s+brutto|"
             r"Gesamtsumme|"
             r"Gesamtrechnungsbetrag|"
+            r"Rechnungssumme|"
             r"Rechnungswert\s*\(\s*brutto\s*\)|"
             r"Zahlbetrag|"
             r"Endbetrag|"
             r"Zu\s+zahlen|"
             r"(?<!Netto[ -])(?<![\w-])Rechnungsbetrag"
-            r")\s*[:.]?\s*(?:EUR|€)?\s*([\d.,]+\d{2})\s*(?:EUR|€)?",
+            r")\s*(?:EUR|€)?\s*[:.]?\s*(?:EUR|€)?\s*([\d.,]+\d{2})\s*(?:EUR|€)?",
         ],
     },
     "lieferscheinnummer": {
