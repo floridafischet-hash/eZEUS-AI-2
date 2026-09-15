@@ -20,6 +20,10 @@ from core.db.session import get_db
 from core.field_config.service import FieldConfigurationService
 from core.models.audit import AuditEntry
 from core.models.paperless_instance import PaperlessInstance
+from core.paperless.title_template import (
+    UnknownPlaceholderError,
+    validate_template,
+)
 from core.security.admin_auth import AdminPrincipal, require_admin_secret
 from core.security.credentials import (
     CredentialEncryptionError,
@@ -46,6 +50,7 @@ class InstanceUpdate(BaseModel):
     webhook_secret: str | None = Field(default=None, min_length=16, max_length=4096)
     verify_tls: bool | None = None
     enabled: bool | None = None
+    title_template: str | None = Field(default=None, max_length=512)
 
 
 def _validate_slug(slug: str) -> str:
@@ -87,6 +92,7 @@ def _serialize(instance: PaperlessInstance) -> dict[str, object]:
         "updated_at": instance.updated_at.isoformat(),
         "webhook_path": webhook_path,
         "webhook_url": f"{public_base_url}{webhook_path}" if public_base_url else None,
+        "title_template": instance.title_template or "",
     }
 
 
@@ -200,6 +206,7 @@ def update_instance(
         "enabled": instance.enabled,
         "has_api_token": bool(instance.api_token_encrypted),
         "has_webhook_secret": bool(instance.webhook_secret_encrypted),
+        "title_template": instance.title_template or "",
     }
     if "name" in changes:
         instance.name = str(changes["name"]).strip()
@@ -215,6 +222,17 @@ def update_instance(
         instance.verify_tls = bool(changes["verify_tls"])
     if "enabled" in changes:
         instance.enabled = bool(changes["enabled"])
+    if "title_template" in changes:
+        raw_template = changes["title_template"]
+        template = str(raw_template).strip() if raw_template is not None else ""
+        if template:
+            try:
+                validate_template(template)
+            except UnknownPlaceholderError as exc:
+                raise HTTPException(status_code=422, detail=str(exc)) from exc
+            instance.title_template = template
+        else:
+            instance.title_template = None
     new_value = {
         "name": instance.name,
         "base_url": instance.base_url,
@@ -224,6 +242,7 @@ def update_instance(
         "has_webhook_secret": bool(instance.webhook_secret_encrypted),
         "api_token_replaced": "api_token" in changes,
         "webhook_secret_replaced": "webhook_secret" in changes,
+        "title_template": instance.title_template or "",
     }
     db.add(
         AuditEntry(
@@ -468,6 +487,15 @@ def instance_admin_page() -> str:
           <input id="edit-verify-tls" type="checkbox"> TLS-Zertifikat prüfen
         </label>
       </div>
+      <div class="full"><label for="edit-title-template">Titel-Vorlage</label>
+        <input id="edit-title-template" maxlength="512"
+          placeholder="{document_type}, {invoice_number}, {correspondent}">
+        <p class="help-text">Legt fest, wie eZEUS den Dokumenttitel nach der Analyse
+          zusammensetzt. Leer lassen für das Standardverhalten (nur Rechnungsnummer).
+          Erlaubte Platzhalter: <code>{document_type}</code>, <code>{invoice_number}</code>,
+          <code>{correspondent}</code>, <code>{created_year}</code>, <code>{created_month}</code>,
+          <code>{created_day}</code>, <code>{original_filename}</code>, <code>{title}</code>.
+          Leere Platzhalter werden aus dem Ergebnis entfernt.</p></div>
     </div>
     <div id="edit-message" class="notice" role="status" hidden></div>
     <div class="form-actions dialog-actions">
@@ -508,6 +536,7 @@ def instance_admin_page() -> str:
     document.getElementById("edit-api-token").value="";
     document.getElementById("edit-webhook-secret").value="";
     document.getElementById("edit-verify-tls").checked=item.verify_tls;
+    document.getElementById("edit-title-template").value=item.title_template||"";
     editMessage.hidden=true;
     editDialog.showModal();
     document.getElementById("edit-name").focus();
@@ -645,7 +674,8 @@ def instance_admin_page() -> str:
     const payload={
       name:document.getElementById("edit-name").value,
       base_url:document.getElementById("edit-base-url").value,
-      verify_tls:document.getElementById("edit-verify-tls").checked
+      verify_tls:document.getElementById("edit-verify-tls").checked,
+      title_template:document.getElementById("edit-title-template").value.trim()
     };
     if(apiToken) payload.api_token=apiToken;
     if(webhookSecret) payload.webhook_secret=webhookSecret;

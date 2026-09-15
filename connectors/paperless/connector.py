@@ -271,7 +271,30 @@ class PaperlessConnector(DocumentConnector):
             correspondent_id=str(data["correspondent"]) if data.get("correspondent") else None,
             content=data.get("content"),
             custom_fields=fields,
+            created=str(data["created"]) if data.get("created") else None,
         )
+
+    async def get_document_type_name(self, document_type_id: str) -> str | None:
+        try:
+            response = await self._request(
+                "GET", f"/api/document_types/{document_type_id}/"
+            )
+        except Exception:  # noqa: BLE001 -- name lookup is best-effort
+            return None
+        payload = response.json()
+        name = payload.get("name")
+        return str(name) if name else None
+
+    async def get_correspondent_name(self, correspondent_id: str) -> str | None:
+        try:
+            response = await self._request(
+                "GET", f"/api/correspondents/{correspondent_id}/"
+            )
+        except Exception:  # noqa: BLE001 -- name lookup is best-effort
+            return None
+        payload = response.json()
+        name = payload.get("name")
+        return str(name) if name else None
 
     async def list_custom_fields(self) -> list[ConnectorCustomField]:
         fields: list[ConnectorCustomField] = []
