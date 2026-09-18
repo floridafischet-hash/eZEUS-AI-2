@@ -18,6 +18,41 @@ den dauerhaften Anwendungszustand, Redis dient als Celery-Broker und
 Result-Backend. API, Worker, Outbox-Dispatcher und Job-Sweeper laufen als
 getrennte Prozesse und können unabhängig betrieben und skaliert werden.
 
+## In zwei Minuten verstehen
+
+eZEUS-AI-2 übernimmt **nicht** die Texterkennung eines PDFs. Paperless-ngx
+erzeugt zuerst den OCR-Text. Danach arbeitet eZEUS in drei Schritten:
+
+1. Paperless meldet ein neues Dokument per Webhook.
+2. eZEUS sucht im Paperless-OCR-Text nach den aktivierten Feldern.
+3. Nur eindeutig erkannte und validierte Werte werden in noch leere
+   Paperless-Felder geschrieben.
+
+Ein erfolgreicher Verbindungstest bestätigt deshalb nur, dass Paperless und
+eZEUS miteinander kommunizieren. Er bestätigt noch nicht, dass jedes
+Lieferantenlayout erkannt wird. Eine neue Kundeninstanz gilt erst dann als
+fachlich abgenommen, wenn mehrere echte Beispieldokumente erfolgreich geprüft
+wurden. Die anfängerfreundliche Schritt-für-Schritt-Anleitung steht im
+[Benutzerhandbuch](docs/benutzerhandbuch.md).
+
+### Der sichere Weg zur neuen Kundeninstanz
+
+1. Instanz in eZEUS anlegen.
+2. Workflow automatisch einrichten und Verbindung testen.
+3. Feldseite laden, benötigte Felder aktivieren und Paperless-IDs prüfen.
+4. Mindestens eine normale Rechnung, eine mehrseitige Rechnung und – falls
+   verwendet – eine Gutschrift sowie ein Dokument mit Baustellennummer testen.
+5. Im Jobprotokoll kontrollieren, welche Werte gefunden, akzeptiert und
+   geschrieben wurden.
+6. Erst nach erfolgreichem Dokumenttest den Kundenbetrieb freigeben.
+
+Die drei Prüfbereiche dürfen nicht verwechselt werden:
+
+- **Verbindung:** URL, Token und Paperless sind erreichbar.
+- **Workflow:** Ein Dokument löst einen eZEUS-Job aus.
+- **Extraktion:** Rechnungsnummer, Betrag und weitere Felder werden im
+  konkreten OCR-Layout richtig erkannt.
+
 ## Inhalt
 
 - Funktionsumfang
@@ -310,6 +345,33 @@ Regex ist der Standardprovider. Ist für ein Feld zusätzlich KI aktiviert und
 deaktiviert, wird der Ollama-Provider gar nicht erst in die Providerliste
 aufgenommen. Ein AI-aktiviertes Feld kann dadurch sauber auf Regex
 zurückfallen, ohne einen Verbindungsfehler zu erzeugen.
+
+In der Administrationsoberfläche bedeuten die Schalter:
+
+- **In eZEUS:** Das Feld wird für diese Kundeninstanz verarbeitet.
+- **Pflichtfeld:** Fehlt ein gültiger Wert, endet der Job mit Warnung.
+- **OCR:** Reguläre Ausdrücke werden auf den Paperless-OCR-Text angewendet.
+- **KI:** Ollama wird zusätzlich verwendet, sofern es global aktiviert ist.
+
+Extraktionshinweise in der Oberfläche gelten nur für den KI-Provider. Sie
+ändern keine Regex-Regel. Neue Paperless-Felder werden importiert, sind aber
+zunächst deaktiviert. Ein aktives Feld benötigt eine passende Paperless-ID,
+damit ein erkannter Wert zurückgeschrieben werden kann.
+
+### Unterstützte Standarderkennung
+
+Die Standardregeln decken unter anderem folgende Schreibweisen ab:
+
+- Rechnungsnummer: `Rechnungsnummer`, `Rechnung-Nr.`, `Belegnummer`,
+  tabellarische Rechnungsköpfe
+- Rechnungsbetrag: `Gesamtbetrag`, `Rechnungssumme`, `Zahlbetrag`,
+  `Brutto-Rechnungsbetrag`, `Erstattungsbetrag`
+- Baustellennummer: numerische Werte nach `#`, `BV`, `BV-Nr.` oder
+  `Baustellennummer` sowie bekannte Tabellenlayouts
+
+Die Erkennung ist bewusst konservativ. Ein nicht eindeutig belegter Wert wird
+nicht geraten. Neue Lieferantenlayouts sollten mit anonymisierten
+Regressionstests ergänzt werden.
 
 ### Geschützte Schreiboperationen
 
