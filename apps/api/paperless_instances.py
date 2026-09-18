@@ -21,7 +21,7 @@ from core.field_config.service import FieldConfigurationService
 from core.models.audit import AuditEntry
 from core.models.paperless_instance import PaperlessInstance
 from core.paperless.title_template import (
-    UnknownPlaceholderError,
+    InvalidTemplateError,
     validate_template,
 )
 from core.security.admin_auth import AdminPrincipal, require_admin_secret
@@ -228,7 +228,7 @@ def update_instance(
         if template:
             try:
                 validate_template(template)
-            except UnknownPlaceholderError as exc:
+            except InvalidTemplateError as exc:
                 raise HTTPException(status_code=422, detail=str(exc)) from exc
             instance.title_template = template
         else:

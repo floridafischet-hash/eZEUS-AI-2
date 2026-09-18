@@ -21,7 +21,7 @@ from core.paperless.service import (
     instance_slug_from_connector,
 )
 from core.paperless.title_template import (
-    UnknownPlaceholderError,
+    InvalidTemplateError,
     render_title,
 )
 from core.security.documents import validate_paperless_document
@@ -324,22 +324,18 @@ class Orchestrator:
                 )
             title_written = False
             invoice_number = extracted_by_key.get("invoice_number")
-            title_template = (
-                (instance.title_template or "").strip() if instance is not None else ""
-            )
+            title_template = (instance.title_template or "").strip() if instance is not None else ""
             new_title: str | None
             if title_template:
-                context = await self._build_title_context(
-                    connector, before_write, invoice_number
-                )
+                context = await self._build_title_context(connector, before_write, invoice_number)
                 try:
                     new_title = render_title(title_template, context)
-                except UnknownPlaceholderError as exc:
+                except InvalidTemplateError as exc:
                     logger.warning(
                         "title_template.invalid",
                         extra={
                             "instance": instance.slug if instance is not None else None,
-                            "placeholder": exc.name,
+                            "placeholder": getattr(exc, "name", None),
                         },
                     )
                     new_title = str(invoice_number) if invoice_number is not None else None

@@ -1,6 +1,9 @@
 import pytest
 
 from core.paperless.title_template import (
+    MAX_TEMPLATE_LENGTH,
+    MAX_TITLE_LENGTH,
+    InvalidTemplateError,
     UnknownPlaceholderError,
     render_title,
     validate_template,
@@ -80,3 +83,50 @@ def test_repeated_placeholder_works() -> None:
     template = "{correspondent}-{correspondent}"
     ctx = _ctx(correspondent="Foo")
     assert render_title(template, ctx) == "Foo-Foo"
+
+
+@pytest.mark.parametrize(
+    "template",
+    [
+        "{title:>999999999}",
+        "{invoice_number!r}",
+        "{title.__class__}",
+        "{title[0]}",
+        "{}",
+        "{0}",
+        "{{invoice_number}}",
+        "Rechnung {invoice_number",
+        "Rechnung invoice_number}",
+        "{ invoice_number }",
+    ],
+)
+def test_rejects_format_semantics_and_stray_braces(template: str) -> None:
+    with pytest.raises(InvalidTemplateError):
+        validate_template(template)
+    with pytest.raises(InvalidTemplateError):
+        render_title(template, _ctx(title="X", invoice_number="1"))
+
+
+def test_unknown_placeholder_is_an_invalid_template() -> None:
+    assert issubclass(UnknownPlaceholderError, InvalidTemplateError)
+
+
+def test_template_and_rendered_title_lengths_are_limited() -> None:
+    validate_template("x" * MAX_TEMPLATE_LENGTH)
+    with pytest.raises(InvalidTemplateError):
+        validate_template("x" * (MAX_TEMPLATE_LENGTH + 1))
+    assert render_title("{title}", _ctx(title="A" * 10_000)) == "A" * MAX_TITLE_LENGTH
+
+
+def test_values_are_literal_and_unicode_is_preserved() -> None:
+    context = _ctx(
+        correspondent="Müller GmbH – {title.__class__}",
+        invoice_number="RE-2026-äöü",
+    )
+    assert render_title("{correspondent} {invoice_number}", context) == (
+        "Müller GmbH – {title.__class__} RE-2026-äöü"
+    )
+
+
+def test_non_string_values_are_rendered() -> None:
+    assert render_title("{created_year}", {"created_year": 2026}) == "2026"

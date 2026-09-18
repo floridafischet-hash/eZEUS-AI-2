@@ -16,6 +16,11 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
+    columns = {
+        column["name"] for column in sa.inspect(op.get_bind()).get_columns("instance_field_configs")
+    }
+    if "extraction_profile" in columns:
+        return
     op.add_column(
         "instance_field_configs",
         sa.Column("extraction_profile", sa.String(length=64), nullable=True),
@@ -23,4 +28,9 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    columns = {
+        column["name"] for column in sa.inspect(op.get_bind()).get_columns("instance_field_configs")
+    }
+    if "extraction_profile" not in columns:
+        return
     op.drop_column("instance_field_configs", "extraction_profile")
