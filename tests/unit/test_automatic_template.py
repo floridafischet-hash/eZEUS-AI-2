@@ -322,6 +322,12 @@ async def test_plain_invoice_heading_is_not_an_identifier() -> None:
             "24.344,01",
         ),
         ("Artikel: 2 Total: 98,70\nBargeld 98,70€", "98,70"),
+        (
+            "Netto-Betrag: MwSt.-Betrag: Brutto-Betrag:\n"
+            "19% MwSt.: 1.360,00 258,40 1.618,40\n"
+            "Erstattungsbetrag EUR: 1.618,40",
+            "1.618,40",
+        ),
     ],
 )
 async def test_invoice_amount_patterns_select_only_gross_total(text: str, expected: str) -> None:

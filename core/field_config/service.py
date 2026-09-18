@@ -72,10 +72,11 @@ STANDARD_PATTERNS: dict[str, list[str]] = {
         r"\s*[:.]?\s*([A-Z0-9][A-Z0-9./_-]*)"
     ],
     "construction_site_number": [
-        r"(?i)(?:BV(?:[\s.-]*(?:Nr|Nummer))?\.?|"
-        r"Baustellen?(?:[\s.-]*(?:Nr|Nummer))\.?)"
-        r"\s*[:.]?\s*([A-Z0-9][A-Z0-9./_-]*)",
-        r"(?im)^\s*#\s*(2[456]\d{3})\b\s*$",
+        r"(?i)#\s*(\d{4,6})(?!\d)",
+        r"(?i)(?:BV(?:[\s.-]*(?:Nr|Nummer))?|"
+        r"Baustellen?(?:[\s.-]*(?:Nr|Nummer))?)"
+        r"[\s.:-]*(\d{4,6})(?!\d)",
+        r"(?im)^\s*(\d{4,6})\s+[^\n]+\n\s*Lieferwerk\s*:",
     ],
 }
 
