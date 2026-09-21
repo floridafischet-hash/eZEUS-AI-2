@@ -307,7 +307,18 @@ class FieldConfigurationService:
             for field in configured
             if field.external_field_id is not None
         }
-        by_name = {normalized_name(field.label): field for field in configured}
+    by_name = {
+        normalized_name(field.label): field
+        for field in configured
+}
+
+    # Auch bekannte Aliase auf Standardfelder abbilden.
+    for configured_field in configured:
+        for alias in FIELD_ALIASES.get(configured_field.field_key, ()):
+            by_name.setdefault(
+                normalized_name(alias),
+                configured_field,
+            )
         used_keys = {field.field_key for field in configured}
         next_sort_order = max((field.sort_order for field in configured), default=0) + 10
 
