@@ -5,7 +5,7 @@ from uuid import UUID
 
 from sqlalchemy.orm import Session
 
-from connectors.base.interface import DocumentConnector
+from connectors.base.interface import ConnectorDocument, DocumentConnector
 from core.correspondents.matcher import match_correspondent
 from core.field_config.service import FieldConfigurationService, RuntimeFieldConfiguration
 from core.metrics import JOBS_TOTAL, PHASE_DURATION_SECONDS
@@ -19,6 +19,10 @@ from core.paperless.service import (
     connector_for_document,
     get_enabled_instance,
     instance_slug_from_connector,
+)
+from core.paperless.title_template import (
+    InvalidTemplateError,
+    render_title,
 )
 from core.security.documents import validate_paperless_document
 from core.security.redaction import redact_sensitive_text
@@ -320,18 +324,34 @@ class Orchestrator:
                 )
             title_written = False
             invoice_number = extracted_by_key.get("invoice_number")
-            if invoice_number is not None:
-                title_written = await connector.write_title(
-                    before_write,
-                    str(invoice_number),
-                )
+            title_template = (instance.title_template or "").strip() if instance is not None else ""
+            new_title: str | None
+            if title_template:
+                context = await self._build_title_context(connector, before_write, invoice_number)
+                try:
+                    new_title = render_title(title_template, context)
+                except InvalidTemplateError as exc:
+                    logger.warning(
+                        "title_template.invalid",
+                        extra={
+                            "instance": instance.slug if instance is not None else None,
+                            "placeholder": getattr(exc, "name", None),
+                        },
+                    )
+                    new_title = str(invoice_number) if invoice_number is not None else None
+            elif invoice_number is not None:
+                new_title = str(invoice_number)
+            else:
+                new_title = None
+            if new_title:
+                title_written = await connector.write_title(before_write, new_title)
                 if title_written:
                     self._audit(
                         job,
                         "WRITE_TITLE",
                         "title",
                         before_write.title,
-                        str(invoice_number),
+                        new_title,
                     )
             correspondent_written = False
             correspondent_match = None
@@ -410,6 +430,37 @@ class Orchestrator:
             raise
         finally:
             await connector.close()
+
+    async def _build_title_context(
+        self,
+        connector: DocumentConnector,
+        document: "ConnectorDocument",
+        invoice_number: object,
+    ) -> dict[str, str]:
+        created = document.created or ""
+        context: dict[str, str] = {
+            "invoice_number": str(invoice_number) if invoice_number is not None else "",
+            "correspondent": "",
+            "document_type": "",
+            "created_year": created[:4] if len(created) >= 4 else "",
+            "created_month": created[5:7] if len(created) >= 7 else "",
+            "created_day": created[8:10] if len(created) >= 10 else "",
+            "original_filename": document.filename or "",
+            "title": document.title or "",
+        }
+        if document.correspondent_id and hasattr(connector, "get_correspondent_name"):
+            try:
+                name = await connector.get_correspondent_name(document.correspondent_id)
+            except Exception:  # noqa: BLE001 -- best-effort enrichment
+                name = None
+            context["correspondent"] = name or ""
+        if document.document_type_id and hasattr(connector, "get_document_type_name"):
+            try:
+                name = await connector.get_document_type_name(document.document_type_id)
+            except Exception:  # noqa: BLE001 -- best-effort enrichment
+                name = None
+            context["document_type"] = name or ""
+        return context
 
     def _audit(
         self, job: Job, action: str, field: str, old_value: object, new_value: object

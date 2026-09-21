@@ -14,6 +14,7 @@ class ConnectorDocument:
     correspondent_id: str | None = None
     content: str | None = None
     custom_fields: dict[str, object] = field(default_factory=dict)
+    created: str | None = None
 
 
 @dataclass(slots=True, frozen=True)

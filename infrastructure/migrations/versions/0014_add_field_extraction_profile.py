@@ -23,12 +23,10 @@ def _has_extraction_profile() -> bool:
 
 
 def upgrade() -> None:
-    # 0002_repair_initial_schema runs Base.metadata.create_all(), which builds
-    # the *current* model — so on a fresh database this column already exists by
-    # the time this revision runs. Every migration from 0003 onwards guards
-    # against that; this one did not, and `alembic upgrade head` failed against
-    # an empty database with DuplicateColumn.
-    if _has_extraction_profile():
+    columns = {
+        column["name"] for column in sa.inspect(op.get_bind()).get_columns("instance_field_configs")
+    }
+    if "extraction_profile" in columns:
         return
     op.add_column(
         "instance_field_configs",
@@ -37,6 +35,9 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    if not _has_extraction_profile():
+    columns = {
+        column["name"] for column in sa.inspect(op.get_bind()).get_columns("instance_field_configs")
+    }
+    if "extraction_profile" not in columns:
         return
     op.drop_column("instance_field_configs", "extraction_profile")

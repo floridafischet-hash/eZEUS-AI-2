@@ -1,5 +1,5 @@
 import re
-from typing import Literal
+from typing import Literal, cast
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -62,7 +62,7 @@ class FieldConfigurationInput(BaseModel):
                 raise ValueError(
                     f"unknown extraction profile; expected one of {sorted(EXTRACTION_PROFILES)}"
                 )
-            supported_types = profile["field_types"]
+            supported_types = cast(tuple[str, ...], profile["field_types"])
             if self.field_type not in supported_types:
                 raise ValueError("extraction profile is incompatible with this field type")
         return self

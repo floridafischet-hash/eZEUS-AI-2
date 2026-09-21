@@ -15,16 +15,27 @@ def help_page() -> str:
   <section class="panel">
     <div class="section-heading"><div>
       <h2>Schnellstart</h2>
-      <p class="section-copy">In fünf Schritten von der Anmeldung zur automatischen Dokumentverarbeitung.</p>
+      <p class="section-copy">In sechs Schritten von der Anmeldung zur geprüften Dokumentverarbeitung.</p>
     </div></div>
     <ol>
       <li>Mit dem persönlichen Benutzernamen und Passwort anmelden.</li>
       <li>In Paperless einen API-Token für ein berechtigtes Konto erzeugen.</li>
       <li>Unter <a href="/admin/instances">Instanzen</a> die Paperless-Adresse und den API-Token eintragen.</li>
-      <li>Nach dem Speichern auf <strong>Verbindung testen</strong> klicken.</li>
+      <li><strong>Workflow einrichten</strong> und danach <strong>Verbindung testen</strong>.</li>
       <li>Über <strong>Felder</strong> festlegen, welche Dokumentdaten ausgelesen werden.</li>
+      <li>Mehrere typische Kundendokumente hochladen und die Ergebnisse kontrollieren.</li>
     </ol>
-    <div class="notice success">Wenn der Verbindungstest erfolgreich ist und der Workflow als korrekt eingerichtet gemeldet wird, ist die Instanz einsatzbereit.</div>
+    <div class="notice warning"><strong>Wichtig:</strong> Ein erfolgreicher Verbindungstest prüft nur die technische Verbindung. Die Instanz ist erst einsatzbereit, wenn Rechnungsnummer, Betrag und weitere benötigte Felder bei echten Testdokumenten richtig erkannt wurden.</div>
+  </section>
+
+  <section class="panel">
+    <div class="section-heading"><div><h2>So funktioniert eZEUS</h2></div></div>
+    <ol>
+      <li><strong>Paperless liest:</strong> Paperless erzeugt den OCR-Text des Dokuments.</li>
+      <li><strong>Der Workflow meldet:</strong> Paperless sendet die Dokument-ID an eZEUS.</li>
+      <li><strong>eZEUS extrahiert:</strong> eZEUS sucht die aktivierten Werte, prüft sie und schreibt sichere Treffer in noch leere Paperless-Felder.</li>
+    </ol>
+    <p>Ein Dokument kann deshalb in eZEUS erscheinen, obwohl einzelne Felder leer bleiben. Dann funktioniert der Workflow bereits; meistens passt das Dokumentlayout zu keiner aktiven Regel, das Zielfeld ist nicht zugeordnet oder es ist bereits gefüllt.</p>
   </section>
 
   <section class="panel">
@@ -73,7 +84,7 @@ def help_page() -> str:
       <li>In eZEUS <a href="/admin/instances">Instanzen</a> öffnen.</li>
       <li>Bei der gewünschten Instanz auf <strong>Workflow einrichten</strong> klicken.</li>
       <li>Die Erfolgsmeldung abwarten und danach <strong>Verbindung testen</strong> auswählen.</li>
-      <li>Werden Verbindung und Workflow als erfolgreich angezeigt, ist die Einrichtung abgeschlossen.</li>
+      <li>Werden Verbindung und Workflow als erfolgreich angezeigt, ist die technische Einrichtung abgeschlossen. Danach Felder und echte Dokumente prüfen.</li>
     </ol>
     <div class="notice success">Diese Methode erstellt Auslöser und Webhook-Aktion automatisch mit den richtigen Einstellungen.</div>
 
@@ -132,21 +143,35 @@ def help_page() -> str:
     <div class="section-heading"><div><h2>5. Dokumentfelder festlegen</h2></div></div>
     <p>Bei der gewünschten Instanz auf <strong>Felder</strong> klicken. Dort wird festgelegt, welche Informationen eZEUS aus Dokumenten übernimmt.</p>
     <ul>
-      <li><strong>In eZEUS:</strong> schaltet ein Feld für die Verarbeitung ein oder aus.</li>
-      <li><strong>Pflichtfeld:</strong> kennzeichnet Angaben, die vorhanden sein sollen.</li>
-      <li><strong>OCR:</strong> nutzt den erkannten Dokumenttext.</li>
-      <li><strong>KI:</strong> lässt die Angabe durch die KI bestimmen.</li>
+      <li><strong>In eZEUS:</strong> schaltet ein Feld für diesen Kunden ein oder aus. Neu importierte Paperless-Felder sind zunächst aus.</li>
+      <li><strong>Pflichtfeld:</strong> erzeugt eine Warnung, wenn kein sicherer Wert gefunden wird. Der Schalter erzwingt keinen Treffer.</li>
+      <li><strong>OCR:</strong> wendet feste Erkennungsregeln auf den Paperless-OCR-Text an.</li>
+      <li><strong>KI:</strong> verwendet zusätzlich Ollama, sofern die KI systemweit aktiviert und erreichbar ist.</li>
       <li><strong>Feldtyp:</strong> bestimmt, ob Text, Zahl, Geldbetrag, Datum, Ja/Nein oder eine Auswahl erwartet wird.</li>
-      <li><strong>Extraktionshinweise:</strong> beschreibt in einfachen Worten, wo oder wie die Angabe erkannt werden soll.</li>
+      <li><strong>Paperless-ID:</strong> bestimmt das Zielfeld in Paperless und darf bei aktiven benutzerdefinierten Feldern nicht fehlen.</li>
+      <li><strong>Extraktionshinweise:</strong> gelten nur für die KI und verändern keine feste Regex-Regel.</li>
     </ul>
     <p>Mit den Pfeilen lässt sich die Reihenfolge ändern. Die Vorschau zeigt das spätere Ergebnis. Erst <strong>Konfiguration speichern</strong> übernimmt die Änderungen.</p>
   </section>
 
   <section class="panel">
-    <div class="section-heading"><div><h2>6. Verarbeitung kontrollieren</h2></div></div>
+    <div class="section-heading"><div><h2>6. Kundeninstanz abnehmen</h2></div></div>
+    <p>Vor der Freigabe mindestens eine normale Rechnung, eine mehrseitige Rechnung, eine Gutschrift und – falls verwendet – ein Dokument mit Baustellennummer testen. Zusätzlich Dokumente der wichtigsten Lieferanten verwenden.</p>
+    <ol>
+      <li>Ein neues Testdokument in Paperless hochladen und die OCR abwarten.</li>
+      <li>Den neuesten Job in der <a href="/">Übersicht</a> öffnen.</li>
+      <li>In Paperless Rechnungsnummer, Betrag und weitere Felder inhaltlich kontrollieren.</li>
+      <li>Erst freigeben, wenn mehrere typische Dokumente richtig erkannt werden und keine falschen Werte entstehen.</li>
+    </ol>
+    <div class="notice warning">Bereits gefüllte Paperless-Felder werden nicht überschrieben. Vorhandene Dokumente lösen „Dokument hinzugefügt“ nicht nachträglich aus.</div>
+  </section>
+
+  <section class="panel">
+    <div class="section-heading"><div><h2>7. Verarbeitung kontrollieren</h2></div></div>
     <p>Die <a href="/">Übersicht</a> zeigt das Verarbeitungsprotokoll. Über den Instanzfilter und die Suche lässt sich ein bestimmtes Dokument finden.</p>
     <ul>
       <li><strong>Erfolgreich:</strong> der Schritt wurde abgeschlossen.</li>
+      <li><strong>Mit Warnungen abgeschlossen:</strong> das Dokument wurde verarbeitet, aber ein Pflichtfeld fehlt oder war nicht sicher.</li>
       <li><strong>In Bearbeitung:</strong> die Verarbeitung läuft noch.</li>
       <li><strong>Fehlgeschlagen:</strong> der Eintrag öffnen und Dateiname, Phase, Zeitpunkt und Fehlerklasse notieren.</li>
     </ul>
@@ -154,7 +179,7 @@ def help_page() -> str:
   </section>
 
   <section class="panel">
-    <div class="section-heading"><div><h2>7. Benutzer verwalten</h2></div></div>
+    <div class="section-heading"><div><h2>8. Benutzer verwalten</h2></div></div>
     <p>Jede Person sollte ein eigenes Konto erhalten. Unter <a href="/api/admin-users/page">Benutzer</a> kann ein Administrator Konten anlegen und Rollen vergeben.</p>
     <ul>
       <li><strong>Administrator:</strong> darf Einstellungen und Benutzer verändern.</li>
@@ -182,6 +207,12 @@ def help_page() -> str:
       <dd>Das Feld zuerst in Paperless anlegen und danach die Feldseite in eZEUS neu laden.</dd>
       <dt><strong>Ein Dokument wird nicht verarbeitet</strong></dt>
       <dd>Prüfen, ob die Instanz aktiv ist und der Workflow auf „Dokument hinzugefügt“ reagiert. Danach das Verarbeitungsprotokoll öffnen.</dd>
+      <dt><strong>Das Dokument erscheint, aber Felder bleiben leer</strong></dt>
+      <dd>Dann funktioniert der Workflow. OCR-Text, Feldaktivierung, OCR-Schalter, Paperless-ID und ein bereits gefülltes Zielfeld prüfen. Bei <code>candidates_found: 0</code> wurde das konkrete Layout nicht erkannt.</dd>
+      <dt><strong>Der Rechnungsbetrag fehlt</strong></dt>
+      <dd>Im OCR-Text nach eindeutigen Bezeichnungen wie Gesamtbetrag, Rechnungssumme, Zahlbetrag, Brutto-Rechnungsbetrag oder Erstattungsbetrag suchen.</dd>
+      <dt><strong>Die Baustellennummer fehlt</strong></dt>
+      <dd>Numerische Formen wie <code># 26051</code>, <code>BV- 25095</code> oder <code>Baustellennummer: 26070</code> werden unterstützt. Reine Namen wie „BV Buck“ werden bewusst nicht als Nummer übernommen.</dd>
     </dl>
   </section>
 </div>

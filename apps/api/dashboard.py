@@ -474,6 +474,11 @@ def processing_logs(
                     "error": error,
                 }
             )
+        job_warnings: list[str] = []
+        for step in steps:
+            raw_step_warnings = step.get("warnings")
+            if isinstance(raw_step_warnings, list):
+                job_warnings.extend(str(warning) for warning in raw_step_warnings)
         entries.append(
             {
                 "job_id": str(job.id),

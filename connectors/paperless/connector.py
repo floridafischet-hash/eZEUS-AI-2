@@ -1,4 +1,5 @@
 import logging
+import re
 from typing import Any
 from urllib.parse import urljoin, urlparse
 
@@ -29,6 +30,17 @@ from core.security.outbound import (
 )
 
 logger = logging.getLogger(__name__)
+
+_PATH_ID_PATTERN = re.compile(r"^[1-9][0-9]{0,11}$")
+
+
+def _path_id(value: object) -> str:
+    """Return a positive numeric Paperless id safe for URL interpolation."""
+
+    text = str(value).strip() if not isinstance(value, bool) else ""
+    if not _PATH_ID_PATTERN.fullmatch(text):
+        raise ValidationError("Invalid Paperless object id")
+    return text
 
 
 class PaperlessConnector(DocumentConnector):
@@ -247,7 +259,7 @@ class PaperlessConnector(DocumentConnector):
             raise ValidationError("Paperless workflow has no id")
         result = await self._request(
             "PUT",
-            f"/api/workflows/{workflow_id}/",
+            f"/api/workflows/{_path_id(workflow_id)}/",
             json=payload,
         )
         workflow = result.json()
@@ -259,7 +271,7 @@ class PaperlessConnector(DocumentConnector):
         }
 
     async def get_document(self, external_document_id: str) -> ConnectorDocument:
-        response = await self._request("GET", f"/api/documents/{external_document_id}/")
+        response = await self._request("GET", f"/api/documents/{_path_id(external_document_id)}/")
         data = response.json()
         fields = {str(item["field"]): item.get("value") for item in data.get("custom_fields", [])}
         return ConnectorDocument(
@@ -271,7 +283,30 @@ class PaperlessConnector(DocumentConnector):
             correspondent_id=str(data["correspondent"]) if data.get("correspondent") else None,
             content=data.get("content"),
             custom_fields=fields,
+            created=str(data["created"]) if data.get("created") else None,
         )
+
+    async def get_document_type_name(self, document_type_id: str) -> str | None:
+        try:
+            response = await self._request(
+                "GET", f"/api/document_types/{_path_id(document_type_id)}/"
+            )
+        except Exception:  # noqa: BLE001 -- name lookup is best-effort
+            return None
+        payload = response.json()
+        name = payload.get("name")
+        return str(name) if name else None
+
+    async def get_correspondent_name(self, correspondent_id: str) -> str | None:
+        try:
+            response = await self._request(
+                "GET", f"/api/correspondents/{_path_id(correspondent_id)}/"
+            )
+        except Exception:  # noqa: BLE001 -- name lookup is best-effort
+            return None
+        payload = response.json()
+        name = payload.get("name")
+        return str(name) if name else None
 
     async def list_custom_fields(self) -> list[ConnectorCustomField]:
         fields: list[ConnectorCustomField] = []
@@ -327,7 +362,9 @@ class PaperlessConnector(DocumentConnector):
     ) -> ConnectorCustomField:
         payload: dict[str, object] = {"name": name}
         if data_type == "select":
-            current = await self._request("GET", f"/api/custom_fields/{external_field_id}/")
+            current = await self._request(
+                "GET", f"/api/custom_fields/{_path_id(external_field_id)}/"
+            )
             current_data = current.json()
             extra_data = current_data.get("extra_data")
             current_options = (
@@ -349,7 +386,7 @@ class PaperlessConnector(DocumentConnector):
             }
         response = await self._request(
             "PATCH",
-            f"/api/custom_fields/{external_field_id}/",
+            f"/api/custom_fields/{_path_id(external_field_id)}/",
             json=payload,
         )
         item = response.json()
@@ -391,7 +428,7 @@ class PaperlessConnector(DocumentConnector):
                 return False
         await self._request(
             "PATCH",
-            f"/api/documents/{document.external_id}/",
+            f"/api/documents/{_path_id(document.external_id)}/",
             json={"title": title},
         )
         return True
@@ -403,7 +440,7 @@ class PaperlessConnector(DocumentConnector):
             return False
         await self._request(
             "PATCH",
-            f"/api/documents/{document.external_id}/",
+            f"/api/documents/{_path_id(document.external_id)}/",
             json={"correspondent": int(correspondent_id)},
         )
         return True
@@ -424,5 +461,7 @@ class PaperlessConnector(DocumentConnector):
         payload = {
             "custom_fields": [{"field": int(key), "value": value} for key, value in merged.items()]
         }
-        await self._request("PATCH", f"/api/documents/{document.external_id}/", json=payload)
+        await self._request(
+            "PATCH", f"/api/documents/{_path_id(document.external_id)}/", json=payload
+        )
         return written

@@ -36,4 +36,5 @@ eine ausfüllbare Vorlage.
 - [`Fahrzeugdaten`](Fahrzeugdaten/README.md)
 - [`Korrespondenten`](Korrespondenten/README.md)
 - [`Rechnungsnummern`](Rechnungsnummern/README.md)
+- [`Rechnungsbetrag`](Rechnungsbetrag/README.md)
 

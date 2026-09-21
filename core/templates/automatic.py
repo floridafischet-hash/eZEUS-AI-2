@@ -67,6 +67,7 @@ FIELD_DEFINITIONS: dict[str, dict[str, object]] = {
             r"Gesamtbetrag\s+brutto|"
             r"Gesamtsumme|"
             r"Gesamtrechnungsbetrag|"
+            r"Erstattungsbetrag|"
             r"Rechnungssumme|"
             r"Rechnungswert\s*\(\s*brutto\s*\)|"
             r"Zahlbetrag|"

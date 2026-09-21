@@ -90,6 +90,8 @@ class Settings(BaseSettings):
     )
 
     regex_hard_timeout_seconds: float = 2.0
+    max_request_body_bytes: int = 1_048_576
+    max_webhook_body_bytes: int = 65_536
 
     sweeper_interval_seconds: float = 60.0
     sweeper_stale_threshold_seconds: int = 900
@@ -221,6 +223,14 @@ class Settings(BaseSettings):
             raise ValueError("Paperless response limits must be positive")
         if self.regex_hard_timeout_seconds <= 0:
             raise ValueError("REGEX_HARD_TIMEOUT_SECONDS must be positive")
+        if self.max_request_body_bytes <= 0 or self.max_webhook_body_bytes <= 0:
+            raise ValueError("Request body limits must be positive")
+        if self.max_request_body_bytes > 16 * 1024 * 1024:
+            raise ValueError("MAX_REQUEST_BODY_BYTES must not exceed 16 MiB")
+        if self.max_webhook_body_bytes > 1024 * 1024:
+            raise ValueError("MAX_WEBHOOK_BODY_BYTES must not exceed 1 MiB")
+        if self.max_webhook_body_bytes > self.max_request_body_bytes:
+            raise ValueError("MAX_WEBHOOK_BODY_BYTES must not exceed MAX_REQUEST_BODY_BYTES")
         if self.sweeper_interval_seconds <= 0 or self.sweeper_stale_threshold_seconds <= 0:
             raise ValueError("Sweeper timing values must be positive")
         if self.outbox_poll_seconds <= 0 or self.outbox_claim_timeout_seconds <= 0:

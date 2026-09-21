@@ -60,6 +60,9 @@ Alle Werte werden über Umgebungsvariablen gelesen.
 - `PAPERLESS_MAX_TEXT_CHARS`: maximale Länge des übernommenen OCR-Texts
 - `ALLOWED_DOCUMENT_MIME_TYPES`: akzeptierte Paperless-MIME-Typen
 - `REGEX_HARD_TIMEOUT_SECONDS`: echte Unterbrechungsfrist pro Regex-Ausführung
+- `MAX_REQUEST_BODY_BYTES`: maximale Request-Größe (Standard 1 MiB, höchstens 16 MiB)
+- `MAX_WEBHOOK_BODY_BYTES`: engeres Limit für `/webhooks/` (Standard 64 KiB,
+  höchstens 1 MiB und niemals größer als das allgemeine Limit)
 - `OUTBOX_POLL_SECONDS`, `OUTBOX_CLAIM_TIMEOUT_SECONDS`, `OUTBOX_BATCH_SIZE`,
   `OUTBOX_MAX_BACKOFF_SECONDS`: Zustellparameter der transaktionalen Outbox
 

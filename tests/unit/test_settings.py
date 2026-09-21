@@ -94,3 +94,29 @@ def test_instance_job_limit_must_be_positive() -> None:
 def test_celery_result_expiry_must_be_positive() -> None:
     with pytest.raises(ValidationError, match="CELERY_RESULT_EXPIRES_SECONDS"):
         Settings(celery_result_expires_seconds=0)
+
+
+@pytest.mark.parametrize(
+    ("override", "message"),
+    [
+        ({"max_request_body_bytes": 0}, "Request body limits must be positive"),
+        ({"max_webhook_body_bytes": 0}, "Request body limits must be positive"),
+        (
+            {"max_request_body_bytes": 16 * 1024 * 1024 + 1},
+            "MAX_REQUEST_BODY_BYTES must not exceed 16 MiB",
+        ),
+        (
+            {"max_webhook_body_bytes": 1024 * 1024 + 1},
+            "MAX_WEBHOOK_BODY_BYTES must not exceed 1 MiB",
+        ),
+        (
+            {"max_request_body_bytes": 100, "max_webhook_body_bytes": 101},
+            "MAX_WEBHOOK_BODY_BYTES must not exceed MAX_REQUEST_BODY_BYTES",
+        ),
+    ],
+)
+def test_request_body_limits_reject_unsafe_configuration(
+    override: dict[str, object], message: str
+) -> None:
+    with pytest.raises(ValidationError, match=message):
+        Settings(**override)

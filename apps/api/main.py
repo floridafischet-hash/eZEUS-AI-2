@@ -27,6 +27,7 @@ from core.models.enums import JobStatus
 from core.models.job import Job
 from core.models.queue_outbox import QueueOutbox
 from core.queue.outbox import PENDING, PROCESSING
+from core.security.body_limit import BodySizeLimitMiddleware
 from core.security.rate_limit import RateLimitMiddleware
 from webhooks.paperless.router import router as paperless_webhook_router
 
@@ -41,6 +42,13 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 
 app = FastAPI(title="eZEUS-AI-2", version="0.2.0", lifespan=lifespan)
 app.add_middleware(RateLimitMiddleware, settings=get_settings())
+# Starlette applies the last registered middleware first. Reject oversized
+# bodies before rate limiting, authentication or FastAPI's JSON parsing.
+app.add_middleware(
+    BodySizeLimitMiddleware,
+    default_max_bytes=get_settings().max_request_body_bytes,
+    path_limits=(("/webhooks/", get_settings().max_webhook_body_bytes),),
+)
 app.mount(
     "/static",
     StaticFiles(directory=Path(__file__).parent / "static"),
