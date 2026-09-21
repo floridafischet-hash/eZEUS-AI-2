@@ -419,14 +419,31 @@ class FieldConfigurationService:
             providers: list[dict[str, object]] = []
             profile = extraction_profile(field.extraction_profile)
             if field.ocr_enabled:
-                patterns = (
-                    profile["patterns"]
-                    if profile is not None
-                    else STANDARD_PATTERNS.get(field.field_key)
-                )
-                if patterns is None:
-                    escaped = re.escape(field.label)
-                    patterns = [rf"(?im)^\s*{escaped}\s*[:.]?\s*(.+?)\s*$"]
+                if profile is not None:
+        patterns = profile["patterns"]
+                else:
+        patterns = STANDARD_PATTERNS.get(field.field_key)
+
+        # Auch importierte Paperless-Felder anhand ihres Namens
+        # bekannten eZEUS-Standardfeldern zuordnen.
+                    if patterns is None:
+            standard_key = standard_field_key_for_label(field.label)
+
+                    if standard_key is not None:
+                  patterns = STANDARD_PATTERNS.get(standard_key)
+
+    if patterns is None:
+        escaped = re.escape(field.label)
+        patterns = [
+            rf"(?im)^\s*{escaped}\s*[:.]?\s*(.+?)\s*$"
+        ]
+
+    providers.append(
+        {
+            "type": "regex",
+            "patterns": patterns,
+        }
+    )
                 providers.append({"type": "regex", "patterns": patterns})
             if field.ai_enabled and get_settings().ollama_enabled:
                 providers.append(
