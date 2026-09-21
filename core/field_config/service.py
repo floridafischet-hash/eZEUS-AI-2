@@ -134,6 +134,25 @@ class RuntimeFieldConfiguration:
 def normalized_name(value: str) -> str:
     decomposed = unicodedata.normalize("NFKD", value)
     return "".join(character for character in decomposed if character.isalnum()).casefold()
+def standard_field_key_for_label(value: str) -> str | None:
+    normalized = normalized_name(value)
+
+    for definition in STANDARD_FIELDS:
+        field_key = str(definition["field_key"])
+
+        valid_names = {
+            normalized_name(str(definition["label"]))
+        }
+
+        valid_names.update(
+            normalized_name(alias)
+            for alias in FIELD_ALIASES.get(field_key, ())
+        )
+
+        if normalized in valid_names:
+            return field_key
+
+    return None
 
 
 class FieldConfigurationService:
