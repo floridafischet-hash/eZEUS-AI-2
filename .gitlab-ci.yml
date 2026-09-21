@@ -1,13 +1,18 @@
-# GitLab is the source of truth for this project. The previous `sync` stage,
-# which fast-forwarded GitHub -> GitLab, is gone: it made GitLab a read-only
-# mirror, so any change committed here (this file included) would diverge the
-# histories and permanently break its own fast-forward guard.
+# Two things happen here:
 #
-# What this pipeline produces is one thing: an image in the project registry,
-# tagged with the commit it was built from, for the Flux deployment in
-# flux/apps/prod/eZEUS-AI-2/deployment.yaml.
+# 1. `sync_from_github` fast-forwards GitLab's default branch to GitHub's.
+#    It only runs on a schedule or a manual "Run pipeline" — never on push —
+#    so committing to this file does not trigger it. It fast-forwards only:
+#    if GitLab and GitHub have diverged (e.g. a commit landed directly in
+#    GitLab), it aborts without overwriting anything. After such a divergence
+#    the job keeps failing until the histories are reconciled by hand.
+#
+# 2. `quality` / `migrations` / `build` / `scan` produce an image in the
+#    project registry, tagged with the commit it was built from, for the Flux
+#    deployment in flux/apps/prod/eZEUS-AI-2/deployment.yaml.
 
 stages:
+  - sync
   - quality
   - build
   - scan
@@ -20,6 +25,80 @@ variables:
   TRIVY_IMAGE: aquasec/trivy:0.74.0
   POSTGRES_IMAGE: postgres:16.15-alpine
   PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+
+# Requires the CI/CD variables GITHUB_TOKEN (GitHub token with read access to
+# GITHUB_REPO) and GITLAB_PUSH_TOKEN (a GitLab token, or a project/group access
+# token, allowed to push to the default branch) to be configured on this
+# project — they are not restored by this file.
+sync_from_github:
+  stage: sync
+
+  image:
+    name: alpine/git:latest
+    entrypoint: [""]
+
+  tags:
+    - docker
+
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+    - if: '$CI_PIPELINE_SOURCE == "web"'
+
+  variables:
+    GIT_STRATEGY: fetch
+    GIT_DEPTH: 0
+    GITHUB_REPO: "floridafischet-hash/eZEUS-AI-2"
+    SYNC_BRANCH: "main"
+
+  before_script:
+    - git config user.name "GitLab Sync Bot"
+    - git config user.email "gitlab-sync@localhost"
+
+  script:
+    - git remote remove github 2>/dev/null || true
+
+    - >
+      git remote add github
+      "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPO}.git"
+
+    - git fetch origin "${SYNC_BRANCH}" --prune
+    - git fetch github "${SYNC_BRANCH}" --prune --tags
+
+    - GITLAB_SHA="$(git rev-parse "origin/${SYNC_BRANCH}")"
+    - GITHUB_SHA="$(git rev-parse "github/${SYNC_BRANCH}")"
+
+    - 'echo "GitLab ${SYNC_BRANCH}: ${GITLAB_SHA}"'
+    - 'echo "GitHub ${SYNC_BRANCH}: ${GITHUB_SHA}"'
+
+    - |
+      if [ "${GITLAB_SHA}" = "${GITHUB_SHA}" ]; then
+        echo "GitHub und GitLab sind bereits synchron."
+        exit 0
+      fi
+
+    - |
+      if git merge-base --is-ancestor "origin/${SYNC_BRANCH}" "github/${SYNC_BRANCH}"; then
+        echo "GitLab liegt hinter GitHub. Fast-Forward ist möglich."
+      else
+        echo "FEHLER: GitHub und GitLab haben unterschiedliche Commit-Verläufe."
+        echo "Synchronisierung wird sicherheitshalber abgebrochen."
+        echo "Es wird nichts überschrieben."
+        exit 1
+      fi
+
+    - git checkout -B "${SYNC_BRANCH}" "github/${SYNC_BRANCH}"
+
+    - >
+      git push
+      "https://gitlab-ci-token:${GITLAB_PUSH_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git"
+      "${SYNC_BRANCH}:${SYNC_BRANCH}"
+
+    - >
+      git push
+      "https://gitlab-ci-token:${GITLAB_PUSH_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git"
+      --tags
+
+    - echo "Synchronisierung erfolgreich abgeschlossen."
 
 # Shared by the two Python jobs: the locked dev environment, installed exactly
 # the way the Dockerfile installs the runtime one — --require-hashes, so a
