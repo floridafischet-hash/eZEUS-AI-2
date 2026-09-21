@@ -9,7 +9,10 @@
 #
 # 2. `quality` / `migrations` / `build` / `scan` produce an image in the
 #    project registry, tagged with the commit it was built from, for the Flux
-#    deployment in flux/apps/prod/eZEUS-AI-2/deployment.yaml.
+#    deployment in flux/apps/prod/eZEUS-AI-2/deployment.yaml. None of them run
+#    on the schedule above — it would otherwise re-test and rebuild the same
+#    unchanged commit every time it fires — and `build`/`scan` additionally
+#    only run when the commit touched something the image is built from.
 
 stages:
   - sync
@@ -132,6 +135,9 @@ quality:
     # vulnerable dependency must not reach the registry.
     - python -m pip_audit -r requirements.lock --strict
   rules:
+    # Not on the sync schedule — it fires on an unchanged default branch.
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
     - if: $CI_COMMIT_TAG
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
@@ -154,9 +160,45 @@ migrations:
   script:
     - python -m pytest tests/integration/test_migration_roundtrip.py -q
   rules:
+    # Not on the sync schedule — it fires on an unchanged default branch.
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
     - if: $CI_COMMIT_TAG
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+
+# `build` and `scan` have to appear or disappear together: scan pulls the tag
+# that build pushed, so a scan without a preceding build would fail on an image
+# that is not in the registry.
+.image-rules:
+  rules:
+    # A release tag always produces its image, whatever the diff says.
+    - if: $CI_COMMIT_TAG
+    # `changes` is unusable without a Git push event — GitLab then evaluates it
+    # to true. Left in, the sync schedule would rebuild the same commit every
+    # time it fires. The same rule makes "Run pipeline" in the UI a deliberate
+    # way to force a rebuild of an unchanged commit.
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    # Only the default branch publishes, and only when something that actually
+    # ends up in the image changed. The paths below are exactly what the
+    # Dockerfile copies; a commit touching only docs, tests or CI leaves the
+    # previous image in place — which is still the one the Flux repo points at.
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      changes:
+        - Dockerfile
+        - .dockerignore
+        - pyproject.toml
+        - requirements.lock
+        - alembic.ini
+        - apps/**/*
+        - connectors/**/*
+        - core/**/*
+        - infrastructure/**/*
+        - plugins/**/*
+        - scripts/**/*
+        - webhooks/**/*
+        - tests/fixtures/invoice.pdf
 
 # Built with Kaniko, not docker-in-docker: the `docker`-tagged runners are
 # unprivileged. dind fails there before it starts — it cannot mount
@@ -169,6 +211,7 @@ migrations:
 # restoring the dind job is the smaller change; Buildah needs seccomp and
 # AppArmor exceptions in the runner config on a Docker executor.
 build:
+  extends: .image-rules
   stage: build
   image:
     name: $KANIKO_IMAGE
@@ -209,11 +252,6 @@ build:
         --dockerfile "$CI_PROJECT_DIR/Dockerfile" \
         $DESTINATIONS
     - echo "Set image to $IMAGE:$CI_COMMIT_SHORT_SHA in flux/apps/prod/eZEUS-AI-2/deployment.yaml"
-  rules:
-    # Only the default branch and tags produce images. Merge requests run the
-    # quality stage but must not publish anything pullable.
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-    - if: $CI_COMMIT_TAG
 
 # Scanned after the push rather than before it, which the dind job could do
 # because it had the image locally. Kaniko pushes straight from its build, so
@@ -224,6 +262,7 @@ build:
 # red scan means the SHA never gets entered, and the image sits in the
 # registry unreferenced.
 scan:
+  extends: .image-rules
   stage: scan
   image:
     name: $TRIVY_IMAGE
@@ -245,6 +284,3 @@ scan:
     paths:
       - ezeus-ai-2.sbom.json
     expire_in: 30 days
-  rules:
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-    - if: $CI_COMMIT_TAG
