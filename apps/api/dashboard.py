@@ -442,7 +442,6 @@ def processing_logs(
         finished_at = job.finished_at
         slug = instance_slug_from_connector(document.connector)
         steps: list[dict[str, object]] = []
-        job_warnings: list[str] = []
         for phase_entry in phase_entries:
             phase_finished_at = phase_entry.finished_at
             phase_name = phase_entry.phase.value
@@ -454,7 +453,6 @@ def processing_logs(
                 for k, v in (phase_entry.metadata_json or {}).items()
             }
             step_warnings = derive_step_warnings(phase_name, step_metadata)
-            job_warnings.extend(step_warnings)
             steps.append(
                 {
                     "phase": phase_name,

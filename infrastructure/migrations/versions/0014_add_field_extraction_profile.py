@@ -15,13 +15,6 @@ branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
 
-def _has_extraction_profile() -> bool:
-    columns = {
-        column["name"] for column in sa.inspect(op.get_bind()).get_columns("instance_field_configs")
-    }
-    return "extraction_profile" in columns
-
-
 def upgrade() -> None:
     columns = {
         column["name"] for column in sa.inspect(op.get_bind()).get_columns("instance_field_configs")

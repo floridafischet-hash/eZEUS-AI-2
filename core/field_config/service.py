@@ -134,20 +134,17 @@ class RuntimeFieldConfiguration:
 def normalized_name(value: str) -> str:
     decomposed = unicodedata.normalize("NFKD", value)
     return "".join(character for character in decomposed if character.isalnum()).casefold()
+
+
 def standard_field_key_for_label(value: str) -> str | None:
     normalized = normalized_name(value)
 
     for definition in STANDARD_FIELDS:
         field_key = str(definition["field_key"])
 
-        valid_names = {
-            normalized_name(str(definition["label"]))
-        }
+        valid_names = {normalized_name(str(definition["label"]))}
 
-        valid_names.update(
-            normalized_name(alias)
-            for alias in FIELD_ALIASES.get(field_key, ())
-        )
+        valid_names.update(normalized_name(alias) for alias in FIELD_ALIASES.get(field_key, ()))
 
         if normalized in valid_names:
             return field_key
@@ -307,18 +304,16 @@ class FieldConfigurationService:
             for field in configured
             if field.external_field_id is not None
         }
-    by_name = {
-        normalized_name(field.label): field
-        for field in configured
-}
+        by_name = {normalized_name(field.label): field for field in configured}
 
-    # Auch bekannte Aliase auf Standardfelder abbilden.
-    for configured_field in configured:
-        for alias in FIELD_ALIASES.get(configured_field.field_key, ()):
-            by_name.setdefault(
-                normalized_name(alias),
-                configured_field,
-            )
+        # Auch bekannte Aliase auf Standardfelder abbilden.
+        for configured_field in configured:
+            for alias in FIELD_ALIASES.get(configured_field.field_key, ()):
+                by_name.setdefault(
+                    normalized_name(alias),
+                    configured_field,
+                )
+
         used_keys = {field.field_key for field in configured}
         next_sort_order = max((field.sort_order for field in configured), default=0) + 10
 
@@ -430,31 +425,22 @@ class FieldConfigurationService:
             providers: list[dict[str, object]] = []
             profile = extraction_profile(field.extraction_profile)
             if field.ocr_enabled:
+                patterns: list[str] | None
                 if profile is not None:
-        patterns = profile["patterns"]
+                    patterns = profile["patterns"]
                 else:
-        patterns = STANDARD_PATTERNS.get(field.field_key)
-
-        # Auch importierte Paperless-Felder anhand ihres Namens
-        # bekannten eZEUS-Standardfeldern zuordnen.
+                    patterns = STANDARD_PATTERNS.get(field.field_key)
+                    # Auch importierte Paperless-Felder anhand ihres Namens
+                    # bekannten eZEUS-Standardfeldern zuordnen.
                     if patterns is None:
-            standard_key = standard_field_key_for_label(field.label)
+                        standard_key = standard_field_key_for_label(field.label)
+                        if standard_key is not None:
+                            patterns = STANDARD_PATTERNS.get(standard_key)
 
-                    if standard_key is not None:
-                  patterns = STANDARD_PATTERNS.get(standard_key)
+                if patterns is None:
+                    escaped = re.escape(field.label)
+                    patterns = [rf"(?im)^\s*{escaped}\s*[:.]?\s*(.+?)\s*$"]
 
-    if patterns is None:
-        escaped = re.escape(field.label)
-        patterns = [
-            rf"(?im)^\s*{escaped}\s*[:.]?\s*(.+?)\s*$"
-        ]
-
-    providers.append(
-        {
-            "type": "regex",
-            "patterns": patterns,
-        }
-    )
                 providers.append({"type": "regex", "patterns": patterns})
             if field.ai_enabled and get_settings().ollama_enabled:
                 providers.append(
