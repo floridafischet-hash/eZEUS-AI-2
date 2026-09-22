@@ -29,10 +29,16 @@ variables:
   POSTGRES_IMAGE: postgres:16.15-alpine
   PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
 
-# Requires the CI/CD variables GITHUB_TOKEN (GitHub token with read access to
-# GITHUB_REPO) and GITLAB_PUSH_TOKEN (a GitLab token, or a project/group access
-# token, allowed to push to the default branch) to be configured on this
-# project — they are not restored by this file.
+# Requires two CI/CD variables on this project, both Protected — the default
+# branch is protected, so an unprotected variable would simply be empty here
+# and the job would fail at the push with an authentication error:
+#   GH_SYNC_TOKEN      fine-grained GitHub PAT on GITHUB_REPO with Contents
+#                      and Pull requests set to read/write. Write is needed
+#                      for the drift branch below, not for the fast-forward.
+#   GITLAB_PUSH_TOKEN  project access token with the Maintainer role and
+#                      write_repository — Developer is not enough, the
+#                      default branch only accepts pushes from Maintainers.
+# They are not restored by this file.
 sync_from_github:
   stage: sync
 
@@ -45,6 +51,11 @@ sync_from_github:
 
   rules:
     - if: '$CI_PIPELINE_SOURCE == "schedule"'
+    # "web" is the Run pipeline button, "api" is POST /projects/:id/pipeline —
+    # GitLab treats them as different sources, so a run started with glab or
+    # curl needs its own rule. Without it the pipeline comes up without this
+    # job at all, which is what happened in #5521.
+    - if: '$CI_PIPELINE_SOURCE == "api"'
     - if: '$CI_PIPELINE_SOURCE == "web"'
 
   variables:
@@ -54,6 +65,9 @@ sync_from_github:
     SYNC_BRANCH: "main"
 
   before_script:
+    # The drift handling below talks to the GitHub API; alpine/git ships
+    # neither curl nor jq.
+    - apk add --no-cache curl jq
     - git config user.name "GitLab Sync Bot"
     - git config user.email "gitlab-sync@localhost"
 
@@ -62,7 +76,7 @@ sync_from_github:
 
     - >
       git remote add github
-      "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPO}.git"
+      "https://x-access-token:${GH_SYNC_TOKEN}@github.com/${GITHUB_REPO}.git"
 
     - git fetch origin "${SYNC_BRANCH}" --prune
     - git fetch github "${SYNC_BRANCH}" --prune --tags
@@ -83,10 +97,51 @@ sync_from_github:
       if git merge-base --is-ancestor "origin/${SYNC_BRANCH}" "github/${SYNC_BRANCH}"; then
         echo "GitLab liegt hinter GitHub. Fast-Forward ist möglich."
       else
-        echo "FEHLER: GitHub und GitLab haben unterschiedliche Commit-Verläufe."
-        echo "Synchronisierung wird sicherheitshalber abgebrochen."
-        echo "Es wird nichts überschrieben."
-        exit 1
+        echo "WARNUNG: GitLab und GitHub sind auseinandergelaufen."
+        echo "Commits, die nur in GitLab liegen:"
+        git log --oneline --no-decorate "github/${SYNC_BRANCH}..origin/${SYNC_BRANCH}"
+
+        # Branch name derived from the GitLab SHA, not from a timestamp: as
+        # long as GitLab does not move, the name stays the same and the push
+        # below is a no-op. With a timestamp the 10-minute schedule would
+        # instead open 144 branches a day until the drift is cleaned up.
+        DRIFT_BRANCH="gitlab-drift/$(git rev-parse --short "origin/${SYNC_BRANCH}")"
+        GITHUB_OWNER="${GITHUB_REPO%%/*}"
+
+        git push github "origin/${SYNC_BRANCH}:refs/heads/${DRIFT_BRANCH}"
+
+        # One PR per drift branch — without this check every run opens another.
+        OPEN=$(curl -sS \
+          -H "Authorization: Bearer ${GH_SYNC_TOKEN}" \
+          -H "Accept: application/vnd.github+json" \
+          "https://api.github.com/repos/${GITHUB_REPO}/pulls?state=open&head=${GITHUB_OWNER}:${DRIFT_BRANCH}" \
+          | jq -r 'length')
+
+        if [ "${OPEN}" = "0" ]; then
+          jq -n \
+            --arg head "${DRIFT_BRANCH}" \
+            --arg base "${SYNC_BRANCH}" \
+            --arg sha "${GITLAB_SHA}" \
+            '{title: "GitLab-Drift zurückführen (\($head))",
+              head: $head, base: $base,
+              body: "Automatisch vom GitLab-Sync-Job angelegt.\n\nIn GitLab wurde direkt auf `\($base)` committet (`\($sha)`), wodurch die Historien auseinanderlaufen und der Fast-Forward-Sync blockiert ist.\n\nNach dem Merge dieses PR läuft der Sync von selbst wieder an."}' \
+            > /tmp/pr.json
+          curl -sS --fail-with-body -X POST \
+            -H "Authorization: Bearer ${GH_SYNC_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${GITHUB_REPO}/pulls" \
+            -d @/tmp/pr.json > /dev/null
+          echo "Pull Request für ${DRIFT_BRANCH} angelegt."
+        else
+          echo "Pull Request für ${DRIFT_BRANCH} ist bereits offen."
+        fi
+
+        # Deliberately 0, not 1: the job did exactly what it should — it
+        # detected the drift and escalated it, and the PR is the durable
+        # signal. Exiting 1 would turn one problem into up to 144 red
+        # pipelines a day, which nobody keeps looking at.
+        echo "Sync übersprungen. Nach dem Merge des PR läuft er wieder an."
+        exit 0
       fi
 
     - git checkout -B "${SYNC_BRANCH}" "github/${SYNC_BRANCH}"
@@ -200,6 +255,78 @@ migrations:
         - webhooks/**/*
         - tests/fixtures/invoice.pdf
 
+# Asks the registry whether this commit's tag already exists, and hands the
+# answer to `build` as a dotenv variable. It runs a stage earlier because the
+# Kaniko image has no HTTP client and no package manager to add one, while
+# $PYTHON_IMAGE is already pinned and urllib needs no install.
+#
+# allow_failure is the important part: if the registry is unreachable — the
+# 405 in pipeline #5499 showed that happens — this job going red must not
+# block the build. IMAGE_EXISTS then stays unset and `build` builds as before.
+image_check:
+  extends: .image-rules
+  stage: quality
+  image: $PYTHON_IMAGE
+  tags:
+    - docker
+  timeout: 5m
+  allow_failure: true
+  script:
+    - |
+      python - <<'PY'
+      import base64, json, os, urllib.error, urllib.request
+
+      repo = os.environ["CI_REGISTRY_IMAGE"].split("/", 1)[1]
+      tag = os.environ["CI_COMMIT_SHORT_SHA"]
+
+      basic = base64.b64encode(
+          "{}:{}".format(
+              os.environ["CI_REGISTRY_USER"], os.environ["CI_REGISTRY_PASSWORD"]
+          ).encode()
+      ).decode()
+
+      # The registry itself only speaks bearer tokens; GitLab issues them here.
+      auth = urllib.request.Request(
+          "https://{}/jwt/auth?service=container_registry"
+          "&scope=repository:{}:pull".format(os.environ["CI_SERVER_HOST"], repo),
+          headers={"Authorization": "Basic " + basic},
+      )
+      token = json.load(urllib.request.urlopen(auth, timeout=30))["token"]
+
+      manifest = urllib.request.Request(
+          "https://{}/v2/{}/manifests/{}".format(os.environ["CI_REGISTRY"], repo, tag),
+          method="HEAD",
+          headers={
+              "Authorization": "Bearer " + token,
+              # Without these the registry answers 404 even for a tag that is
+              # there, because it defaults to the v1 manifest type.
+              "Accept": ", ".join([
+                  "application/vnd.oci.image.index.v1+json",
+                  "application/vnd.oci.image.manifest.v1+json",
+                  "application/vnd.docker.distribution.manifest.list.v2+json",
+                  "application/vnd.docker.distribution.manifest.v2+json",
+              ]),
+          },
+      )
+
+      try:
+          urllib.request.urlopen(manifest, timeout=30)
+          exists = True
+      except urllib.error.HTTPError as err:
+          # Only a clean 404 means "not built yet". Anything else is a real
+          # problem and should surface instead of being read as "not there".
+          if err.code != 404:
+              raise
+          exists = False
+
+      print("{}:{} bereits in der Registry: {}".format(repo, tag, exists))
+      with open("image.env", "w") as handle:
+          handle.write("IMAGE_EXISTS={}\n".format("true" if exists else "false"))
+      PY
+  artifacts:
+    reports:
+      dotenv: image.env
+
 # Built with Kaniko, not docker-in-docker: the `docker`-tagged runners are
 # unprivileged. dind fails there before it starts — it cannot mount
 # /sys/kernel/security, never opens 2375/2376, and the job then dies on a
@@ -242,6 +369,19 @@ build:
     #
     # A release tag additionally gets its own immutable tag, so a version can
     # be named in the Flux repo instead of a SHA.
+    #
+    # Skipped when image_check found the tag already in the registry: the tag
+    # *is* the commit SHA, so an existing tag means identical sources. This
+    # check sits here and not in `rules` because `changes:` evaluates to true
+    # in every pipeline without a Git push event — schedule, web and api — so
+    # the rules alone cannot tell an unchanged commit from a changed one.
+    # Pipeline #5521 rebuilt an untouched commit for exactly that reason.
+    - |
+      if [ "$IMAGE_EXISTS" = "true" ] && [ -z "$FORCE_REBUILD" ]; then
+        echo "$IMAGE:$CI_COMMIT_SHORT_SHA liegt bereits in der Registry."
+        echo "Build übersprungen — FORCE_REBUILD=1 erzwingt einen Neubau."
+        exit 0
+      fi
     - |
       DESTINATIONS="--destination $IMAGE:$CI_COMMIT_SHORT_SHA"
       if [ -n "$CI_COMMIT_TAG" ]; then
