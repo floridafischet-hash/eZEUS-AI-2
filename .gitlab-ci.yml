@@ -377,9 +377,24 @@ build:
     # the rules alone cannot tell an unchanged commit from a changed one.
     # Pipeline #5521 rebuilt an untouched commit for exactly that reason.
     - |
-      if [ "$IMAGE_EXISTS" = "true" ] && [ -z "$FORCE_REBUILD" ]; then
+      if [ "$IMAGE_EXISTS" = "true" ] && [ -z "$FORCE_REBUILD" ] \
+         && [ -z "$CI_COMMIT_TAG" ]; then
         echo "$IMAGE:$CI_COMMIT_SHORT_SHA liegt bereits in der Registry."
         echo "Build übersprungen — FORCE_REBUILD=1 erzwingt einen Neubau."
+        exit 0
+      fi
+    # The check above only answers "is this commit already built", not "should
+    # it be built at all". Without a Git push event `changes:` is true, so a
+    # manual run on a docs-only commit passes the rules and builds an image
+    # nobody asked for — that is how 47450086 ended up in the registry. A
+    # release tag still always builds, and FORCE_REBUILD=1 is the deliberate
+    # way to rebuild an unchanged commit.
+    - |
+      if [ -z "$FORCE_REBUILD" ] && [ -z "$CI_COMMIT_TAG" ] \
+         && [ "$CI_PIPELINE_SOURCE" != "push" ]; then
+        echo "Lauf ohne Push-Event ($CI_PIPELINE_SOURCE) — die Änderungs-"
+        echo "erkennung ist hier nicht verlässlich, es wird nicht gebaut."
+        echo "FORCE_REBUILD=1 erzwingt einen Neubau."
         exit 0
       fi
     - |
@@ -415,6 +430,18 @@ scan:
     TRIVY_USERNAME: $CI_REGISTRY_USER
     TRIVY_PASSWORD: $CI_REGISTRY_PASSWORD
   script:
+    # `build` skips itself in runs without a Git push event, so there may be no
+    # image under this tag at all — trivy would then fail on a missing image
+    # rather than on a vulnerability. Skipped only when nothing was built *and*
+    # nothing was there before; an image that already existed still gets
+    # re-scanned, which is worth having as new advisories appear.
+    - |
+      if [ "$IMAGE_EXISTS" != "true" ] && [ -z "$FORCE_REBUILD" ] \
+         && [ -z "$CI_COMMIT_TAG" ] && [ "$CI_PIPELINE_SOURCE" != "push" ]; then
+        echo "Kein Image unter $IMAGE:$CI_COMMIT_SHORT_SHA und keins gebaut."
+        echo "Scan übersprungen."
+        exit 0
+      fi
     - trivy image --scanners vuln --exit-code 1 --ignore-unfixed
       --severity HIGH,CRITICAL "$IMAGE:$CI_COMMIT_SHORT_SHA"
     - trivy image --format cyclonedx --output ezeus-ai-2.sbom.json
