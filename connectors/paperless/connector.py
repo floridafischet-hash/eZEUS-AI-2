@@ -419,6 +419,53 @@ class PaperlessConnector(DocumentConnector):
             url = str(next_url) if next_url else ""
         return correspondents
 
+    async def ensure_correspondent(
+        self,
+        name: str,
+        correspondents: list[ConnectorCorrespondent] | None = None,
+    ) -> ConnectorCorrespondent:
+        normalized_name = " ".join(name.casefold().split())
+        available = (
+            correspondents if correspondents is not None else await self.list_correspondents()
+        )
+        existing = next(
+            (
+                item
+                for item in available
+                if " ".join(item.name.casefold().split()) == normalized_name
+            ),
+            None,
+        )
+        if existing is not None:
+            return existing
+        try:
+            response = await self._request(
+                "POST",
+                "/api/correspondents/",
+                json={"name": name},
+            )
+        except (ConflictError, ValidationError):
+            refreshed = await self.list_correspondents()
+            existing = next(
+                (
+                    item
+                    for item in refreshed
+                    if " ".join(item.name.casefold().split()) == normalized_name
+                ),
+                None,
+            )
+            if existing is None:
+                raise
+            return existing
+        item = response.json()
+        return ConnectorCorrespondent(
+            external_id=str(item["id"]),
+            name=str(item["name"]),
+            match=str(item.get("match") or ""),
+            matching_algorithm=int(item.get("matching_algorithm") or 0),
+            is_insensitive=bool(item.get("is_insensitive", True)),
+        )
+
     async def write_title(self, document: ConnectorDocument, title: str) -> bool:
         if document.title == title:
             return False

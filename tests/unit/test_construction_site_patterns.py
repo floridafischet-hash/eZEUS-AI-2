@@ -21,6 +21,14 @@ async def _extract(text: str) -> list[object]:
         ("BV- 25095, Drochtersen", ["25095"]),
         ("BV. 2513, Stade", ["2513"]),
         (
+            "Kunden-Nr.: 1000101\n"
+            "Baustelle : 18570 25113 Finanzamt, Am Staatsarchiv, Stade\n"
+            "Artikel Menge ME Preis Gesamt",
+            ["25113"],
+        ),
+        ("Baustelle: 18570 24000 Gültige Untergrenze", ["24000"]),
+        ("Baustelle: 18570 99999 Gültige Obergrenze", ["99999"]),
+        (
             "Lieferdatum LS-Nr Bezeichnung Menge Rabatt Einzelpreis Gesamt\n\n"
             "26070 Kinderkrippe Mäusehöhle, Gnarrenburg\n"
             "Lieferwerk: Bremervörde",
@@ -41,6 +49,8 @@ async def test_construction_site_patterns_extract_supported_layouts(
         "Ihre Referenz: BV. Buck, Jütlandstraße",
         "Lieferanschrift: BV. Behrmann\n#\nPotsdamer Weg 4",
         "Ihre Referenz: BV OHZ Benjamin Klose",
+        "Baustelle: 18570 23999 Unterhalb des gültigen Bereichs",
+        "Baustelle: 18570 100000 Oberhalb des gültigen Bereichs",
     ],
 )
 async def test_construction_site_patterns_reject_names(text: str) -> None:

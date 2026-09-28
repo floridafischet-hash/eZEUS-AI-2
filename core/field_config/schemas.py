@@ -4,6 +4,7 @@ from typing import Literal, cast
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from core.field_config.profiles import EXTRACTION_PROFILES, extraction_profile
+from core.paperless.title_template import InvalidTemplateError, validate_template
 
 FieldType = Literal["text", "number", "money", "date", "boolean", "select", "textarea"]
 FIELD_KEY_PATTERN = re.compile(r"^[a-z][a-z0-9_]{1,63}$")
@@ -70,6 +71,20 @@ class FieldConfigurationInput(BaseModel):
 
 class FieldConfigurationSave(BaseModel):
     fields: list[FieldConfigurationInput] = Field(min_length=1, max_length=200)
+    title_template: str | None = Field(default=None, max_length=512)
+    allow_title_overwrite: bool | None = None
+
+    @field_validator("title_template")
+    @classmethod
+    def validate_title_template(cls, value: str | None) -> str | None:
+        normalized = value.strip() if value is not None else None
+        if not normalized:
+            return None
+        try:
+            validate_template(normalized)
+        except InvalidTemplateError as exc:
+            raise ValueError(str(exc)) from exc
+        return normalized
 
     @model_validator(mode="after")
     def unique_keys(self) -> "FieldConfigurationSave":

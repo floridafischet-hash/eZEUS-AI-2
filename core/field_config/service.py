@@ -20,45 +20,52 @@ from core.templates.schema import TemplateConfig
 
 STANDARD_FIELDS: tuple[dict[str, object], ...] = (
     {
+        "field_key": "title",
+        "label": "Dokumenttitel",
+        "field_type": "text",
+        "sort_order": 10,
+        "required": False,
+    },
+    {
         "field_key": "correspondent",
         "label": "Korrespondent",
         "field_type": "text",
-        "sort_order": 10,
+        "sort_order": 20,
         "required": False,
     },
     {
         "field_key": "invoice_number",
         "label": "Rechnungsnummer",
         "field_type": "text",
-        "sort_order": 20,
+        "sort_order": 30,
         "required": True,
     },
     {
         "field_key": "invoice_date",
         "label": "Rechnungsdatum",
         "field_type": "date",
-        "sort_order": 30,
+        "sort_order": 40,
         "required": False,
     },
     {
         "field_key": "invoice_amount",
         "label": "Rechnungsbetrag",
         "field_type": "money",
-        "sort_order": 40,
+        "sort_order": 50,
         "required": True,
     },
     {
         "field_key": "customer_number",
         "label": "Kundennummer",
         "field_type": "text",
-        "sort_order": 50,
+        "sort_order": 60,
         "required": False,
     },
     {
         "field_key": "construction_site_number",
         "label": "Baustellennummer",
         "field_type": "text",
-        "sort_order": 60,
+        "sort_order": 70,
         "required": False,
     },
 )
@@ -68,14 +75,28 @@ STANDARD_PATTERNS: dict[str, list[str]] = {
     "invoice_amount": cast(list[str], FIELD_DEFINITIONS["rechnungsbetrag"]["patterns"]),
     "invoice_date": [r"(?i)(?:Rechnungsdatum|Datum)\s*[:.]?\s*(\d{1,2}[./-]\d{1,2}[./-]\d{2,4})"],
     "customer_number": [
+        r"(?im)^\s*Kundennummer\s+Belegnummer\s+Belegdatum"
+        r"(?:\s+Seite\s+\d+)?\s*$"
+        r"\s*^\s*Rechnung\s+"
+        r"(?=[A-Z0-9./_-]*\d)([A-Z0-9][A-Z0-9./_-]*)\s+"
+        r"[A-Z0-9][A-Z0-9./_-]*\s+"
+        r"\d{1,2}[./-]\d{1,2}[./-]\d{2,4}\s*$",
         r"(?i)(?:Kundennummer|Kunden[\s.-]*(?:Nr|Nummer)\.?)"
-        r"\s*[:.]?\s*([A-Z0-9][A-Z0-9./_-]*)"
+        r"[ \t]*[:.]?[ \t]*"
+        r"(?!Belegnummer\b)"
+        r"(?=[A-Z0-9./_-]*\d)"
+        r"([A-Z0-9][A-Z0-9./_-]*)",
     ],
     "construction_site_number": [
+        # Ernst Hasselbring prints an internal five-digit number before the
+        # actual construction-site number.  Only the second number is the
+        # desired value, and it is contractually in the range 24000-99999.
+        r"(?im)^\s*Baustelle\s*[:.]?\s*\d{4,6}\s+"
+        r"((?:2[4-9]\d{3}|[3-9]\d{4}))(?!\d)",
         r"(?i)#\s*(\d{4,6})(?!\d)",
-        r"(?i)(?:BV(?:[\s.-]*(?:Nr|Nummer))?|"
-        r"Baustellen?(?:[\s.-]*(?:Nr|Nummer))?)"
-        r"[\s.:-]*(\d{4,6})(?!\d)",
+        r"(?i)BV(?:[\s.-]*(?:Nr|Nummer))?[\s.:-]*(\d{4,6})(?!\d)",
+        r"(?i)Baustellen?(?:[\s.-]*(?:Nr|Nummer))?[\s.:-]*"
+        r"(?!\d{4,6}\s+\d{4,6}(?!\d))(\d{4,6})(?!\d)",
         r"(?im)^\s*(\d{4,6})\s+[^\n]+\n\s*Lieferwerk\s*:",
     ],
 }
@@ -129,6 +150,13 @@ class RuntimeFieldConfiguration:
     required_keys: frozenset[str]
     correspondent_enabled: bool
     correspondent_required: bool
+    correspondent_rule_enabled: bool
+    correspondent_ai_enabled: bool
+    correspondent_instructions: str
+    title_enabled: bool
+    title_rule_enabled: bool
+    title_ai_enabled: bool
+    title_instructions: str
 
 
 def normalized_name(value: str) -> str:
@@ -166,9 +194,11 @@ class FieldConfigurationService:
 
     def ensure_defaults(self, instance: PaperlessInstance) -> list[InstanceFieldConfig]:
         existing = self.list_fields(instance.id)
-        if existing:
-            return existing
+        existing_keys = {field.field_key for field in existing}
+        changed = False
         for definition in STANDARD_FIELDS:
+            if str(definition["field_key"]) in existing_keys:
+                continue
             self.db.add(
                 InstanceFieldConfig(
                     instance_id=instance.id,
@@ -184,7 +214,9 @@ class FieldConfigurationService:
                     options=[],
                 )
             )
-        self.db.commit()
+            changed = True
+        if changed:
+            self.db.commit()
         return self.list_fields(instance.id)
 
     def list_fields(self, instance_id: UUID) -> list[InstanceFieldConfig]:
@@ -303,17 +335,22 @@ class FieldConfigurationService:
             field.external_field_id: field
             for field in configured
             if field.external_field_id is not None
+            and field.field_key not in {"title", "correspondent"}
         }
-        by_name = {normalized_name(field.label): field for field in configured}
-
+        by_name = {
+            normalized_name(field.label): field
+            for field in configured
+            if field.field_key not in {"title", "correspondent"}
+        }
         # Auch bekannte Aliase auf Standardfelder abbilden.
         for configured_field in configured:
+            if configured_field.field_key in {"title", "correspondent"}:
+                continue
             for alias in FIELD_ALIASES.get(configured_field.field_key, ()):
                 by_name.setdefault(
                     normalized_name(alias),
                     configured_field,
                 )
-
         used_keys = {field.field_key for field in configured}
         next_sort_order = max((field.sort_order for field in configured), default=0) + 10
 
@@ -399,6 +436,13 @@ class FieldConfigurationService:
         required_keys: set[str] = set()
         correspondent_enabled = False
         correspondent_required = False
+        correspondent_rule_enabled = False
+        correspondent_ai_enabled = False
+        correspondent_instructions = ""
+        title_enabled = False
+        title_rule_enabled = False
+        title_ai_enabled = False
+        title_instructions = ""
         for field in configured:
             if not field.enabled:
                 continue
@@ -408,6 +452,15 @@ class FieldConfigurationService:
             if field.field_key == "correspondent":
                 correspondent_enabled = field.ocr_enabled or field.ai_enabled
                 correspondent_required = field.required
+                correspondent_rule_enabled = field.ocr_enabled
+                correspondent_ai_enabled = field.ai_enabled and get_settings().ollama_enabled
+                correspondent_instructions = field.extraction_instructions or ""
+                continue
+            if field.field_key == "title":
+                title_enabled = True
+                title_rule_enabled = field.ocr_enabled
+                title_ai_enabled = field.ai_enabled and get_settings().ollama_enabled
+                title_instructions = field.extraction_instructions or ""
                 continue
             target_id = self._target_id(field, external_by_name)
             value_mapping: dict[str, object] = {}
@@ -466,6 +519,13 @@ class FieldConfigurationService:
             required_keys=frozenset(required_keys),
             correspondent_enabled=correspondent_enabled,
             correspondent_required=correspondent_required,
+            correspondent_rule_enabled=correspondent_rule_enabled,
+            correspondent_ai_enabled=correspondent_ai_enabled,
+            correspondent_instructions=correspondent_instructions,
+            title_enabled=title_enabled,
+            title_rule_enabled=title_rule_enabled,
+            title_ai_enabled=title_ai_enabled,
+            title_instructions=title_instructions,
         )
 
     async def synchronize_paperless_fields(
@@ -478,7 +538,7 @@ class FieldConfigurationService:
         remote_fields = await connector.list_custom_fields()
         remote_by_name = {normalized_name(field.name): field for field in remote_fields}
         for field in self.ensure_defaults(instance):
-            if not field.enabled or field.field_key == "correspondent":
+            if not field.enabled or field.field_key in {"title", "correspondent"}:
                 continue
             expected_type = PAPERLESS_FIELD_TYPES[field.field_type]
             remote = None

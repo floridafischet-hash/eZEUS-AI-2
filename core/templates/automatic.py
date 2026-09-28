@@ -15,6 +15,12 @@ FIELD_DEFINITIONS: dict[str, dict[str, object]] = {
         "validators": [{"type": "not_empty"}, {"type": "length", "min": 1, "max": 100}],
         "selection_strategy": "first",
         "patterns": [
+            r"(?im)^\s*Kundennummer\s+Belegnummer\s+Belegdatum"
+            r"(?:\s+Seite\s+\d+)?\s*$"
+            r"\s*^\s*Rechnung\s+"
+            r"[A-Z0-9][A-Z0-9./_-]*\s+"
+            r"(?=[A-Z0-9./_-]*\d)([A-Z0-9][A-Z0-9./_-]*)\s+"
+            r"\d{1,2}[./-]\d{1,2}[./-]\d{2,4}\s*$",
             r"(?im)^\s*Datum\s*:\s+"
             r"(?:Rechnungsnummer|Rechnung(?:s)?[\s.-]*(?:Nr|Nummer)\.?)\s*:\s+"
             r"(?:Kundennummer|Kunden[\s.-]*(?:Nr|Nummer)\.?)\s*:\s*$"
@@ -46,6 +52,12 @@ FIELD_DEFINITIONS: dict[str, dict[str, object]] = {
         "validators": [{"type": "not_empty"}, {"type": "monetary_amount"}],
         "selection_strategy": "highest",
         "patterns": [
+            r"(?im)^\s*Nettowarenwert\s+MwSt\s+MwSt\s+Betrag\s+"
+            r"Total\s+inkl\.?\s*MwSt\.?\s*$"
+            r"\s*^\s*[\d.,]+\d{2}\s+"
+            r"\d{1,2}(?:[.,]\d{2})?\s*%\s+"
+            r"[\d.,]+\d{2}\s+"
+            r"([\d.,]+\d{2})\s*(?:EUR|€)?\s*$",
             r"(?im)^\s*Total\s+(?:EUR|€)\s+inkl\.?\s*(?:MwSt|USt)\.?\s*[:.]?\s*"
             r"([\d.,]+\d{2})\s*(?:EUR|€)?\s*$",
             r"(?im)^\s*Gesamt\s+"

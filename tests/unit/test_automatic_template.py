@@ -1,6 +1,7 @@
 import pytest
 
 from connectors.base.interface import ConnectorCustomField
+from core.field_config.service import STANDARD_PATTERNS
 from core.templates.automatic import config_from_custom_fields
 from plugins.extraction.regex import RegexExtractionProvider
 
@@ -360,3 +361,67 @@ async def test_invoice_amount_patterns_collect_totals_from_all_pages() -> None:
         "119,00",
         "250,00",
     ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("invoice_number", "net", "tax", "gross"),
+    [
+        ("6061974", "2.008,42", "381,60", "2.390,02"),
+        ("6065441", "1.323,60", "251,48", "1.575,08"),
+        ("6064039", "2.108,04", "400,53", "2.508,57"),
+        ("6066111", "894,58", "169,97", "1.064,55"),
+        ("6065870", "716,92", "136,21", "853,13"),
+        ("6061212", "81,98", "15,58", "97,56"),
+        ("6066649", "729,50", "138,61", "868,11"),
+        ("6066648", "663,67", "126,10", "789,77"),
+        ("6066647", "530,25", "100,75", "631,00"),
+    ],
+)
+async def test_mibau_table_layout_extracts_invoice_customer_and_gross_total(
+    invoice_number: str,
+    net: str,
+    tax: str,
+    gross: str,
+) -> None:
+    config = config_from_custom_fields(
+        [
+            ConnectorCustomField("93", "Rechnungsnummer", "string"),
+            ConnectorCustomField("95", "Rechnungsbetrag", "monetary"),
+        ]
+    )
+    assert config is not None
+    text = (
+        "Bitte bei Zahlung angeben\n"
+        "Kundennummer Belegnummer Belegdatum Seite 1\n"
+        f"Rechnung 1900005 {invoice_number} 21.09.26\n"
+        "Summe Artikel: 15,00 530,25 €\n"
+        "Nettowarenwert MWSt MWSt Betrag Total inkl. MWSt\n"
+        f"{net} 19,00 % {tax} {gross} €\n"
+    )
+    number_provider = config.fields["invoice_number"].providers[0]
+    amount_provider = config.fields["invoice_amount"].providers[0]
+
+    numbers = await RegexExtractionProvider().extract(
+        text, number_provider.model_dump(exclude={"type"})
+    )
+    amounts = await RegexExtractionProvider().extract(
+        text, amount_provider.model_dump(exclude={"type"})
+    )
+    customers = await RegexExtractionProvider().extract(
+        text, {"patterns": STANDARD_PATTERNS["customer_number"]}
+    )
+
+    assert [candidate.value for candidate in numbers] == [invoice_number]
+    assert [candidate.value for candidate in amounts] == [gross]
+    assert [candidate.value for candidate in customers] == ["1900005"]
+
+
+@pytest.mark.asyncio
+async def test_customer_number_pattern_rejects_mibau_column_header() -> None:
+    candidates = await RegexExtractionProvider().extract(
+        "Kundennummer Belegnummer Belegdatum Seite 1",
+        {"patterns": STANDARD_PATTERNS["customer_number"]},
+    )
+
+    assert candidates == []

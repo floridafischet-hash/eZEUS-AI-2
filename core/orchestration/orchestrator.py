@@ -5,8 +5,14 @@ from uuid import UUID
 
 from sqlalchemy.orm import Session
 
+from connectors.base.errors import ConnectorError
 from connectors.base.interface import ConnectorDocument, DocumentConnector
-from core.correspondents.matcher import match_correspondent
+from core.correspondents.matcher import (
+    DEFAULT_CORRESPONDENT_NAME,
+    CorrespondentMatch,
+    default_correspondent,
+    match_correspondent,
+)
 from core.field_config.service import FieldConfigurationService, RuntimeFieldConfiguration
 from core.metrics import JOBS_TOTAL, PHASE_DURATION_SECONDS
 from core.models.audit import AuditEntry
@@ -33,6 +39,7 @@ from core.validation.engine import ValidationEngine
 from plugins.base.interfaces import ExtractionCandidate
 from plugins.extraction.keyword import KeywordExtractionProvider
 from plugins.extraction.regex import RegexExtractionProvider
+from plugins.llm.metadata import OllamaMetadataProvider
 from plugins.llm.ollama import OllamaExtractionProvider
 
 logger = logging.getLogger(__name__)
@@ -325,8 +332,26 @@ class Orchestrator:
             title_written = False
             invoice_number = extracted_by_key.get("invoice_number")
             title_template = (instance.title_template or "").strip() if instance is not None else ""
-            new_title: str | None
-            if title_template:
+            title_enabled = runtime_fields.title_enabled if runtime_fields is not None else True
+            new_title: str | None = None
+            if title_enabled and runtime_fields is not None and runtime_fields.title_ai_enabled:
+                try:
+                    new_title = await OllamaMetadataProvider().suggest_title(
+                        extraction_text,
+                        runtime_fields.title_instructions,
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "title_generation.failed",
+                        extra={
+                            "instance": instance.slug if instance is not None else None,
+                            "error_type": type(exc).__name__,
+                        },
+                    )
+            title_rule_enabled = (
+                runtime_fields.title_rule_enabled if runtime_fields is not None else True
+            )
+            if title_enabled and title_rule_enabled and not new_title and title_template:
                 context = await self._build_title_context(connector, before_write, invoice_number)
                 try:
                     new_title = render_title(title_template, context)
@@ -339,10 +364,13 @@ class Orchestrator:
                         },
                     )
                     new_title = str(invoice_number) if invoice_number is not None else None
-            elif invoice_number is not None:
+            elif (
+                title_enabled
+                and title_rule_enabled
+                and not new_title
+                and invoice_number is not None
+            ):
                 new_title = str(invoice_number)
-            else:
-                new_title = None
             if new_title:
                 title_written = await connector.write_title(before_write, new_title)
                 if title_written:
@@ -359,10 +387,72 @@ class Orchestrator:
                 runtime_fields.correspondent_enabled if runtime_fields is not None else True
             )
             if correspondent_enabled and before_write.correspondent_id is None:
-                correspondent_match = match_correspondent(
-                    extraction_text,
-                    await connector.list_correspondents(),
+                correspondents = await connector.list_correspondents()
+                rule_enabled = (
+                    runtime_fields.correspondent_rule_enabled
+                    if runtime_fields is not None
+                    else True
                 )
+                if rule_enabled:
+                    correspondent_match = match_correspondent(extraction_text, correspondents)
+                ai_enabled = (
+                    runtime_fields.correspondent_ai_enabled if runtime_fields is not None else False
+                )
+                if correspondent_match is None and ai_enabled:
+                    correspondent_instructions = (
+                        runtime_fields.correspondent_instructions
+                        if runtime_fields is not None
+                        else ""
+                    )
+                    try:
+                        selected_correspondent = (
+                            await OllamaMetadataProvider().select_correspondent(
+                                extraction_text,
+                                correspondents,
+                                correspondent_instructions,
+                            )
+                        )
+                    except Exception as exc:
+                        logger.warning(
+                            "correspondent_generation.failed",
+                            extra={
+                                "instance": instance.slug if instance is not None else None,
+                                "error_type": type(exc).__name__,
+                            },
+                        )
+                        selected_correspondent = None
+                    if selected_correspondent is not None:
+                        correspondent_match = CorrespondentMatch(
+                            correspondent_id=selected_correspondent.external_id,
+                            name=selected_correspondent.name,
+                            score=1.0,
+                            source="ollama",
+                            line_number=-1,
+                        )
+                if correspondent_match is None:
+                    fallback = default_correspondent(correspondents)
+                    if fallback is None:
+                        try:
+                            fallback = await connector.ensure_correspondent(
+                                DEFAULT_CORRESPONDENT_NAME,
+                                correspondents,
+                            )
+                        except (ConnectorError, NotImplementedError) as exc:
+                            logger.warning(
+                                "correspondent_fallback.failed",
+                                extra={
+                                    "instance": instance.slug if instance is not None else None,
+                                    "error_type": type(exc).__name__,
+                                },
+                            )
+                    if fallback is not None:
+                        correspondent_match = CorrespondentMatch(
+                            correspondent_id=fallback.external_id,
+                            name=fallback.name,
+                            score=1.0,
+                            source="default_fallback",
+                            line_number=-1,
+                        )
                 if correspondent_match is not None:
                     correspondent_written = await connector.write_correspondent_if_empty(
                         before_write,

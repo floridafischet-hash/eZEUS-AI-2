@@ -199,6 +199,64 @@ def test_url_slug_selects_tenant_and_requires_administrator(
     )
 
 
+def test_title_and_correspondent_are_configured_per_instance(
+    field_config_client,
+) -> None:
+    client, session_factory, _ = field_config_client
+    first = create_instance(client, "Kunde A", "kunde-a.example.test")
+    second = create_instance(client, "Kunde B", "kunde-b.example.test")
+    first_endpoint = f"/api/instances/{first['slug']}/field-config"
+    first_config = client.get(first_endpoint, headers=admin_headers()).json()
+    special_keys = {field["field_key"] for field in first_config["fields"][:2]}
+    assert special_keys == {"title", "correspondent"}
+
+    title = next(field for field in first_config["fields"] if field["field_key"] == "title")
+    title["ai_enabled"] = True
+    title["extraction_instructions"] = "Rechnungsnummer und Inhalt kurz nennen."
+    correspondent = next(
+        field for field in first_config["fields"] if field["field_key"] == "correspondent"
+    )
+    correspondent["ai_enabled"] = True
+    correspondent["extraction_instructions"] = "Niederlassungen dem Hauptlieferanten zuordnen."
+    saved = client.put(
+        first_endpoint,
+        headers=admin_headers(),
+        json={
+            "fields": first_config["fields"],
+            "title_template": "{invoice_number} – {correspondent}",
+            "allow_title_overwrite": True,
+        },
+    )
+    assert saved.status_code == 200
+    assert saved.json()["metadata"] == {
+        "title_template": "{invoice_number} – {correspondent}",
+        "allow_title_overwrite": True,
+    }
+
+    second_config = client.get(
+        f"/api/instances/{second['slug']}/field-config",
+        headers=admin_headers(),
+    ).json()
+    assert second_config["metadata"] == {
+        "title_template": "",
+        "allow_title_overwrite": False,
+    }
+    assert (
+        next(field for field in second_config["fields"] if field["field_key"] == "title")[
+            "extraction_instructions"
+        ]
+        is None
+    )
+
+    with session_factory() as db:
+        instance = db.scalar(
+            select(PaperlessInstance).where(PaperlessInstance.slug == first["slug"])
+        )
+        assert instance is not None
+        assert instance.title_template == "{invoice_number} – {correspondent}"
+        assert instance.allow_title_overwrite is True
+
+
 def test_configuration_is_saved_reloaded_and_isolated_with_audit(
     field_config_client,
 ) -> None:

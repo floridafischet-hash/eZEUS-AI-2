@@ -11,6 +11,7 @@ from connectors.base.errors import ConnectorError
 from core.db.session import get_db
 from core.field_config.schemas import FieldConfigurationSave
 from core.field_config.service import FieldConfigurationService
+from core.models.audit import AuditEntry
 from core.models.paperless_instance import PaperlessInstance
 from core.paperless.service import connector_for_instance
 from core.security.admin_auth import AdminPrincipal, require_admin_secret, require_admin_user
@@ -23,6 +24,13 @@ def _instance_or_404(db: Session, slug: str) -> PaperlessInstance:
     if instance is None:
         raise HTTPException(status_code=404, detail="Paperless-Instanz nicht gefunden")
     return instance
+
+
+def _instance_metadata(instance: PaperlessInstance) -> dict[str, object]:
+    return {
+        "title_template": instance.title_template or "",
+        "allow_title_overwrite": instance.allow_title_overwrite,
+    }
 
 
 @router.get(
@@ -49,6 +57,7 @@ async def get_field_configuration(
         ) from exc
     return {
         "instance": {"id": str(instance.id), "slug": instance.slug, "name": instance.name},
+        "metadata": _instance_metadata(instance),
         "fields": [service.serialize(field) for field in fields],
     }
 
@@ -66,6 +75,33 @@ async def save_field_configuration(
     instance = _instance_or_404(db, instance_slug)
     try:
         fields = service.save(instance, payload.fields, actor=principal.username)
+        metadata_fields = payload.model_fields_set & {
+            "title_template",
+            "allow_title_overwrite",
+        }
+        if metadata_fields:
+            old_metadata = _instance_metadata(instance)
+            if "title_template" in metadata_fields:
+                instance.title_template = payload.title_template
+            if "allow_title_overwrite" in metadata_fields:
+                instance.allow_title_overwrite = bool(payload.allow_title_overwrite)
+            new_metadata = _instance_metadata(instance)
+            if old_metadata != new_metadata:
+                db.add(
+                    AuditEntry(
+                        actor=principal.username,
+                        action="UPDATE_METADATA_CONFIGURATION",
+                        entity_type="paperless_instance",
+                        entity_id=str(instance.id),
+                        instance_id=instance.id,
+                        target_system="paperless",
+                        field="metadata",
+                        old_value=old_metadata,
+                        new_value=new_metadata,
+                        details={"tenant_slug": instance.slug},
+                    )
+                )
+                db.commit()
         async with connector_for_instance(instance) as connector:
             fields = await service.synchronize_paperless_fields(
                 instance,
@@ -82,6 +118,7 @@ async def save_field_configuration(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return {
         "instance": {"id": str(instance.id), "slug": instance.slug, "name": instance.name},
+        "metadata": _instance_metadata(instance),
         "fields": [service.serialize(field) for field in fields],
     }
 
@@ -151,8 +188,8 @@ def field_configuration_page(instance_slug: str) -> str:
   <section class="panel">
     <div class="section-heading">
       <div><h2>Dokumentfelder</h2>
-        <p class="section-copy">Reihenfolge, Datentyp, Pflichtstatus sowie OCR- und
-          KI-Auslesung für diesen Mandanten festlegen.</p></div>
+        <p class="section-copy">Dokumenttitel, Korrespondent und benutzerdefinierte
+          Paperless-Felder ausschließlich für diesen Mandanten festlegen.</p></div>
       <div class="button-row">
         <button id="add" type="button">Feld hinzufügen</button>
         <button id="save" class="primary" type="button">Konfiguration speichern</button>
@@ -177,6 +214,7 @@ def field_configuration_page(instance_slug: str) -> str:
   const previewRoot=document.getElementById("preview-content");
   const message=document.getElementById("message");
   let fields=[]; let initiallyEnabled=new Set(); let editedFields=[];
+  let metadata={title_template:"",allow_title_overwrite:false};
   const types=[["text","Text"],["number","Zahl"],["money","Geldbetrag"],
     ["date","Datum"],["boolean","Ja/Nein"],["select","Auswahlfeld"],
     ["textarea","Mehrzeiliger Text"]];
@@ -219,8 +257,11 @@ def field_configuration_page(instance_slug: str) -> str:
   function render() {
     fieldsRoot.replaceChildren(); fieldsRoot.className="field-list";
     fields.sort((a,b)=>a.sort_order-b.sort_order).forEach((field,index)=>{
+      const isTitle=field.field_key==="title";
+      const isCorrespondent=field.field_key==="correspondent";
+      const isMetadata=isTitle||isCorrespondent;
       const row=document.createElement("article");
-      row.className=`field-card${field.enabled?"":" inactive"}`;
+      row.className=`field-card${field.enabled?"":" inactive"}${isMetadata?" metadata-field":""}`;
       const move=document.createElement("div"); move.className="move-controls";
       [["↑","Nach oben",-1],["↓","Nach unten",1]].forEach(([symbol,label,direction])=>{
         const button=document.createElement("button"); button.type="button";
@@ -233,6 +274,7 @@ def field_configuration_page(instance_slug: str) -> str:
         }); move.append(button);
       }); row.append(move);
       const name=document.createElement("input"); name.value=field.label; name.maxLength=128;
+      name.disabled=isMetadata;
       name.id=`field-name-${index}`; name.addEventListener("input",()=>{
         field.label=name.value; markEdited(field);});
       const nameControl=control("Bezeichnung",name);
@@ -247,54 +289,93 @@ def field_configuration_page(instance_slug: str) -> str:
       type.addEventListener("change",()=>{field.field_type=type.value; markEdited(field);
         if(type.value!=="select")field.options=[];
         if(type.value!=="text")field.extraction_profile=null; render();});
+      type.disabled=isMetadata;
       row.append(control("Feldtyp",type));
       const profile=document.createElement("select"); profile.id=`field-profile-${index}`;
       extractionProfiles.forEach(([value,label])=>{
         const option=new Option(label,value);
         option.selected=(field.extraction_profile||"")===value; profile.add(option);
       });
-      profile.disabled=field.field_type!=="text";
+      profile.disabled=isMetadata||field.field_type!=="text";
       profile.addEventListener("change",()=>{
         field.extraction_profile=profile.value||null; markEdited(field);
       });
-      row.append(control("Spezialregel",profile));
-      [["enabled","In eZEUS"],["required","Pflichtfeld"],["ocr_enabled","OCR"],
-        ["ai_enabled","KI"]].forEach(([key,label])=>{
+      if(!isMetadata) row.append(control("Spezialregel",profile));
+      const toggles=isTitle
+        ? [["enabled","In eZEUS"],["ocr_enabled","Vorlage/Regel"],["ai_enabled","KI"]]
+        : isCorrespondent
+          ? [["enabled","In eZEUS"],["required","Pflichtfeld"],
+            ["ocr_enabled","Paperless-Regeln"],["ai_enabled","KI-Fallback"]]
+          : [["enabled","In eZEUS"],["required","Pflichtfeld"],["ocr_enabled","OCR"],
+            ["ai_enabled","KI"]];
+      toggles.forEach(([key,label])=>{
         row.append(control(label,checkbox(field,key,label),"check-control"));
       });
       const external=document.createElement("input"); external.value=field.external_field_id||"";
       external.id=`field-external-${index}`; external.placeholder="Paperless-ID";
+      external.disabled=isMetadata;
       external.addEventListener("input",()=>{field.external_field_id=external.value||null;
         markEdited(field);});
-      row.append(control("Paperless-ID",external));
+      if(!isMetadata) row.append(control("Paperless-ID",external));
       const details=document.createElement("div"); details.className="field-details";
+      if(isTitle) {
+        const template=document.createElement("input");
+        template.value=metadata.title_template||""; template.maxLength=512;
+        template.id=`field-title-template-${index}`;
+        template.placeholder="{document_type}, {invoice_number}, {correspondent}";
+        template.addEventListener("input",()=>{metadata.title_template=template.value;});
+        const templateControl=control("Titel-Vorlage",template);
+        const help=document.createElement("p"); help.className="help-text";
+        help.textContent="Platzhalter: {document_type}, {invoice_number}, {correspondent}, "+
+          "{created_year}, {created_month}, {created_day}, {original_filename}, {title}.";
+        templateControl.append(help); details.append(templateControl);
+        const overwrite=document.createElement("input"); overwrite.type="checkbox";
+        overwrite.checked=metadata.allow_title_overwrite;
+        overwrite.id=`field-title-overwrite-${index}`;
+        overwrite.addEventListener("change",()=>{metadata.allow_title_overwrite=overwrite.checked;});
+        details.append(control("Bereits vorhandene Titel überschreiben",overwrite,"check-control"));
+      }
+      if(isCorrespondent) {
+        const fallbackHelp=document.createElement("p"); fallbackHelp.className="help-text";
+        fallbackHelp.textContent="Ohne sicheren Treffer setzt eZEUS automatisch den "+
+          "Standard-Korrespondenten „(noch nicht angelegt)“. Bestehende Zuordnungen bleiben erhalten.";
+        details.append(fallbackHelp);
+      }
       const instructions=document.createElement("textarea");
       instructions.value=field.extraction_instructions||"";
       instructions.id=`field-instructions-${index}`;
-      instructions.placeholder="Optionale Hinweise für die KI-Auslesung";
+      instructions.placeholder=isTitle
+        ? "Zum Beispiel: Rechnungsart, Rechnungsnummer und Lieferant kurz zusammenfassen"
+        : isCorrespondent
+          ? "Zum Beispiel: Niederlassungen immer dem Hauptlieferanten zuordnen"
+          : "Optionale Hinweise für die KI-Auslesung";
       instructions.addEventListener("input",()=>{field.extraction_instructions=
         instructions.value||null; markEdited(field);});
-      details.append(control("Extraktionshinweise",instructions));
+      details.append(control(isMetadata?"KI-Anweisung":"Extraktionshinweise",instructions));
       const options=document.createElement("input"); options.value=(field.options||[]).join(", ");
       options.id=`field-options-${index}`; options.disabled=field.field_type!=="select";
       options.placeholder="Option A, Option B";
       options.addEventListener("input",()=>{field.options=options.value.split(",")
         .map(value=>value.trim()).filter(Boolean); markEdited(field);});
-      details.append(control("Auswahlwerte",options)); row.append(details); fieldsRoot.append(row);
+      if(!isMetadata) details.append(control("Auswahlwerte",options));
+      row.append(details); fieldsRoot.append(row);
     });
     const active=fields.filter(field=>field.enabled).length;
     document.getElementById("field-count").textContent=`${active} von ${fields.length} aktiv`;
     document.getElementById("field-count").className="status-badge success";
   }
   function payload() { return {fields:fields.map((field,index)=>({...field,
-    sort_order:(index+1)*10,id:undefined,is_standard:undefined}))}; }
+    sort_order:(index+1)*10,id:undefined,is_standard:undefined})),
+    title_template:(metadata.title_template||"").trim()||null,
+    allow_title_overwrite:Boolean(metadata.allow_title_overwrite)}; }
   async function load() {
     fieldsRoot.className="loading-state"; fieldsRoot.textContent="Felder werden geladen";
     try {
       const response=await fetch(`/api/instances/${encodeURIComponent(slug)}/field-config`,
         {headers:authHeaders(false)}); const body=await response.json();
       if(!response.ok) throw new Error(body.detail||`HTTP ${response.status}`);
-      fields=body.fields; editedFields=[]; initiallyEnabled=new Set(fields.filter(field=>field.enabled)
+      fields=body.fields; metadata=body.metadata||metadata;
+      editedFields=[]; initiallyEnabled=new Set(fields.filter(field=>field.enabled)
         .map(field=>field.field_key));
       document.getElementById("instance-name").textContent=body.instance.name;
       render(); await updatePreview();
@@ -345,7 +426,8 @@ def field_configuration_page(instance_slug: str) -> str:
         method:"PUT",headers:authHeaders(),body:JSON.stringify(payload())});
       const body=await response.json();
       if(!response.ok) throw new Error(body.detail||"Speichern fehlgeschlagen");
-      fields=body.fields; editedFields=[]; initiallyEnabled=new Set(fields.filter(field=>field.enabled)
+      fields=body.fields; metadata=body.metadata||metadata;
+      editedFields=[]; initiallyEnabled=new Set(fields.filter(field=>field.enabled)
         .map(field=>field.field_key));
       show("Mandantenkonfiguration wurde gespeichert."); render(); await updatePreview();
     } catch(error) { show(error.message,true); }

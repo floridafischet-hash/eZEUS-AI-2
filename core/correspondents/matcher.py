@@ -7,6 +7,8 @@ import regex
 from connectors.base.interface import ConnectorCorrespondent
 from core.config.settings import get_settings
 
+DEFAULT_CORRESPONDENT_NAME = "(noch nicht angelegt)"
+
 
 @dataclass(slots=True, frozen=True)
 class CorrespondentMatch:
@@ -23,6 +25,16 @@ def _normalize(value: str) -> str:
         "".join(character for character in decomposed if character.isalnum() or character.isspace())
         .casefold()
         .split()
+    )
+
+
+def default_correspondent(
+    correspondents: list[ConnectorCorrespondent],
+) -> ConnectorCorrespondent | None:
+    expected = _normalize(DEFAULT_CORRESPONDENT_NAME)
+    return next(
+        (item for item in correspondents if _normalize(item.name) == expected),
+        None,
     )
 
 
@@ -91,10 +103,12 @@ def _score_rule(correspondent: ConnectorCorrespondent, text: str) -> tuple[float
 def match_correspondent(
     text: str,
     correspondents: list[ConnectorCorrespondent],
-    minimum_score: float = 0.60,
+    minimum_score: float = 0.75,
 ) -> CorrespondentMatch | None:
     candidates: list[tuple[float, int, int, ConnectorCorrespondent, str]] = []
     for correspondent in correspondents:
+        if _normalize(correspondent.name) == _normalize(DEFAULT_CORRESPONDENT_NAME):
+            continue
         score, line_number, source = _score_rule(correspondent, text)
         if score >= minimum_score:
             specificity = len(_normalize(correspondent.match or correspondent.name))

@@ -91,3 +91,10 @@ class DocumentConnector(ABC):
 
     async def list_correspondents(self) -> list[ConnectorCorrespondent]:
         return []
+
+    async def ensure_correspondent(
+        self,
+        name: str,
+        correspondents: list[ConnectorCorrespondent] | None = None,
+    ) -> ConnectorCorrespondent:
+        raise NotImplementedError

@@ -1,8 +1,8 @@
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from connectors.base.interface import ConnectorDocument
+from connectors.base.interface import ConnectorCorrespondent, ConnectorDocument
 from connectors.paperless.connector import PaperlessConnector
 
 
@@ -111,3 +111,37 @@ async def test_correspondent_write_uses_provided_document_snapshot() -> None:
 
     assert written is True
     mock_req.assert_awaited_once_with("PATCH", "/api/documents/42/", json={"correspondent": 7})
+
+
+@pytest.mark.asyncio
+async def test_ensure_correspondent_reuses_existing_placeholder() -> None:
+    connector = _connector()
+    existing = ConnectorCorrespondent("7", "(noch nicht angelegt)", "", 0, True)
+    with patch.object(connector, "_request", new_callable=AsyncMock) as mock_req:
+        result = await connector.ensure_correspondent("(noch nicht angelegt)", [existing])
+
+    assert result == existing
+    mock_req.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_ensure_correspondent_creates_missing_placeholder() -> None:
+    connector = _connector()
+    response = MagicMock()
+    response.json.return_value = {
+        "id": 9,
+        "name": "(noch nicht angelegt)",
+        "match": "",
+        "matching_algorithm": 0,
+        "is_insensitive": True,
+    }
+    with patch.object(connector, "_request", new_callable=AsyncMock) as mock_req:
+        mock_req.return_value = response
+        result = await connector.ensure_correspondent("(noch nicht angelegt)", [])
+
+    assert result.external_id == "9"
+    mock_req.assert_awaited_once_with(
+        "POST",
+        "/api/correspondents/",
+        json={"name": "(noch nicht angelegt)"},
+    )
