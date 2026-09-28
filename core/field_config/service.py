@@ -88,16 +88,29 @@ STANDARD_PATTERNS: dict[str, list[str]] = {
         r"([A-Z0-9][A-Z0-9./_-]*)",
     ],
     "construction_site_number": [
+        # Explicit construction-site labels use five-digit identifiers from
+        # 24000 through 99999.  Observed six-digit identifiers are accepted
+        # when they begin with 24, 25 or 26 (for example 260012).
+        r"(?i)\bKST(?:[\s.-]*(?:Nr|Nummer))?[\s.:-]*"
+        r"(2[456]\d{4}|2[4-9]\d{3}|[3-9]\d{4})(?!\d)",
+        r"(?i)\bKostenstelle[\s.:-]*(2[456]\d{4}|2[4-9]\d{3}|[3-9]\d{4})(?!\d)",
+        r"(?i)\bBstr[\s.-]*(?:Nr|Nummer)\.?[\s.:-]*"
+        r"(2[456]\d{4}|2[4-9]\d{3}|[3-9]\d{4})(?!\d)",
+        r"(?i)\bKundenauftrags?(?:[\s.-]*(?:Nr|Nummer))?\.?"
+        r"[\s.:-]*(2[456]\d{4}|2[4-9]\d{3}|[3-9]\d{4})(?!\d)",
         # Ernst Hasselbring prints an internal five-digit number before the
         # actual construction-site number.  Only the second number is the
         # desired value, and it is contractually in the range 24000-99999.
         r"(?im)^\s*Baustelle\s*[:.]?\s*\d{4,6}\s+"
         r"((?:2[4-9]\d{3}|[3-9]\d{4}))(?!\d)",
-        r"(?i)#\s*(\d{4,6})(?!\d)",
-        r"(?i)BV(?:[\s.-]*(?:Nr|Nummer))?[\s.:-]*(\d{4,6})(?!\d)",
+        r"(?i)#\s*(2[456]\d{4}|2[4-9]\d{3}|[3-9]\d{4})(?!\d)",
+        r"(?i)BV(?:[\s.-]*(?:Nr|Nummer))?[\s.:-]*"
+        r"(2[456]\d{4}|2[4-9]\d{3}|[3-9]\d{4})(?!\d)",
         r"(?i)Baustellen?(?:[\s.-]*(?:Nr|Nummer))?[\s.:-]*"
-        r"(?!\d{4,6}\s+\d{4,6}(?!\d))(\d{4,6})(?!\d)",
-        r"(?im)^\s*(\d{4,6})\s+[^\n]+\n\s*Lieferwerk\s*:",
+        r"(?!\d{4,6}\s+\d{4,6}(?!\d))"
+        r"(2[456]\d{4}|2[4-9]\d{3}|[3-9]\d{4})(?!\d)",
+        r"(?im)^\s*(2[456]\d{4}|2[4-9]\d{3}|[3-9]\d{4})\s+"
+        r"[^\n]+\n\s*Lieferwerk\s*:",
     ],
 }
 
