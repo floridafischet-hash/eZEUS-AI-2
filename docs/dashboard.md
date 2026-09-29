@@ -45,12 +45,16 @@ Werte aus Dateinamen oder Datenbankfeldern werden nicht als HTML interpretiert.
 
 ## Zugriffsschutz
 
-Die Anwendung erzwingt für das reine Betriebsdashboard keine eigene Anmeldung.
-Das Kubernetes-Chart kann deshalb oauth2-proxy/OIDC per ingress-nginx
-`auth_request` vorschalten; nur Webhook und `/health` bleiben öffentlich. Beim
-Compose-Betrieb muss der gesamte Browserzugriff über einen authentifizierenden
-TLS-Reverse-Proxy laufen. Der Host-Port ist standardmäßig nur an Loopback
-gebunden.
+Das Betriebsdashboard selbst enthält keine administrativen Schreibfunktionen.
+Geschützte Verwaltungsbereiche verwenden die persönlichen eZEUS-Konten mit
+rollenbasierter Berechtigung. Der Reverse-Proxy terminiert TLS, darf aber keine
+zusätzliche HTTP-Basic-Authentication vor die Browseroberfläche schalten. So
+entsteht kein zweites, browserseitiges Passwortfenster neben der eZEUS-Anmeldung.
+Der Host-Port ist beim Compose-Betrieb standardmäßig nur an Loopback gebunden.
+
+Das Kubernetes-Chart kann für zentrale Installationen optional
+oauth2-proxy/OIDC per ingress-nginx `auth_request` verwenden; nur Webhook und
+`/health` bleiben dabei öffentlich.
 
 Beispielwerte:
 
@@ -58,9 +62,6 @@ Beispielwerte:
 server {
     listen 443 ssl;
     server_name ezeus.example.com;
-
-    auth_basic "eZEUS";
-    auth_basic_user_file /etc/nginx/.htpasswd-ezeus;
 
     location / {
         proxy_pass http://127.0.0.1:8080;
@@ -71,4 +72,5 @@ server {
 ```
 
 Die Beispieldomain und Pfade sind Platzhalter. Sie enthalten keine Angaben zu
-einer konkreten Installation.
+einer konkreten Installation. Eine vorgeschaltete Browser-Basic-Auth ist
+absichtlich nicht Teil dieses Beispiels.

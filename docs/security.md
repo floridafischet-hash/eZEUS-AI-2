@@ -4,9 +4,9 @@
 
 Persönliche Administratorkonten werden mit Scrypt-gehashten Passwörtern
 gespeichert. Die Anwendung verwendet über TLS die dedizierten Header
-`X-EZEUS-Admin-User` und `X-EZEUS-Admin-Password`, damit die vorgelagerte
-Nginx-Basic-Authentication ihren eigenen `Authorization`-Header unabhängig
-verwenden kann. `admin` darf
+`X-EZEUS-Admin-User` und `X-EZEUS-Admin-Password`, damit die Browseroberfläche
+die eZEUS-Anmeldung verwenden kann, ohne ein natives Browser-Passwortfenster
+auszulösen. `admin` darf
 Konfigurationen und Konten ändern; `viewer` darf Konfigurationen nur lesen und
 Vorschauen ausführen. Das erste Administratorkonto wird einmalig über
 `python -m scripts.create_admin_user <benutzername>` in einer administrativen
