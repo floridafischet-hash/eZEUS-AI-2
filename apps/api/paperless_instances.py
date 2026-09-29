@@ -346,36 +346,32 @@ async def test_instance(
             "detail": (
                 "Verbindung erfolgreich, aber kein Workflow in Paperless gefunden, "
                 f"dessen Webhook-Ziel auf {webhook_url} zeigt. Lege dort einen "
-                "Workflow mit Webhook-Aktion auf genau diese Adresse an, "
-                "ausgelöst nur durch „Dokument hinzugefügt“."
+                "aktiven Workflow mit Webhook-Aktion auf genau diese Adresse an. "
+                "Auslöser und Filter werden in Paperless verwaltet."
             ),
         }
 
-    trigger_types = workflow["trigger_types"]
-    has_update_trigger = isinstance(trigger_types, list) and 3 in trigger_types
     workflow_name = workflow["workflow_name"]
     problems: list[str] = []
     if not workflow["enabled"]:
         problems.append("der Workflow ist deaktiviert")
-    if has_update_trigger:
-        problems.append(
-            "der Workflow reagiert auch auf „Dokument geändert“ – das kann eine "
-            "Endlosschleife auslösen, weil eZEUS' eigenes Zurückschreiben der "
-            "erkannten Felder selbst als Änderung zählt. Nur „Dokument "
-            "hinzugefügt“ auswählen."
-        )
-    webhook_configured = bool(workflow["enabled"]) and not has_update_trigger
+    webhook_configured = bool(workflow["enabled"])
     if problems:
         detail = f"Workflow „{workflow_name}“ gefunden, aber: " + "; ".join(problems)
     else:
-        detail = f"Verbindung erfolgreich, Workflow „{workflow_name}“ korrekt eingerichtet."
+        detail = (
+            f"Verbindung erfolgreich, aktiver Workflow „{workflow_name}“ mit passender "
+            "Webhook-Aktion gefunden. Auslöser und Filter werden in Paperless verwaltet."
+        )
     return {
         "reachable": reachable,
         "webhook_configured": webhook_configured,
         "workflow_id": workflow["workflow_id"],
         "workflow_name": workflow["workflow_name"],
         "workflow_enabled": workflow["enabled"],
-        "has_update_trigger_warning": has_update_trigger,
+        # Kept for backward compatibility with existing UI/API consumers. eZEUS
+        # deliberately does not prescribe Paperless trigger types.
+        "has_update_trigger_warning": False,
         "detail": detail,
     }
 

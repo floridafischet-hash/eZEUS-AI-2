@@ -435,7 +435,7 @@ def test_test_connection_reports_missing_workflow(monkeypatch) -> None:
         get_settings.cache_clear()
 
 
-def test_test_connection_warns_about_update_trigger_loop(monkeypatch) -> None:
+def test_test_connection_accepts_paperless_managed_trigger_types(monkeypatch) -> None:
     client, created = _create_instance_for_test_connection(monkeypatch)
 
     async def fake_find(self, webhook_url: str) -> dict[str, object]:
@@ -443,7 +443,7 @@ def test_test_connection_warns_about_update_trigger_loop(monkeypatch) -> None:
             "workflow_id": 7,
             "workflow_name": "eZEUS-AI-2 – automatische Dokumentverarbeitung",
             "enabled": True,
-            "trigger_types": [2, 3],
+            "trigger_types": [1, 3, 4],
         }
 
     monkeypatch.setattr(PaperlessConnector, "find_webhook_workflow", fake_find)
@@ -455,9 +455,9 @@ def test_test_connection_warns_about_update_trigger_loop(monkeypatch) -> None:
         assert response.status_code == 200
         body = response.json()
         assert body["reachable"] is True
-        assert body["webhook_configured"] is False
-        assert body["has_update_trigger_warning"] is True
-        assert "Endlosschleife" in body["detail"]
+        assert body["webhook_configured"] is True
+        assert body["has_update_trigger_warning"] is False
+        assert "Auslöser und Filter werden in Paperless verwaltet" in body["detail"]
     finally:
         app.dependency_overrides.clear()
         get_settings.cache_clear()
@@ -485,7 +485,7 @@ def test_test_connection_confirms_correctly_configured_workflow(monkeypatch) -> 
         assert body["reachable"] is True
         assert body["webhook_configured"] is True
         assert body["has_update_trigger_warning"] is False
-        assert "korrekt eingerichtet" in body["detail"]
+        assert "passender Webhook-Aktion gefunden" in body["detail"]
     finally:
         app.dependency_overrides.clear()
         get_settings.cache_clear()

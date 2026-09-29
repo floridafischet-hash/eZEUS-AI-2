@@ -62,7 +62,10 @@ aus.
 - **Workflow einrichten** repariert oder ergänzt den von eZEUS verwalteten Workflow.
 - **Bearbeiten** ändert Bezeichnung, Adresse oder Zugangsdaten. Leere Passwortfelder behalten die gespeicherten Werte bei.
 
-Der Workflow darf nur auf **Dokument hinzugefügt** reagieren. **Dokument geändert** kann eine Verarbeitungsschleife verursachen.
+eZEUS akzeptiert alle von Paperless unterstützten Workflow-Auslöser. Auslöser und
+Filter werden in Paperless verwaltet. Bei **Dokument aktualisiert** muss der
+Workflow durch geeignete Filter oder einen Einmal-Tag gegen Mehrfachauslösungen
+abgesichert werden.
 
 ## Paperless-Webhook einrichten
 
@@ -101,9 +104,9 @@ Webhook-Secret und API-Token sind Passwörter. Nicht in Nachrichten, E-Mails ode
 #### 3. Auslöser wählen
 
 1. Unter **Auslöser** einen Auslöser hinzufügen.
-2. Für den späteren Regelbetrieb **Dokument hinzugefügt** wählen.
-3. Für einen vorübergehenden Test darf **Dokument aktualisiert** verwendet werden. Dabei kann eZEUS mehrfach ausgelöst werden, weil eZEUS das Dokument nach der Verarbeitung selbst aktualisiert.
-4. Falls gewünscht, Filter setzen, zum Beispiel auf den Dokumenttyp `Zulassungsbescheinigung Teil I`.
+2. Den zum eigenen Ablauf passenden Auslöser wählen. eZEUS schreibt keinen bestimmten Auslöser vor.
+3. Bei **Dokument aktualisiert** einen eindeutigen Filter setzen, zum Beispiel einen von einem vorgelagerten Prozess gesetzten Einmal-Tag.
+4. Den Einmal-Tag im Workflow nach der Webhook-Aktion wieder entfernen, damit eZEUS' spätere Schreiboperationen den Workflow nicht erneut auslösen.
 
 #### 4. Webhook-Aktion ausfüllen
 
@@ -151,7 +154,7 @@ Bereits vorhandene Dokumente lösen **Dokument hinzugefügt** nicht nachträglic
 - **Das Dokument erscheint nicht in eZEUS:** Workflow aktivieren, Auslöser prüfen und die Webhook-URL Zeichen für Zeichen vergleichen.
 - **Nicht autorisiert/401:** Das Webhook-Secret in Paperless stimmt nicht exakt mit dem Secret der eZEUS-Instanz überein.
 - **Dokument-ID fehlt:** Prüfen, ob der Parameter `document_id` mit dem oben angegebenen Wert eingetragen ist und die JSON-Übertragung eingeschaltet ist.
-- **Dokument wird immer wieder verarbeitet:** Den Auslöser **Dokument aktualisiert** deaktivieren und im Regelbetrieb **Dokument hinzugefügt** verwenden.
+- **Dokument wird immer wieder verarbeitet:** Paperless-Auslöser und Filter prüfen. Bei **Dokument aktualisiert** einen Einmal-Tag verwenden und diesen nach der Webhook-Aktion entfernen.
 - **Workflow-Test in eZEUS schlägt fehl:** In eZEUS **Workflow einrichten** auswählen und anschließend erneut **Verbindung testen**.
 
 ## Dokumentfelder festlegen
@@ -315,9 +318,9 @@ numerische Baustellennummer und werden bewusst nicht übernommen.
 ### Ein Dokument wird mehrfach verarbeitet
 
 Prüfe in Paperless, ob mehrere aktive Workflows oder Webhook-Aktionen dasselbe
-Dokument senden. Der produktive Workflow soll nur auf **Dokument hinzugefügt**
-reagieren. **Dokument aktualisiert** kann nach den eZEUS-Schreiboperationen
-erneut auslösen.
+Dokument senden. Bei **Dokument aktualisiert** muss ein eindeutiger Filter die
+erneute Auslösung nach den eZEUS-Schreiboperationen verhindern, beispielsweise
+ein Einmal-Tag, den der Workflow nach dem Webhook wieder entfernt.
 
 ## Checkliste vor der Freigabe
 

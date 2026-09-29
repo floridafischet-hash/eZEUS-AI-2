@@ -71,7 +71,7 @@ def help_page() -> str:
       <li><strong>Workflow einrichten:</strong> repariert oder ergänzt den von eZEUS verwalteten Workflow.</li>
       <li><strong>Bearbeiten:</strong> ändert Name, Adresse oder Zugangsdaten. Leere Passwortfelder behalten die gespeicherten Werte bei.</li>
     </ul>
-    <p>Der automatisch erzeugte Workflow reagiert auf <strong>„Dokument hinzugefügt“</strong>. „Dokument geändert“ darf nicht zusätzlich aktiviert werden, weil sonst eine Verarbeitungsschleife entstehen kann.</p>
+    <p>Der automatisch erzeugte Workflow verwendet <strong>„Dokument hinzugefügt“</strong>. Manuell eingerichtete Workflows dürfen andere Paperless-Auslöser verwenden. Bei <strong>„Dokument aktualisiert“</strong> muss ein geeigneter Filter oder Einmal-Tag Mehrfachauslösungen verhindern.</p>
   </section>
 
   <section class="panel">
@@ -101,9 +101,9 @@ def help_page() -> str:
     <ol>
       <li>In Paperless <strong>Workflows</strong> öffnen und einen Workflow anlegen oder bearbeiten.</li>
       <li>Einen verständlichen Namen vergeben und den Workflow aktivieren.</li>
-      <li>Unter <strong>Auslöser</strong> für den Regelbetrieb <strong>Dokument hinzugefügt</strong> wählen.</li>
-      <li>Nur für Tests darf <strong>Dokument aktualisiert</strong> gewählt werden. Das kann zu Mehrfachauslösungen führen.</li>
-      <li>Bei Bedarf einen Filter setzen, zum Beispiel auf den Dokumenttyp „Zulassungsbescheinigung Teil I“.</li>
+      <li>Unter <strong>Auslöser</strong> den zum eigenen Ablauf passenden Paperless-Auslöser wählen.</li>
+      <li>Bei <strong>Dokument aktualisiert</strong> einen eindeutigen Filter setzen, zum Beispiel einen Einmal-Tag eines vorgelagerten Prozesses.</li>
+      <li>Den Einmal-Tag nach der Webhook-Aktion entfernen, damit spätere eZEUS-Aktualisierungen nicht erneut auslösen.</li>
     </ol>
 
     <h4>3. Webhook-Aktion ausfüllen</h4>
@@ -202,11 +202,11 @@ def help_page() -> str:
       <dt><strong>Die Dokument-ID fehlt</strong></dt>
       <dd>Prüfen, ob der Parameter <code>document_id</code> eingetragen und die Übertragung als JSON aktiviert ist.</dd>
       <dt><strong>Ein Dokument wird immer wieder verarbeitet</strong></dt>
-      <dd>Den Auslöser „Dokument aktualisiert“ deaktivieren und im Regelbetrieb „Dokument hinzugefügt“ verwenden.</dd>
+      <dd>Paperless-Auslöser und Filter prüfen. Bei „Dokument aktualisiert“ einen Einmal-Tag verwenden und ihn nach der Webhook-Aktion entfernen.</dd>
       <dt><strong>Ein Paperless-Feld fehlt</strong></dt>
       <dd>Das Feld zuerst in Paperless anlegen und danach die Feldseite in eZEUS neu laden.</dd>
       <dt><strong>Ein Dokument wird nicht verarbeitet</strong></dt>
-      <dd>Prüfen, ob die Instanz aktiv ist und der Workflow auf „Dokument hinzugefügt“ reagiert. Danach das Verarbeitungsprotokoll öffnen.</dd>
+      <dd>Prüfen, ob die Instanz aktiv ist und ein aktiver Paperless-Workflow die korrekte Webhook-Adresse verwendet. Danach Auslöser, Filter und Verarbeitungsprotokoll prüfen.</dd>
       <dt><strong>Das Dokument erscheint, aber Felder bleiben leer</strong></dt>
       <dd>Dann funktioniert der Workflow. OCR-Text, Feldaktivierung, OCR-Schalter, Paperless-ID und ein bereits gefülltes Zielfeld prüfen. Bei <code>candidates_found: 0</code> wurde das konkrete Layout nicht erkannt.</dd>
       <dt><strong>Der Rechnungsbetrag fehlt</strong></dt>
