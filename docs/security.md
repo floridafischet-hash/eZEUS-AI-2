@@ -10,7 +10,10 @@ auszulösen. `admin` darf
 Konfigurationen und Konten ändern; `viewer` darf Konfigurationen nur lesen und
 Vorschauen ausführen. Das erste Administratorkonto wird einmalig über
 `python -m scripts.create_admin_user <benutzername>` in einer administrativen
-Shell angelegt; die HTTP-API besitzt keinen gemeinsamen Bootstrap-Schlüssel.
+Shell angelegt; die HTTP-API besitzt keinen gemeinsamen Bootstrap-Schlüssel. Ein
+verlorenes Passwort wird mit `python -m scripts.reset_admin_password
+<benutzername>` in derselben Shell neu gesetzt; der Vorgang wird als
+`RESET_ADMIN_PASSWORD` auditiert.
 
 Der Ingress strippt eingehende `X-EZEUS-Proxy-User`- und
 `X-EZEUS-Proxy-Secret`-Header, damit externe Clients keine

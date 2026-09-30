@@ -311,6 +311,21 @@ docker compose exec -e ADMIN_BOOTSTRAP_PASSWORD api \
   --if-not-exists
 ```
 
+### Administratorpasswort zurücksetzen
+
+Geht das Passwort verloren, hilft die HTTP-API nicht weiter, weil jeder Aufruf
+gültige Administrator-Credentials erwartet. Der Reset läuft deshalb über eine
+administrative Shell:
+
+```bash
+docker compose exec api python -m scripts.reset_admin_password admin
+```
+
+Ist das Konto zusätzlich deaktiviert, reaktiviert `--enable` es im gleichen
+Schritt. Auch hier liest `--password-env VARIABLE` das neue Passwort aus einer
+Umgebungsvariable. Jeder Reset schreibt einen `RESET_ADMIN_PASSWORD`-Eintrag
+ins Audit-Log.
+
 ### Migrationen
 
 Die Compose-Dienste starten die Migration vor der Anwendung. PostgreSQL
