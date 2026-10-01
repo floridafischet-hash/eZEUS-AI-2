@@ -7,7 +7,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import HTMLResponse
-from pydantic import AnyHttpUrl, BaseModel, Field
+from pydantic import AnyHttpUrl, BaseModel, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -51,6 +51,25 @@ class InstanceUpdate(BaseModel):
     verify_tls: bool | None = None
     enabled: bool | None = None
     title_template: str | None = Field(default=None, max_length=512)
+    ocr_handoff_enabled: bool | None = None
+    ocr_request_tag_name: str | None = Field(default=None, max_length=128)
+    ocr_complete_tag_name: str | None = Field(default=None, max_length=128)
+    manual_reprocess_enabled: bool | None = None
+    manual_reprocess_tag_name: str | None = Field(default=None, max_length=128)
+
+    @field_validator(
+        "ocr_request_tag_name",
+        "ocr_complete_tag_name",
+        "manual_reprocess_tag_name",
+    )
+    @classmethod
+    def normalize_tag_name(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = " ".join(value.split())
+        if not normalized:
+            return None
+        return normalized
 
 
 def _validate_slug(slug: str) -> str:
@@ -93,6 +112,11 @@ def _serialize(instance: PaperlessInstance) -> dict[str, object]:
         "webhook_path": webhook_path,
         "webhook_url": f"{public_base_url}{webhook_path}" if public_base_url else None,
         "title_template": instance.title_template or "",
+        "ocr_handoff_enabled": instance.ocr_handoff_enabled,
+        "ocr_request_tag_name": instance.ocr_request_tag_name or "",
+        "ocr_complete_tag_name": instance.ocr_complete_tag_name,
+        "manual_reprocess_enabled": instance.manual_reprocess_enabled,
+        "manual_reprocess_tag_name": instance.manual_reprocess_tag_name,
     }
 
 
@@ -123,6 +147,11 @@ async def _provision_workflow(instance: PaperlessInstance) -> dict[str, object]:
         return await connector.ensure_ezeus_workflow(
             webhook_url=_workflow_url(instance),
             webhook_secret=decrypt_credential(instance.webhook_secret_encrypted),
+            ocr_handoff_enabled=instance.ocr_handoff_enabled,
+            ocr_request_tag_name=instance.ocr_request_tag_name,
+            ocr_complete_tag_name=instance.ocr_complete_tag_name,
+            manual_reprocess_enabled=instance.manual_reprocess_enabled,
+            manual_reprocess_tag_name=instance.manual_reprocess_tag_name,
         )
 
 
@@ -207,6 +236,11 @@ def update_instance(
         "has_api_token": bool(instance.api_token_encrypted),
         "has_webhook_secret": bool(instance.webhook_secret_encrypted),
         "title_template": instance.title_template or "",
+        "ocr_handoff_enabled": instance.ocr_handoff_enabled,
+        "ocr_request_tag_name": instance.ocr_request_tag_name or "",
+        "ocr_complete_tag_name": instance.ocr_complete_tag_name,
+        "manual_reprocess_enabled": instance.manual_reprocess_enabled,
+        "manual_reprocess_tag_name": instance.manual_reprocess_tag_name,
     }
     if "name" in changes:
         instance.name = str(changes["name"]).strip()
@@ -233,6 +267,24 @@ def update_instance(
             instance.title_template = template
         else:
             instance.title_template = None
+    if "ocr_handoff_enabled" in changes:
+        instance.ocr_handoff_enabled = bool(changes["ocr_handoff_enabled"])
+    if "ocr_request_tag_name" in changes:
+        instance.ocr_request_tag_name = changes["ocr_request_tag_name"]
+    if "ocr_complete_tag_name" in changes:
+        value = changes["ocr_complete_tag_name"]
+        if value is None:
+            raise HTTPException(status_code=422, detail="OCR-Abschluss-Tag darf nicht leer sein")
+        instance.ocr_complete_tag_name = str(value)
+    if "manual_reprocess_enabled" in changes:
+        instance.manual_reprocess_enabled = bool(changes["manual_reprocess_enabled"])
+    if "manual_reprocess_tag_name" in changes:
+        value = changes["manual_reprocess_tag_name"]
+        if value is None:
+            raise HTTPException(
+                status_code=422, detail="Manuelles Trigger-Tag darf nicht leer sein"
+            )
+        instance.manual_reprocess_tag_name = str(value)
     new_value = {
         "name": instance.name,
         "base_url": instance.base_url,
@@ -243,6 +295,11 @@ def update_instance(
         "api_token_replaced": "api_token" in changes,
         "webhook_secret_replaced": "webhook_secret" in changes,
         "title_template": instance.title_template or "",
+        "ocr_handoff_enabled": instance.ocr_handoff_enabled,
+        "ocr_request_tag_name": instance.ocr_request_tag_name or "",
+        "ocr_complete_tag_name": instance.ocr_complete_tag_name,
+        "manual_reprocess_enabled": instance.manual_reprocess_enabled,
+        "manual_reprocess_tag_name": instance.manual_reprocess_tag_name,
     }
     db.add(
         AuditEntry(
@@ -492,6 +549,29 @@ def instance_admin_page() -> str:
           <code>{correspondent}</code>, <code>{created_year}</code>, <code>{created_month}</code>,
           <code>{created_day}</code>, <code>{original_filename}</code>, <code>{title}</code>.
           Leere Platzhalter werden aus dem Ergebnis entfernt.</p></div>
+      <div class="full">
+        <label class="toggle-label" for="edit-ocr-handoff-enabled">
+          <input id="edit-ocr-handoff-enabled" type="checkbox">
+          Optional: Erst nach Paperless-gpt-OCR an eZEUS übergeben
+        </label>
+        <p class="help-text">Standardmäßig verarbeitet eZEUS neue Dokumente direkt. Diese
+          Erweiterung kann pro Instanz zugeschaltet werden.</p>
+      </div>
+      <div><label for="edit-ocr-request-tag">Paperless-gpt-Eingangstag</label>
+        <input id="edit-ocr-request-tag" maxlength="128" placeholder="Optional, z. B. 3">
+        <p class="help-text">Leer lassen, wenn Paperless-gpt das Abschluss-Tag
+          selbst setzt.</p></div>
+      <div><label for="edit-ocr-complete-tag">OCR-Abschluss-Tag</label>
+        <input id="edit-ocr-complete-tag" maxlength="128"
+          placeholder="paperless-gpt-auto-complete"></div>
+      <div class="full">
+        <label class="toggle-label" for="edit-manual-reprocess-enabled">
+          <input id="edit-manual-reprocess-enabled" type="checkbox">
+          Optional: Manuelle Neuverarbeitung per Tag
+        </label>
+      </div>
+      <div><label for="edit-manual-reprocess-tag">Manuelles Trigger-Tag</label>
+        <input id="edit-manual-reprocess-tag" maxlength="128" placeholder="9"></div>
     </div>
     <div id="edit-message" class="notice" role="status" hidden></div>
     <div class="form-actions dialog-actions">
@@ -533,6 +613,14 @@ def instance_admin_page() -> str:
     document.getElementById("edit-webhook-secret").value="";
     document.getElementById("edit-verify-tls").checked=item.verify_tls;
     document.getElementById("edit-title-template").value=item.title_template||"";
+    document.getElementById("edit-ocr-handoff-enabled").checked=item.ocr_handoff_enabled;
+    document.getElementById("edit-ocr-request-tag").value=item.ocr_request_tag_name||"";
+    document.getElementById("edit-ocr-complete-tag").value=
+      item.ocr_complete_tag_name||"paperless-gpt-auto-complete";
+    document.getElementById("edit-manual-reprocess-enabled").checked=
+      item.manual_reprocess_enabled;
+    document.getElementById("edit-manual-reprocess-tag").value=
+      item.manual_reprocess_tag_name||"9";
     editMessage.hidden=true;
     editDialog.showModal();
     document.getElementById("edit-name").focus();
@@ -671,7 +759,14 @@ def instance_admin_page() -> str:
       name:document.getElementById("edit-name").value,
       base_url:document.getElementById("edit-base-url").value,
       verify_tls:document.getElementById("edit-verify-tls").checked,
-      title_template:document.getElementById("edit-title-template").value.trim()
+      title_template:document.getElementById("edit-title-template").value.trim(),
+      ocr_handoff_enabled:document.getElementById("edit-ocr-handoff-enabled").checked,
+      ocr_request_tag_name:document.getElementById("edit-ocr-request-tag").value.trim(),
+      ocr_complete_tag_name:document.getElementById("edit-ocr-complete-tag").value.trim(),
+      manual_reprocess_enabled:
+        document.getElementById("edit-manual-reprocess-enabled").checked,
+      manual_reprocess_tag_name:
+        document.getElementById("edit-manual-reprocess-tag").value.trim()
     };
     if(apiToken) payload.api_token=apiToken;
     if(webhookSecret) payload.webhook_secret=webhookSecret;

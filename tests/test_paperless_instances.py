@@ -278,6 +278,11 @@ def test_instance_can_be_edited_without_exposing_or_replacing_secrets(
                 "name": "Neuer Name",
                 "base_url": "https://new.example.test",
                 "verify_tls": False,
+                "ocr_handoff_enabled": True,
+                "ocr_request_tag_name": "  kundenspezifisch  ",
+                "ocr_complete_tag_name": "ocr-fertig",
+                "manual_reprocess_enabled": True,
+                "manual_reprocess_tag_name": "9",
             },
         )
         assert response.status_code == 200
@@ -285,6 +290,11 @@ def test_instance_can_be_edited_without_exposing_or_replacing_secrets(
         assert body["name"] == "Neuer Name"
         assert body["base_url"] == "https://new.example.test"
         assert body["slug"] == old_slug
+        assert body["ocr_handoff_enabled"] is True
+        assert body["ocr_request_tag_name"] == "kundenspezifisch"
+        assert body["ocr_complete_tag_name"] == "ocr-fertig"
+        assert body["manual_reprocess_enabled"] is True
+        assert body["manual_reprocess_tag_name"] == "9"
         assert "existing-api-token" not in str(body)
         assert "existing-webhook-secret" not in str(body)
 
@@ -293,6 +303,10 @@ def test_instance_can_be_edited_without_exposing_or_replacing_secrets(
             assert updated is not None
             assert updated.api_token_encrypted == old_token
             assert updated.webhook_secret_encrypted == old_secret
+            assert updated.ocr_handoff_enabled is True
+            assert updated.ocr_request_tag_name == "kundenspezifisch"
+            assert updated.ocr_complete_tag_name == "ocr-fertig"
+            assert updated.manual_reprocess_enabled is True
             audit = db.scalar(
                 select(AuditEntry).where(AuditEntry.action == "UPDATE_PAPERLESS_INSTANCE")
             )

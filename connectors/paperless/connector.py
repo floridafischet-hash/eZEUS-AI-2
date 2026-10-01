@@ -32,6 +32,12 @@ from core.security.outbound import (
 logger = logging.getLogger(__name__)
 
 _PATH_ID_PATTERN = re.compile(r"^[1-9][0-9]{0,11}$")
+_MANAGED_WORKFLOW_NAME = "eZEUS-AI-2 – automatische Dokumentverarbeitung"
+_MANUAL_WORKFLOW_NAME = "eZEUS-AI-2 – manuelle Neuverarbeitung (Tag 9)"
+_OCR_REQUEST_WORKFLOW_NAME = "eZEUS-AI-2 – Paperless-gpt OCR anfordern"
+_OCR_COMPLETE_WORKFLOW_NAME = "eZEUS-AI-2 – Paperless-gpt OCR-Abschluss"
+_OCR_PENDING_TAG_NAME = "ezeus-ai-2-ocr-pending"
+_OCR_TRIGGERED_TAG_NAME = "ezeus-ai-2-ocr-triggered"
 
 
 def _path_id(value: object) -> str:
@@ -197,63 +203,231 @@ class PaperlessConnector(DocumentConnector):
         *,
         webhook_url: str,
         webhook_secret: str,
+        ocr_handoff_enabled: bool = False,
+        ocr_request_tag_name: str | None = None,
+        ocr_complete_tag_name: str = "paperless-gpt-auto-complete",
+        manual_reprocess_enabled: bool = False,
+        manual_reprocess_tag_name: str = "9",
     ) -> dict[str, object]:
         """Create or repair the workflow managed by eZEUS.
 
         The stable workflow name makes this operation idempotent.  User-created
         workflows are never modified.
         """
-        workflow_name = "eZEUS-AI-2 – automatische Dokumentverarbeitung"
-        payload: dict[str, object] = {
-            "name": workflow_name,
+        webhook_action = {
+            "type": 4,
+            "webhook": {
+                "url": webhook_url,
+                "use_params": True,
+                "as_json": True,
+                # Paperless 2.20.x documents ``doc_id`` but does not
+                # expose it to the workflow template context.  The
+                # stable document URL does contain the same id.
+                "params": {
+                    "document_id": '{{ doc_url.split("/")[-2] }}',
+                },
+                "body": None,
+                "headers": {
+                    "X-EZEUS-Webhook-Secret": webhook_secret,
+                    "Content-Type": "application/json",
+                },
+                "include_document": False,
+            },
+        }
+        automatic_payload: dict[str, object] = {
+            "name": _MANAGED_WORKFLOW_NAME,
             "order": 0,
             "enabled": True,
-            "triggers": [
-                {"type": 2},  # Document added
-            ],
-            "actions": [
-                {
-                    "type": 4,
-                    "webhook": {
-                        "url": webhook_url,
-                        "use_params": True,
-                        "as_json": True,
-                        # Paperless 2.20.x documents ``doc_id`` but does not
-                        # expose it to the workflow template context.  The
-                        # stable document URL does contain the same id.
-                        "params": {
-                            "document_id": '{{ doc_url.split("/")[-2] }}',
-                        },
-                        "body": None,
-                        "headers": {
-                            "X-EZEUS-Webhook-Secret": webhook_secret,
-                            "Content-Type": "application/json",
-                        },
-                        "include_document": False,
-                    },
-                }
-            ],
+            "triggers": [{"type": 2}],  # Default: document added
+            "actions": [webhook_action],
         }
         response = await self._request("GET", "/api/workflows/?page_size=100")
         workflows = response.json().get("results", [])
+        ocr_result: dict[str, object] | None = None
+        if ocr_handoff_enabled:
+            complete_name = ocr_complete_tag_name.strip()
+            if not complete_name:
+                raise ValidationError("OCR completion tag must not be empty")
+            ocr_complete_tag = await self._ensure_tag(complete_name)
+            ocr_triggered_tag = await self._ensure_tag(_OCR_TRIGGERED_TAG_NAME)
+            ocr_complete_tag_id = int(_path_id(ocr_complete_tag["id"]))
+            ocr_triggered_tag_id = int(_path_id(ocr_triggered_tag["id"]))
+            automatic_payload["triggers"] = [
+                {
+                    "type": 3,
+                    "filter_has_all_tags": [ocr_complete_tag_id],
+                    "filter_has_not_tags": [ocr_triggered_tag_id],
+                }
+            ]
+            automatic_payload["actions"] = [
+                webhook_action,
+                {"type": 1, "assign_tags": [ocr_triggered_tag_id]},
+            ]
+            ocr_result = {
+                "complete_tag_name": complete_name,
+                "complete_tag_id": ocr_complete_tag_id,
+                "triggered_tag_name": _OCR_TRIGGERED_TAG_NAME,
+                "triggered_tag_id": ocr_triggered_tag_id,
+            }
+
+            request_name = (ocr_request_tag_name or "").strip()
+            if request_name:
+                ocr_request_tag = await self._ensure_tag(request_name)
+                ocr_pending_tag = await self._ensure_tag(_OCR_PENDING_TAG_NAME)
+                ocr_request_tag_id = int(_path_id(ocr_request_tag["id"]))
+                ocr_pending_tag_id = int(_path_id(ocr_pending_tag["id"]))
+                request_payload: dict[str, object] = {
+                    "name": _OCR_REQUEST_WORKFLOW_NAME,
+                    "order": -20,
+                    "enabled": True,
+                    "triggers": [{"type": 2}],
+                    "actions": [
+                        {
+                            "type": 1,
+                            "assign_tags": [ocr_request_tag_id, ocr_pending_tag_id],
+                        }
+                    ],
+                }
+                complete_payload: dict[str, object] = {
+                    "name": _OCR_COMPLETE_WORKFLOW_NAME,
+                    "order": -10,
+                    "enabled": True,
+                    "triggers": [
+                        {
+                            "type": 3,
+                            "filter_has_all_tags": [ocr_pending_tag_id],
+                            "filter_has_not_tags": [ocr_request_tag_id, ocr_complete_tag_id],
+                        }
+                    ],
+                    "actions": [
+                        {"type": 1, "assign_tags": [ocr_complete_tag_id]},
+                        {"type": 2, "remove_tags": [ocr_pending_tag_id]},
+                    ],
+                }
+                request_workflow = await self._upsert_workflow(
+                    workflows, name=_OCR_REQUEST_WORKFLOW_NAME, payload=request_payload
+                )
+                complete_workflow = await self._upsert_workflow(
+                    workflows, name=_OCR_COMPLETE_WORKFLOW_NAME, payload=complete_payload
+                )
+                automatic_actions = automatic_payload["actions"]
+                if isinstance(automatic_actions, list):
+                    automatic_actions.append({"type": 2, "remove_tags": [ocr_pending_tag_id]})
+                ocr_result.update(
+                    {
+                        "request_tag_name": request_name,
+                        "request_tag_id": ocr_request_tag_id,
+                        "pending_tag_name": _OCR_PENDING_TAG_NAME,
+                        "pending_tag_id": ocr_pending_tag_id,
+                        "request_workflow": request_workflow,
+                        "complete_workflow": complete_workflow,
+                    }
+                )
+            else:
+                await self._disable_workflow(workflows, _OCR_REQUEST_WORKFLOW_NAME)
+                await self._disable_workflow(workflows, _OCR_COMPLETE_WORKFLOW_NAME)
+        else:
+            await self._disable_workflow(workflows, _OCR_REQUEST_WORKFLOW_NAME)
+            await self._disable_workflow(workflows, _OCR_COMPLETE_WORKFLOW_NAME)
+
+        automatic = await self._upsert_workflow(
+            workflows,
+            name=_MANAGED_WORKFLOW_NAME,
+            payload=automatic_payload,
+        )
+        result: dict[str, object] = {
+            "configured": True,
+            "created": automatic["created"],
+            "workflow_id": automatic["workflow_id"],
+            "workflow_name": _MANAGED_WORKFLOW_NAME,
+            "ocr_trigger": ocr_result,
+            "manual_trigger": None,
+        }
+        if manual_reprocess_enabled:
+            manual_name = manual_reprocess_tag_name.strip()
+            if not manual_name:
+                raise ValidationError("Manual reprocessing tag must not be empty")
+            manual_tag = await self._ensure_tag(manual_name)
+            manual_tag_id = int(_path_id(manual_tag["id"]))
+            manual_payload: dict[str, object] = {
+                "name": _MANUAL_WORKFLOW_NAME,
+                "order": 10,
+                "enabled": True,
+                "triggers": [{"type": 3, "filter_has_all_tags": [manual_tag_id]}],
+                "actions": [
+                    webhook_action,
+                    {"type": 2, "remove_tags": [manual_tag_id]},
+                ],
+            }
+            manual = await self._upsert_workflow(
+                workflows, name=_MANUAL_WORKFLOW_NAME, payload=manual_payload
+            )
+            result["manual_trigger"] = {
+                "tag_name": manual_name,
+                "tag_id": manual_tag_id,
+                **manual,
+            }
+        else:
+            await self._disable_workflow(workflows, _MANUAL_WORKFLOW_NAME)
+        return result
+
+    async def _disable_workflow(self, workflows: list[object], name: str) -> None:
+        existing = next(
+            (item for item in workflows if isinstance(item, dict) and item.get("name") == name),
+            None,
+        )
+        if existing is None or not existing.get("enabled", True):
+            return
+        workflow_id = existing.get("id")
+        if workflow_id is None:
+            raise ValidationError("Paperless workflow has no id")
+        await self._request(
+            "PATCH",
+            f"/api/workflows/{_path_id(workflow_id)}/",
+            json={"enabled": False},
+        )
+
+    async def _ensure_tag(self, name: str) -> dict[str, object]:
+        """Return a tag by exact name, creating it when necessary."""
+
+        url = "/api/tags/?page_size=100"
+        while url:
+            response = await self._request("GET", url)
+            data = response.json()
+            existing = next(
+                (
+                    item
+                    for item in data.get("results", [])
+                    if isinstance(item, dict) and item.get("name") == name
+                ),
+                None,
+            )
+            if existing is not None:
+                return existing
+            next_url = data.get("next")
+            url = str(next_url) if next_url else ""
+        response = await self._request("POST", "/api/tags/", json={"name": name})
+        return response.json()
+
+    async def _upsert_workflow(
+        self,
+        workflows: list[object],
+        *,
+        name: str,
+        payload: dict[str, object],
+    ) -> dict[str, object]:
         managed = next(
-            (
-                item
-                for item in workflows
-                if isinstance(item, dict) and item.get("name") == workflow_name
-            ),
+            (item for item in workflows if isinstance(item, dict) and item.get("name") == name),
             None,
         )
         if managed is None:
             result = await self._request("POST", "/api/workflows/", json=payload)
             workflow = result.json()
             return {
-                "configured": True,
                 "created": True,
                 "workflow_id": workflow.get("id"),
-                "workflow_name": workflow_name,
+                "workflow_name": name,
             }
-
         workflow_id = managed.get("id")
         if workflow_id is None:
             raise ValidationError("Paperless workflow has no id")
@@ -264,10 +438,9 @@ class PaperlessConnector(DocumentConnector):
         )
         workflow = result.json()
         return {
-            "configured": True,
             "created": False,
             "workflow_id": workflow.get("id", workflow_id),
-            "workflow_name": workflow_name,
+            "workflow_name": name,
         }
 
     async def get_document(self, external_document_id: str) -> ConnectorDocument:

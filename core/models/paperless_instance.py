@@ -19,6 +19,17 @@ class PaperlessInstance(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     allow_title_overwrite: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     title_template: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    ocr_handoff_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    ocr_request_tag_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    ocr_complete_tag_name: Mapped[str] = mapped_column(
+        String(128), nullable=False, default="paperless-gpt-auto-complete"
+    )
+    manual_reprocess_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
+    manual_reprocess_tag_name: Mapped[str] = mapped_column(
+        String(128), nullable=False, default="9"
+    )
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
 
     field_configs = relationship(

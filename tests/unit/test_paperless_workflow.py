@@ -9,6 +9,48 @@ from core.config.settings import Settings
 
 
 @pytest.mark.asyncio
+async def test_optional_workflow_features_are_disabled_by_default(monkeypatch) -> None:
+    requests: list[httpx.Request] = []
+    monkeypatch.setattr("core.security.outbound.resolve_hosts", lambda _host: ["203.0.113.10"])
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if request.method == "GET":
+            return httpx.Response(200, json={"results": []}, request=request)
+        payload = json.loads(request.content)
+        assert payload["name"] == "eZEUS-AI-2 – automatische Dokumentverarbeitung"
+        return httpx.Response(201, json={"id": 17}, request=request)
+
+    connector = PaperlessConnector(
+        base_url="https://paperless.example.test",
+        api_token="token",
+    )
+    connector._settings = Settings(outbound_block_private_networks=False)
+    monkeypatch.setattr(
+        connector,
+        "_client",
+        lambda: httpx.AsyncClient(
+            base_url=connector.base_url,
+            headers={"Authorization": "Token token"},
+            transport=httpx.MockTransport(handler),
+        ),
+    )
+
+    result = await connector.ensure_ezeus_workflow(
+        webhook_url="https://webhook.example.test/webhooks/paperless/default",
+        webhook_secret="long-secret-value",
+    )
+
+    assert result["ocr_trigger"] is None
+    assert result["manual_trigger"] is None
+    assert not any(request.url.path == "/api/tags/" for request in requests)
+    workflow_request = next(request for request in requests if request.method == "POST")
+    payload = json.loads(workflow_request.content)
+    assert payload["triggers"] == [{"type": 2}]
+    assert [action["type"] for action in payload["actions"]] == [4]
+
+
+@pytest.mark.asyncio
 async def test_ezeus_workflow_is_created_with_safe_public_webhook(monkeypatch) -> None:
     requests: list[httpx.Request] = []
     monkeypatch.setattr(
@@ -18,9 +60,32 @@ async def test_ezeus_workflow_is_created_with_safe_public_webhook(monkeypatch) -
 
     async def handler(request: httpx.Request) -> httpx.Response:
         requests.append(request)
+        if request.url.path == "/api/tags/" and request.method == "GET":
+            return httpx.Response(200, json={"results": []}, request=request)
+        if request.url.path == "/api/tags/" and request.method == "POST":
+            name = json.loads(request.content)["name"]
+            tag_ids = {
+                "3": 50,
+                "ezeus-ai-2-ocr-pending": 51,
+                "paperless-gpt-auto-complete": 52,
+                "ezeus-ai-2-ocr-triggered": 53,
+                "9": 54,
+            }
+            return httpx.Response(
+                201,
+                json={"id": tag_ids[name], "name": name},
+                request=request,
+            )
         if request.method == "GET":
             return httpx.Response(200, json={"results": []}, request=request)
-        return httpx.Response(201, json={"id": 17}, request=request)
+        workflow_name = json.loads(request.content)["name"]
+        workflow_id = {
+            "eZEUS-AI-2 – Paperless-gpt OCR anfordern": 15,
+            "eZEUS-AI-2 – Paperless-gpt OCR-Abschluss": 16,
+            "eZEUS-AI-2 – automatische Dokumentverarbeitung": 17,
+            "eZEUS-AI-2 – manuelle Neuverarbeitung (Tag 9)": 18,
+        }[workflow_name]
+        return httpx.Response(201, json={"id": workflow_id}, request=request)
 
     connector = PaperlessConnector(
         base_url="https://paperless.example.test",
@@ -40,18 +105,81 @@ async def test_ezeus_workflow_is_created_with_safe_public_webhook(monkeypatch) -
     result = await connector.ensure_ezeus_workflow(
         webhook_url=("https://webhook.example.test/webhooks/paperless/paperless-example-test"),
         webhook_secret="long-secret-value",
+        ocr_handoff_enabled=True,
+        ocr_request_tag_name="3",
+        manual_reprocess_enabled=True,
+        manual_reprocess_tag_name="9",
     )
 
-    assert result == {
-        "configured": True,
-        "created": True,
-        "workflow_id": 17,
-        "workflow_name": "eZEUS-AI-2 – automatische Dokumentverarbeitung",
+    assert result["configured"] is True
+    assert result["created"] is True
+    assert result["workflow_id"] == 17
+    assert result["workflow_name"] == "eZEUS-AI-2 – automatische Dokumentverarbeitung"
+    assert result["ocr_trigger"] == {
+        "request_tag_name": "3",
+        "request_tag_id": 50,
+        "pending_tag_name": "ezeus-ai-2-ocr-pending",
+        "pending_tag_id": 51,
+        "complete_tag_name": "paperless-gpt-auto-complete",
+        "complete_tag_id": 52,
+        "triggered_tag_name": "ezeus-ai-2-ocr-triggered",
+        "triggered_tag_id": 53,
+        "request_workflow": {
+            "created": True,
+            "workflow_id": 15,
+            "workflow_name": "eZEUS-AI-2 – Paperless-gpt OCR anfordern",
+        },
+        "complete_workflow": {
+            "created": True,
+            "workflow_id": 16,
+            "workflow_name": "eZEUS-AI-2 – Paperless-gpt OCR-Abschluss",
+        },
     }
-    payload = json.loads(requests[1].content)
+    assert result["manual_trigger"] == {
+        "tag_name": "9",
+        "tag_id": 54,
+        "created": True,
+        "workflow_id": 18,
+        "workflow_name": "eZEUS-AI-2 – manuelle Neuverarbeitung (Tag 9)",
+    }
+    workflow_requests = [
+        request
+        for request in requests
+        if request.url.path == "/api/workflows/" and request.method == "POST"
+    ]
+    workflow_payloads = {
+        payload["name"]: payload
+        for payload in (json.loads(request.content) for request in workflow_requests)
+    }
+    request_payload = workflow_payloads["eZEUS-AI-2 – Paperless-gpt OCR anfordern"]
+    assert request_payload["triggers"] == [{"type": 2}]
+    assert request_payload["actions"] == [{"type": 1, "assign_tags": [50, 51]}]
+
+    complete_payload = workflow_payloads["eZEUS-AI-2 – Paperless-gpt OCR-Abschluss"]
+    assert complete_payload["triggers"] == [
+        {
+            "type": 3,
+            "filter_has_all_tags": [51],
+            "filter_has_not_tags": [50, 52],
+        }
+    ]
+    assert complete_payload["actions"] == [
+        {"type": 1, "assign_tags": [52]},
+        {"type": 2, "remove_tags": [51]},
+    ]
+
+    payload = workflow_payloads["eZEUS-AI-2 – automatische Dokumentverarbeitung"]
     assert payload["enabled"] is True
-    assert payload["triggers"] == [{"type": 2}]
+    assert payload["triggers"] == [
+        {
+            "type": 3,
+            "filter_has_all_tags": [52],
+            "filter_has_not_tags": [53],
+        }
+    ]
     assert payload["actions"][0]["type"] == 4
+    assert payload["actions"][1] == {"type": 1, "assign_tags": [53]}
+    assert payload["actions"][2] == {"type": 2, "remove_tags": [51]}
     webhook = payload["actions"][0]["webhook"]
     assert webhook["as_json"] is True
     assert webhook["use_params"] is True
@@ -60,6 +188,13 @@ async def test_ezeus_workflow_is_created_with_safe_public_webhook(monkeypatch) -
     }
     assert webhook["body"] is None
     assert webhook["headers"]["X-EZEUS-Webhook-Secret"] == "long-secret-value"
+
+    manual_payload = workflow_payloads["eZEUS-AI-2 – manuelle Neuverarbeitung (Tag 9)"]
+    assert manual_payload["triggers"] == [
+        {"type": 3, "filter_has_all_tags": [54]},
+    ]
+    assert manual_payload["actions"][0] == payload["actions"][0]
+    assert manual_payload["actions"][1] == {"type": 2, "remove_tags": [54]}
 
 
 @pytest.mark.asyncio
@@ -72,20 +207,47 @@ async def test_ezeus_workflow_is_repaired_instead_of_duplicated(monkeypatch) -> 
 
     async def handler(request: httpx.Request) -> httpx.Response:
         requests.append(request)
+        if request.url.path == "/api/tags/":
+            return httpx.Response(
+                200,
+                json={
+                    "results": [
+                        {"id": 50, "name": "3"},
+                        {"id": 51, "name": "ezeus-ai-2-ocr-pending"},
+                        {"id": 52, "name": "paperless-gpt-auto-complete"},
+                        {"id": 53, "name": "ezeus-ai-2-ocr-triggered"},
+                        {"id": 54, "name": "9"},
+                    ]
+                },
+                request=request,
+            )
         if request.method == "GET":
             return httpx.Response(
                 200,
                 json={
                     "results": [
                         {
+                            "id": 21,
+                            "name": "eZEUS-AI-2 – Paperless-gpt OCR anfordern",
+                        },
+                        {
+                            "id": 22,
+                            "name": "eZEUS-AI-2 – Paperless-gpt OCR-Abschluss",
+                        },
+                        {
                             "id": 23,
                             "name": "eZEUS-AI-2 – automatische Dokumentverarbeitung",
-                        }
+                        },
+                        {
+                            "id": 24,
+                            "name": "eZEUS-AI-2 – manuelle Neuverarbeitung (Tag 9)",
+                        },
                     ]
                 },
                 request=request,
             )
-        return httpx.Response(200, json={"id": 23}, request=request)
+        workflow_id = int(request.url.path.rstrip("/").rsplit("/", 1)[-1])
+        return httpx.Response(200, json={"id": workflow_id}, request=request)
 
     connector = PaperlessConnector(
         base_url="https://paperless.example.test",
@@ -105,11 +267,20 @@ async def test_ezeus_workflow_is_repaired_instead_of_duplicated(monkeypatch) -> 
     result = await connector.ensure_ezeus_workflow(
         webhook_url="https://webhook.example.test/webhooks/paperless/customer",
         webhook_secret="long-secret-value",
+        ocr_handoff_enabled=True,
+        ocr_request_tag_name="3",
+        manual_reprocess_enabled=True,
     )
 
     assert result["created"] is False
-    assert requests[1].method == "PUT"
-    assert requests[1].url.path == "/api/workflows/23/"
+    assert result["manual_trigger"]["created"] is False
+    workflow_updates = [request for request in requests if request.method == "PUT"]
+    assert [request.url.path for request in workflow_updates] == [
+        "/api/workflows/21/",
+        "/api/workflows/22/",
+        "/api/workflows/23/",
+        "/api/workflows/24/",
+    ]
 
 
 def test_paperless_pagination_cannot_switch_to_another_origin() -> None:
