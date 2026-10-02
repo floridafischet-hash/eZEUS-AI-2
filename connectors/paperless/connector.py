@@ -407,7 +407,10 @@ class PaperlessConnector(DocumentConnector):
             next_url = data.get("next")
             url = str(next_url) if next_url else ""
         response = await self._request("POST", "/api/tags/", json={"name": name})
-        return response.json()
+        created = response.json()
+        if not isinstance(created, dict):
+            raise ValidationError("Unexpected Paperless tag response")
+        return created
 
     async def _upsert_workflow(
         self,

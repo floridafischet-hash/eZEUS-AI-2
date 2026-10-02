@@ -20,9 +20,7 @@ def upgrade() -> None:
         column["name"] for column in sa.inspect(op.get_bind()).get_columns("paperless_instances")
     }
     additions = (
-        sa.Column(
-            "ocr_handoff_enabled", sa.Boolean(), nullable=False, server_default=sa.false()
-        ),
+        sa.Column("ocr_handoff_enabled", sa.Boolean(), nullable=False, server_default=sa.false()),
         sa.Column("ocr_request_tag_name", sa.String(length=128), nullable=True),
         sa.Column(
             "ocr_complete_tag_name",
