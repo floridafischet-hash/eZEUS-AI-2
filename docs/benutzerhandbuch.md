@@ -67,6 +67,70 @@ Filter werden in Paperless verwaltet. Bei **Dokument aktualisiert** muss der
 Workflow durch geeignete Filter oder einen Einmal-Tag gegen Mehrfachauslösungen
 abgesichert werden.
 
+## Optionale Workflows und Tag-Namen
+
+Diese Einstellungen gelten immer nur für die ausgewählte Paperless-Instanz.
+Andere Instanzen werden nicht verändert. Wenn beide Optionen ausgeschaltet
+sind, bleibt der Standard erhalten: Ein neu hinzugefügtes Dokument startet
+eZEUS direkt.
+
+### Einstellungen öffnen
+
+1. In eZEUS **Instanzen** öffnen.
+2. Bei der gewünschten Instanz **Bearbeiten** auswählen.
+3. Die benötigte optionale Funktion einschalten und ihre Tags festlegen.
+4. **Änderungen speichern** auswählen.
+5. Danach bei derselben Instanz **Workflow einrichten** auswählen.
+6. Abschließend **Verbindung testen** auswählen.
+
+Die Eingabefelder erwarten den sichtbaren **Tag-Namen**, nicht die interne
+Paperless-ID. Namen sind frei wählbar, zum Beispiel `9`, `Günther` oder
+`erneut-verarbeiten`. eZEUS sucht das Tag anhand dieses Namens und legt es bei
+Bedarf in Paperless an. Alle gleichzeitig aktiven Workflow-Tags einer Instanz
+müssen unterschiedliche Namen haben.
+
+### Erst nach Paperless-gpt-OCR verarbeiten
+
+Die Option **Erst nach Paperless-gpt-OCR an eZEUS übergeben** ist sinnvoll,
+wenn Paperless-gpt den Dokumenttext vor eZEUS verbessern soll.
+
+- **Paperless-gpt-Eingangstag:** optionales Tag, mit dem diese Instanz
+  Paperless-gpt startet. Leer lassen, wenn Paperless-gpt seinen Abschluss
+  selbst durch ein Tag meldet.
+- **OCR-Wartemarker:** merkt sich, dass eZEUS auf Paperless-gpt wartet.
+- **OCR-Abschluss-Tag:** löst den automatischen eZEUS-Lauf aus.
+- **Bereits-verarbeitet-Tag:** verhindert, dass spätere Änderungen am Dokument
+  denselben automatischen Lauf erneut starten.
+
+Diese Option ist keine globale Voraussetzung. Sie kann bei einer Instanz aktiv
+und bei allen anderen Instanzen ausgeschaltet sein.
+
+### Vorhandenes Dokument manuell neu verarbeiten
+
+Die Option **Manuelle Neuverarbeitung per Tag** definiert ein One-shot-Tag.
+Wird dieses Tag in Paperless an ein Dokument gesetzt, startet eZEUS genau einen
+neuen Lauf und entfernt das Tag anschließend automatisch.
+
+Beispiel mit dem Tag `Günther`:
+
+1. In eZEUS bei der Instanz das manuelle Trigger-Tag auf `Günther` setzen.
+2. Speichern und **Workflow einrichten** auswählen.
+3. In Paperless das gewünschte Dokument öffnen.
+4. Das Tag `Günther` hinzufügen und speichern.
+5. In der eZEUS-Übersicht den neuen Job kontrollieren.
+6. Prüfen, dass `Günther` am Dokument wieder entfernt wurde.
+
+Für einen späteren weiteren Lauf kann `Günther` erneut gesetzt werden.
+Bereits gefüllte Paperless-Felder werden weiterhin nicht ungeprüft
+überschrieben.
+
+### Tag-Namen später ändern
+
+Nach einer Umbenennung und erneutem **Workflow einrichten** verwendet der
+verwaltete Workflow das neue Tag. Das alte Tag bleibt in Paperless bestehen,
+weil es möglicherweise noch von Benutzern oder fremden Workflows verwendet
+wird. Es kann nach einer manuellen Prüfung direkt in Paperless entfernt werden.
+
 ## Paperless-Webhook einrichten
 
 Der Webhook informiert eZEUS darüber, dass Paperless ein Dokument verarbeiten soll. Für die normale Einrichtung ist kein technisches Wissen erforderlich.
@@ -288,7 +352,11 @@ Das Feld zuerst in Paperless anlegen und anschließend die Feldseite in eZEUS ne
 
 ### Ein Dokument wird nicht verarbeitet
 
-Prüfen, ob die Instanz aktiv ist und der Workflow auf **Dokument hinzugefügt** reagiert. Danach das Verarbeitungsprotokoll öffnen.
+Prüfen, ob die Instanz aktiv ist. Beim Standardpfad muss der Workflow auf
+**Dokument hinzugefügt** reagieren. Beim optionalen OCR-Pfad müssen die
+konfigurierten Eingangs-, Abschluss- und Marker-Tags zum Paperless-Workflow
+passen. Danach **Workflow einrichten**, **Verbindung testen** und das
+Verarbeitungsprotokoll prüfen.
 
 ### Das Dokument erscheint in eZEUS, aber die Felder bleiben leer
 

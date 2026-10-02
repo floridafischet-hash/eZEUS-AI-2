@@ -33,6 +33,26 @@ Workflow-Tags werden pro Instanz in der eZEUS-Instanzverwaltung eingestellt;
 ihre installationsabhängigen internen Paperless-IDs werden automatisch
 ermittelt. Aktive Tags derselben Instanz müssen unterschiedliche Namen haben.
 
+| Einstellung | Aufgabe | Nur aktiv, wenn |
+|---|---|---|
+| Paperless-gpt-Eingangstag | fordert die vorgelagerte OCR an | OCR-Handoff aktiv und Feld nicht leer |
+| OCR-Wartemarker | kennzeichnet den wartenden OCR-Auftrag | ein Eingangstag verwendet wird |
+| OCR-Abschluss-Tag | startet den automatischen eZEUS-Lauf | OCR-Handoff aktiv |
+| Bereits-verarbeitet-Tag | verhindert automatische Wiederholungen | OCR-Handoff aktiv |
+| Manuelles Trigger-Tag | startet eine einmalige Neuverarbeitung | manueller Trigger aktiv |
+
+Änderungen werden unter **Instanzen → Bearbeiten** gespeichert. Danach muss
+für genau diese Instanz **Workflow einrichten** ausgeführt werden. Der
+Connector legt fehlende Tags an und aktualisiert ausschließlich die von eZEUS
+verwalteten Workflows. Fremde Workflows und nicht mehr verwendete Tags werden
+nicht gelöscht.
+
+Eine Umbenennung verändert nur zukünftige Auslösungen. Das bisherige Tag bleibt
+in Paperless erhalten und kann nach einer manuellen Prüfung dort entfernt
+werden. Das manuelle Trigger-Tag wird dagegen nach jeder erfolgreichen
+Webhook-Annahme automatisch vom Dokument entfernt, damit dasselbe Kommando
+später erneut gesetzt werden kann.
+
 Paperless muss einen Webhook mit Dokument-ID und stabiler Event-ID senden. Das
 Secret wird im Header `X-EZEUS-Webhook-Secret` übermittelt.
 

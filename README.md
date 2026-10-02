@@ -234,6 +234,40 @@ geprüft werden. Dabei werden URL, TLS-Konfiguration und API-Token verwendet.
 Ausgehende Verbindungen unterliegen einer Host-Allowlist und Schutzregeln gegen
 SSRF. Loopback- und Link-Local-Ziele sind nicht frei erreichbar.
 
+### Optionale Workflows und frei benennbare Tags
+
+Der Standard bleibt pro Instanz unverändert: Ein neu hinzugefügtes Dokument
+startet eZEUS direkt. In der Administrationsoberfläche unter **Instanzen →
+Bearbeiten** können zusätzlich zwei voneinander unabhängige Erweiterungen
+aktiviert werden:
+
+- Übergabe an eZEUS erst nach einem Paperless-gpt-OCR-Abschluss
+- manuelle Neuverarbeitung eines vorhandenen Dokuments über ein Einmal-Tag
+
+Alle zugehörigen Tag-Namen werden pro Paperless-Instanz gespeichert. Es gibt
+keine globale Vorgabe, dass ein Tag `3` oder `9` heißen muss. Das manuelle
+Trigger-Tag kann beispielsweise `9`, `Günther` oder `erneut-verarbeiten`
+heißen. eZEUS ermittelt oder erstellt die passende interne Paperless-Tag-ID
+beim Provisionieren automatisch.
+
+Konfigurierbar sind:
+
+- Paperless-gpt-Eingangstag
+- OCR-Wartemarker
+- OCR-Abschluss-Tag
+- Bereits-verarbeitet-Tag als Schleifenschutz
+- manuelles Trigger-Tag
+
+Nach einer Änderung muss **Workflow einrichten** ausgewählt werden. Dadurch
+werden ausschließlich die von eZEUS verwalteten Workflows dieser Instanz
+aktualisiert. Fremde Workflows und alte Paperless-Tags werden nicht gelöscht.
+Aktive Tags derselben Instanz müssen unterschiedliche Namen haben.
+
+Das manuelle Trigger-Tag ist ein One-shot-Kommando: Paperless sendet das
+Dokument an eZEUS und entfernt das Tag danach. Für einen weiteren Lauf wird
+dasselbe Tag erneut am Dokument gesetzt. Details und Testschritte stehen im
+[Benutzerhandbuch](docs/benutzerhandbuch.md#optionale-workflows-und-tag-namen).
+
 ### Wiederverwendeter HTTP-Client
 
 Der Paperless-Connector verwendet pro Job einen wiederverwendeten

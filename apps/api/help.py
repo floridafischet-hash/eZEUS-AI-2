@@ -75,6 +75,22 @@ def help_page() -> str:
   </section>
 
   <section class="panel">
+    <div class="section-heading"><div><h2>Optionale Workflows und eigene Tag-Namen</h2></div></div>
+    <p>Die Einstellungen unter <strong>Instanzen → Bearbeiten</strong> gelten ausschließlich für die ausgewählte Paperless-Instanz. Ohne aktivierte Zusatzoption bleibt der Standard erhalten: Ein neues Dokument startet eZEUS direkt.</p>
+    <h3>Erst nach Paperless-gpt verarbeiten</h3>
+    <p>Optional kann eZEUS auf ein OCR-Abschluss-Tag von Paperless-gpt warten. Eingangstag, Wartemarker, Abschluss-Tag und Bereits-verarbeitet-Tag sind pro Instanz frei benennbar. Das Bereits-verarbeitet-Tag verhindert eine erneute automatische Auslösung bei späteren Dokumentänderungen.</p>
+    <h3>Vorhandenes Dokument erneut verarbeiten</h3>
+    <p>Das manuelle Trigger-Tag kann zum Beispiel <code>9</code>, <code>Günther</code> oder <code>erneut-verarbeiten</code> heißen. Wird es in Paperless an ein Dokument gesetzt, startet eZEUS einen neuen Lauf und entfernt das Tag anschließend automatisch.</p>
+    <ol>
+      <li>Bei der Instanz <strong>Bearbeiten</strong> auswählen.</li>
+      <li>Die gewünschte Zusatzfunktion aktivieren und die Tag-Namen eintragen.</li>
+      <li><strong>Änderungen speichern</strong> und danach <strong>Workflow einrichten</strong>.</li>
+      <li><strong>Verbindung testen</strong> und den Ablauf mit einem Testdokument prüfen.</li>
+    </ol>
+    <div class="notice warning">Die Felder erwarten Tag-Namen, keine Paperless-IDs. Aktive Tags derselben Instanz müssen unterschiedlich heißen. Alte Tags werden bei einer Umbenennung nicht automatisch aus Paperless gelöscht.</div>
+  </section>
+
+  <section class="panel">
     <div class="section-heading"><div>
       <h2>4. Paperless-Webhook einrichten</h2>
       <p class="section-copy">Der Webhook informiert eZEUS darüber, dass Paperless ein Dokument verarbeiten soll.</p>
@@ -206,7 +222,7 @@ def help_page() -> str:
       <dt><strong>Ein Paperless-Feld fehlt</strong></dt>
       <dd>Das Feld zuerst in Paperless anlegen und danach die Feldseite in eZEUS neu laden.</dd>
       <dt><strong>Ein Dokument wird nicht verarbeitet</strong></dt>
-      <dd>Prüfen, ob die Instanz aktiv ist und ein aktiver Paperless-Workflow die korrekte Webhook-Adresse verwendet. Danach Auslöser, Filter und Verarbeitungsprotokoll prüfen.</dd>
+      <dd>Prüfen, ob die Instanz aktiv ist und ein aktiver Paperless-Workflow die korrekte Webhook-Adresse verwendet. Beim optionalen OCR-Pfad zusätzlich die konfigurierten Tags prüfen. Danach <strong>Workflow einrichten</strong>, <strong>Verbindung testen</strong> und das Verarbeitungsprotokoll kontrollieren.</dd>
       <dt><strong>Das Dokument erscheint, aber Felder bleiben leer</strong></dt>
       <dd>Dann funktioniert der Workflow. OCR-Text, Feldaktivierung, OCR-Schalter, Paperless-ID und ein bereits gefülltes Zielfeld prüfen. Bei <code>candidates_found: 0</code> wurde das konkrete Layout nicht erkannt.</dd>
       <dt><strong>Der Rechnungsbetrag fehlt</strong></dt>
