@@ -33,11 +33,10 @@ logger = logging.getLogger(__name__)
 
 _PATH_ID_PATTERN = re.compile(r"^[1-9][0-9]{0,11}$")
 _MANAGED_WORKFLOW_NAME = "eZEUS-AI-2 – automatische Dokumentverarbeitung"
-_MANUAL_WORKFLOW_NAME = "eZEUS-AI-2 – manuelle Neuverarbeitung (Tag 9)"
+_MANUAL_WORKFLOW_NAME = "eZEUS-AI-2 – manuelle Neuverarbeitung"
+_LEGACY_MANUAL_WORKFLOW_NAME = "eZEUS-AI-2 – manuelle Neuverarbeitung (Tag 9)"
 _OCR_REQUEST_WORKFLOW_NAME = "eZEUS-AI-2 – Paperless-gpt OCR anfordern"
 _OCR_COMPLETE_WORKFLOW_NAME = "eZEUS-AI-2 – Paperless-gpt OCR-Abschluss"
-_OCR_PENDING_TAG_NAME = "ezeus-ai-2-ocr-pending"
-_OCR_TRIGGERED_TAG_NAME = "ezeus-ai-2-ocr-triggered"
 
 
 def _path_id(value: object) -> str:
@@ -206,6 +205,8 @@ class PaperlessConnector(DocumentConnector):
         ocr_handoff_enabled: bool = False,
         ocr_request_tag_name: str | None = None,
         ocr_complete_tag_name: str = "paperless-gpt-auto-complete",
+        ocr_pending_tag_name: str = "ezeus-ai-2-ocr-pending",
+        ocr_triggered_tag_name: str = "ezeus-ai-2-ocr-triggered",
         manual_reprocess_enabled: bool = False,
         manual_reprocess_tag_name: str = "9",
     ) -> dict[str, object]:
@@ -246,10 +247,22 @@ class PaperlessConnector(DocumentConnector):
         ocr_result: dict[str, object] | None = None
         if ocr_handoff_enabled:
             complete_name = ocr_complete_tag_name.strip()
-            if not complete_name:
-                raise ValidationError("OCR completion tag must not be empty")
+            triggered_name = ocr_triggered_tag_name.strip()
+            if not complete_name or not triggered_name:
+                raise ValidationError("OCR completion and processed tags must not be empty")
+            request_name = (ocr_request_tag_name or "").strip()
+            pending_name = ocr_pending_tag_name.strip()
+            active_names = [complete_name, triggered_name]
+            if request_name:
+                if not pending_name:
+                    raise ValidationError("OCR pending tag must not be empty")
+                active_names.extend([request_name, pending_name])
+            if manual_reprocess_enabled:
+                active_names.append(manual_reprocess_tag_name.strip())
+            if len(set(active_names)) != len(active_names):
+                raise ValidationError("Managed workflow tag names must be unique")
             ocr_complete_tag = await self._ensure_tag(complete_name)
-            ocr_triggered_tag = await self._ensure_tag(_OCR_TRIGGERED_TAG_NAME)
+            ocr_triggered_tag = await self._ensure_tag(triggered_name)
             ocr_complete_tag_id = int(_path_id(ocr_complete_tag["id"]))
             ocr_triggered_tag_id = int(_path_id(ocr_triggered_tag["id"]))
             automatic_payload["triggers"] = [
@@ -266,14 +279,13 @@ class PaperlessConnector(DocumentConnector):
             ocr_result = {
                 "complete_tag_name": complete_name,
                 "complete_tag_id": ocr_complete_tag_id,
-                "triggered_tag_name": _OCR_TRIGGERED_TAG_NAME,
+                "triggered_tag_name": triggered_name,
                 "triggered_tag_id": ocr_triggered_tag_id,
             }
 
-            request_name = (ocr_request_tag_name or "").strip()
             if request_name:
                 ocr_request_tag = await self._ensure_tag(request_name)
-                ocr_pending_tag = await self._ensure_tag(_OCR_PENDING_TAG_NAME)
+                ocr_pending_tag = await self._ensure_tag(pending_name)
                 ocr_request_tag_id = int(_path_id(ocr_request_tag["id"]))
                 ocr_pending_tag_id = int(_path_id(ocr_pending_tag["id"]))
                 request_payload: dict[str, object] = {
@@ -317,7 +329,7 @@ class PaperlessConnector(DocumentConnector):
                     {
                         "request_tag_name": request_name,
                         "request_tag_id": ocr_request_tag_id,
-                        "pending_tag_name": _OCR_PENDING_TAG_NAME,
+                        "pending_tag_name": pending_name,
                         "pending_tag_id": ocr_pending_tag_id,
                         "request_workflow": request_workflow,
                         "complete_workflow": complete_workflow,
@@ -360,7 +372,10 @@ class PaperlessConnector(DocumentConnector):
                 ],
             }
             manual = await self._upsert_workflow(
-                workflows, name=_MANUAL_WORKFLOW_NAME, payload=manual_payload
+                workflows,
+                name=_MANUAL_WORKFLOW_NAME,
+                payload=manual_payload,
+                aliases=(_LEGACY_MANUAL_WORKFLOW_NAME,),
             )
             result["manual_trigger"] = {
                 "tag_name": manual_name,
@@ -368,12 +383,26 @@ class PaperlessConnector(DocumentConnector):
                 **manual,
             }
         else:
-            await self._disable_workflow(workflows, _MANUAL_WORKFLOW_NAME)
+            await self._disable_workflow(
+                workflows,
+                _MANUAL_WORKFLOW_NAME,
+                aliases=(_LEGACY_MANUAL_WORKFLOW_NAME,),
+            )
         return result
 
-    async def _disable_workflow(self, workflows: list[object], name: str) -> None:
+    async def _disable_workflow(
+        self,
+        workflows: list[object],
+        name: str,
+        *,
+        aliases: tuple[str, ...] = (),
+    ) -> None:
         existing = next(
-            (item for item in workflows if isinstance(item, dict) and item.get("name") == name),
+            (
+                item
+                for item in workflows
+                if isinstance(item, dict) and item.get("name") in (name, *aliases)
+            ),
             None,
         )
         if existing is None or not existing.get("enabled", True):
@@ -418,9 +447,14 @@ class PaperlessConnector(DocumentConnector):
         *,
         name: str,
         payload: dict[str, object],
+        aliases: tuple[str, ...] = (),
     ) -> dict[str, object]:
         managed = next(
-            (item for item in workflows if isinstance(item, dict) and item.get("name") == name),
+            (
+                item
+                for item in workflows
+                if isinstance(item, dict) and item.get("name") in (name, *aliases)
+            ),
             None,
         )
         if managed is None:

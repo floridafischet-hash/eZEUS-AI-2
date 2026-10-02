@@ -143,6 +143,12 @@ def test_instance_admin_page_is_available() -> None:
     assert 'id="edit-instance-dialog"' in response.text
     assert 'id="edit-name"' in response.text
     assert 'id="edit-api-token"' in response.text
+    assert 'id="edit-ocr-request-tag"' in response.text
+    assert 'id="edit-ocr-complete-tag"' in response.text
+    assert 'id="edit-ocr-pending-tag"' in response.text
+    assert 'id="edit-ocr-triggered-tag"' in response.text
+    assert 'id="edit-manual-reprocess-tag"' in response.text
+    assert "Günther" in response.text
     assert "Bearbeiten" in response.text
     assert "Endgültig löschen" in response.text
 
@@ -281,8 +287,10 @@ def test_instance_can_be_edited_without_exposing_or_replacing_secrets(
                 "ocr_handoff_enabled": True,
                 "ocr_request_tag_name": "  kundenspezifisch  ",
                 "ocr_complete_tag_name": "ocr-fertig",
+                "ocr_pending_tag_name": "ocr-wartet",
+                "ocr_triggered_tag_name": "ocr-verarbeitet",
                 "manual_reprocess_enabled": True,
-                "manual_reprocess_tag_name": "9",
+                "manual_reprocess_tag_name": "Günther",
             },
         )
         assert response.status_code == 200
@@ -293,8 +301,10 @@ def test_instance_can_be_edited_without_exposing_or_replacing_secrets(
         assert body["ocr_handoff_enabled"] is True
         assert body["ocr_request_tag_name"] == "kundenspezifisch"
         assert body["ocr_complete_tag_name"] == "ocr-fertig"
+        assert body["ocr_pending_tag_name"] == "ocr-wartet"
+        assert body["ocr_triggered_tag_name"] == "ocr-verarbeitet"
         assert body["manual_reprocess_enabled"] is True
-        assert body["manual_reprocess_tag_name"] == "9"
+        assert body["manual_reprocess_tag_name"] == "Günther"
         assert "existing-api-token" not in str(body)
         assert "existing-webhook-secret" not in str(body)
 
@@ -306,7 +316,10 @@ def test_instance_can_be_edited_without_exposing_or_replacing_secrets(
             assert updated.ocr_handoff_enabled is True
             assert updated.ocr_request_tag_name == "kundenspezifisch"
             assert updated.ocr_complete_tag_name == "ocr-fertig"
+            assert updated.ocr_pending_tag_name == "ocr-wartet"
+            assert updated.ocr_triggered_tag_name == "ocr-verarbeitet"
             assert updated.manual_reprocess_enabled is True
+            assert updated.manual_reprocess_tag_name == "Günther"
             audit = db.scalar(
                 select(AuditEntry).where(AuditEntry.action == "UPDATE_PAPERLESS_INSTANCE")
             )

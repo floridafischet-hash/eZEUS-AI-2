@@ -54,12 +54,16 @@ class InstanceUpdate(BaseModel):
     ocr_handoff_enabled: bool | None = None
     ocr_request_tag_name: str | None = Field(default=None, max_length=128)
     ocr_complete_tag_name: str | None = Field(default=None, max_length=128)
+    ocr_pending_tag_name: str | None = Field(default=None, max_length=128)
+    ocr_triggered_tag_name: str | None = Field(default=None, max_length=128)
     manual_reprocess_enabled: bool | None = None
     manual_reprocess_tag_name: str | None = Field(default=None, max_length=128)
 
     @field_validator(
         "ocr_request_tag_name",
         "ocr_complete_tag_name",
+        "ocr_pending_tag_name",
+        "ocr_triggered_tag_name",
         "manual_reprocess_tag_name",
     )
     @classmethod
@@ -95,6 +99,23 @@ def _instance_slug(base_url: str, db: Session) -> str:
     return _validate_slug(slug)
 
 
+def _validate_active_workflow_tags(instance: PaperlessInstance) -> None:
+    active_tags: list[str] = []
+    if instance.ocr_handoff_enabled:
+        active_tags.extend([instance.ocr_complete_tag_name, instance.ocr_triggered_tag_name])
+        if instance.ocr_request_tag_name:
+            active_tags.extend([instance.ocr_request_tag_name, instance.ocr_pending_tag_name])
+    if instance.manual_reprocess_enabled:
+        active_tags.append(instance.manual_reprocess_tag_name)
+    if any(not tag.strip() for tag in active_tags):
+        raise HTTPException(status_code=422, detail="Aktive Workflow-Tags dürfen nicht leer sein")
+    if len(set(active_tags)) != len(active_tags):
+        raise HTTPException(
+            status_code=422,
+            detail="Jedes aktive Workflow-Tag muss innerhalb der Instanz eindeutig sein",
+        )
+
+
 def _serialize(instance: PaperlessInstance) -> dict[str, object]:
     webhook_path = f"/webhooks/paperless/{instance.slug}"
     public_base_url = get_settings().public_webhook_base_url.rstrip("/")
@@ -115,6 +136,8 @@ def _serialize(instance: PaperlessInstance) -> dict[str, object]:
         "ocr_handoff_enabled": instance.ocr_handoff_enabled,
         "ocr_request_tag_name": instance.ocr_request_tag_name or "",
         "ocr_complete_tag_name": instance.ocr_complete_tag_name,
+        "ocr_pending_tag_name": instance.ocr_pending_tag_name,
+        "ocr_triggered_tag_name": instance.ocr_triggered_tag_name,
         "manual_reprocess_enabled": instance.manual_reprocess_enabled,
         "manual_reprocess_tag_name": instance.manual_reprocess_tag_name,
     }
@@ -150,6 +173,8 @@ async def _provision_workflow(instance: PaperlessInstance) -> dict[str, object]:
             ocr_handoff_enabled=instance.ocr_handoff_enabled,
             ocr_request_tag_name=instance.ocr_request_tag_name,
             ocr_complete_tag_name=instance.ocr_complete_tag_name,
+            ocr_pending_tag_name=instance.ocr_pending_tag_name,
+            ocr_triggered_tag_name=instance.ocr_triggered_tag_name,
             manual_reprocess_enabled=instance.manual_reprocess_enabled,
             manual_reprocess_tag_name=instance.manual_reprocess_tag_name,
         )
@@ -239,6 +264,8 @@ def update_instance(
         "ocr_handoff_enabled": instance.ocr_handoff_enabled,
         "ocr_request_tag_name": instance.ocr_request_tag_name or "",
         "ocr_complete_tag_name": instance.ocr_complete_tag_name,
+        "ocr_pending_tag_name": instance.ocr_pending_tag_name,
+        "ocr_triggered_tag_name": instance.ocr_triggered_tag_name,
         "manual_reprocess_enabled": instance.manual_reprocess_enabled,
         "manual_reprocess_tag_name": instance.manual_reprocess_tag_name,
     }
@@ -276,6 +303,16 @@ def update_instance(
         if value is None:
             raise HTTPException(status_code=422, detail="OCR-Abschluss-Tag darf nicht leer sein")
         instance.ocr_complete_tag_name = str(value)
+    if "ocr_pending_tag_name" in changes:
+        value = changes["ocr_pending_tag_name"]
+        if value is None:
+            raise HTTPException(status_code=422, detail="OCR-Wartemarker darf nicht leer sein")
+        instance.ocr_pending_tag_name = str(value)
+    if "ocr_triggered_tag_name" in changes:
+        value = changes["ocr_triggered_tag_name"]
+        if value is None:
+            raise HTTPException(status_code=422, detail="OCR-Verarbeitet-Tag darf nicht leer sein")
+        instance.ocr_triggered_tag_name = str(value)
     if "manual_reprocess_enabled" in changes:
         instance.manual_reprocess_enabled = bool(changes["manual_reprocess_enabled"])
     if "manual_reprocess_tag_name" in changes:
@@ -285,6 +322,7 @@ def update_instance(
                 status_code=422, detail="Manuelles Trigger-Tag darf nicht leer sein"
             )
         instance.manual_reprocess_tag_name = str(value)
+    _validate_active_workflow_tags(instance)
     new_value = {
         "name": instance.name,
         "base_url": instance.base_url,
@@ -298,6 +336,8 @@ def update_instance(
         "ocr_handoff_enabled": instance.ocr_handoff_enabled,
         "ocr_request_tag_name": instance.ocr_request_tag_name or "",
         "ocr_complete_tag_name": instance.ocr_complete_tag_name,
+        "ocr_pending_tag_name": instance.ocr_pending_tag_name,
+        "ocr_triggered_tag_name": instance.ocr_triggered_tag_name,
         "manual_reprocess_enabled": instance.manual_reprocess_enabled,
         "manual_reprocess_tag_name": instance.manual_reprocess_tag_name,
     }
@@ -564,6 +604,16 @@ def instance_admin_page() -> str:
       <div><label for="edit-ocr-complete-tag">OCR-Abschluss-Tag</label>
         <input id="edit-ocr-complete-tag" maxlength="128"
           placeholder="paperless-gpt-auto-complete"></div>
+      <div><label for="edit-ocr-pending-tag">OCR-Wartemarker</label>
+        <input id="edit-ocr-pending-tag" maxlength="128"
+          placeholder="ezeus-ai-2-ocr-pending">
+        <p class="help-text">Wird nur für den optionalen Paperless-gpt-Eingangspfad
+          benötigt.</p></div>
+      <div><label for="edit-ocr-triggered-tag">Bereits-verarbeitet-Tag</label>
+        <input id="edit-ocr-triggered-tag" maxlength="128"
+          placeholder="ezeus-ai-2-ocr-triggered">
+        <p class="help-text">Verhindert, dass spätere Dokumentänderungen denselben
+          automatischen Lauf erneut starten.</p></div>
       <div class="full">
         <label class="toggle-label" for="edit-manual-reprocess-enabled">
           <input id="edit-manual-reprocess-enabled" type="checkbox">
@@ -571,7 +621,10 @@ def instance_admin_page() -> str:
         </label>
       </div>
       <div><label for="edit-manual-reprocess-tag">Manuelles Trigger-Tag</label>
-        <input id="edit-manual-reprocess-tag" maxlength="128" placeholder="9"></div>
+        <input id="edit-manual-reprocess-tag" maxlength="128" placeholder="9">
+        <p class="help-text">Frei wählbar, zum Beispiel <code>9</code>,
+          <code>Günther</code> oder <code>erneut-verarbeiten</code>. Das Tag wird nach
+          Annahme automatisch entfernt und kann später erneut gesetzt werden.</p></div>
     </div>
     <div id="edit-message" class="notice" role="status" hidden></div>
     <div class="form-actions dialog-actions">
@@ -617,6 +670,10 @@ def instance_admin_page() -> str:
     document.getElementById("edit-ocr-request-tag").value=item.ocr_request_tag_name||"";
     document.getElementById("edit-ocr-complete-tag").value=
       item.ocr_complete_tag_name||"paperless-gpt-auto-complete";
+    document.getElementById("edit-ocr-pending-tag").value=
+      item.ocr_pending_tag_name||"ezeus-ai-2-ocr-pending";
+    document.getElementById("edit-ocr-triggered-tag").value=
+      item.ocr_triggered_tag_name||"ezeus-ai-2-ocr-triggered";
     document.getElementById("edit-manual-reprocess-enabled").checked=
       item.manual_reprocess_enabled;
     document.getElementById("edit-manual-reprocess-tag").value=
@@ -763,6 +820,9 @@ def instance_admin_page() -> str:
       ocr_handoff_enabled:document.getElementById("edit-ocr-handoff-enabled").checked,
       ocr_request_tag_name:document.getElementById("edit-ocr-request-tag").value.trim(),
       ocr_complete_tag_name:document.getElementById("edit-ocr-complete-tag").value.trim(),
+      ocr_pending_tag_name:document.getElementById("edit-ocr-pending-tag").value.trim(),
+      ocr_triggered_tag_name:
+        document.getElementById("edit-ocr-triggered-tag").value.trim(),
       manual_reprocess_enabled:
         document.getElementById("edit-manual-reprocess-enabled").checked,
       manual_reprocess_tag_name:

@@ -24,6 +24,12 @@ class PaperlessInstance(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     ocr_complete_tag_name: Mapped[str] = mapped_column(
         String(128), nullable=False, default="paperless-gpt-auto-complete"
     )
+    ocr_pending_tag_name: Mapped[str] = mapped_column(
+        String(128), nullable=False, default="ezeus-ai-2-ocr-pending"
+    )
+    ocr_triggered_tag_name: Mapped[str] = mapped_column(
+        String(128), nullable=False, default="ezeus-ai-2-ocr-triggered"
+    )
     manual_reprocess_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     manual_reprocess_tag_name: Mapped[str] = mapped_column(String(128), nullable=False, default="9")
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)

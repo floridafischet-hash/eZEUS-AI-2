@@ -14,22 +14,24 @@ Ist die Erweiterung aktiviert, startet das frei konfigurierbare
 OCR-Abschluss-Tag den eZEUS-Webhook. Setzt Paperless-gpt dieses Tag selbst, kann
 das optionale OCR-Eingangstag leer bleiben. Benötigt eine Instanz wie der
 ff-Pilot ein Eingangstag, setzt der verwaltete Eingangsworkflow diesen
-instanzbezogenen Tag zusammen mit `ezeus-ai-2-ocr-pending`. Sobald
+instanzbezogenen Tag zusammen mit einem frei benennbaren Wartemarker. Sobald
 Paperless-gpt das Eingangstag entfernt, setzt der Abschlussworkflow das
 konfigurierte OCR-Abschluss-Tag. Tag-Namen wie `3` sind damit keine festen
 Programmwerte.
 
 Erst das Abschluss-Tag startet den eZEUS-Webhook. Danach setzt der Workflow
-zusätzlich `ezeus-ai-2-ocr-triggered` und entfernt einen eventuell verbliebenen
-Pending-Marker. Dadurch lösen spätere Metadatenänderungen dasselbe Dokument
-nicht unbeabsichtigt erneut aus.
+zusätzlich ein frei benennbares Bereits-verarbeitet-Tag und entfernt einen
+eventuell verbliebenen Wartemarker. Dadurch lösen spätere Metadatenänderungen
+dasselbe Dokument nicht unbeabsichtigt erneut aus.
 
 Auch die manuelle Neuverarbeitung ist optional und pro Instanz konfigurierbar.
 Im ff-Pilot wird dafür der Tag-Name `9` verwendet. Wird er einem bestehenden
 Dokument hinzugefügt, sendet Paperless dessen ID erneut an eZEUS und entfernt
 das Tag danach automatisch. Andere Instanzen können die Funktion deaktiviert
-lassen oder einen anderen Tag-Namen verwenden. Die installationsabhängige
-interne Paperless-ID wird automatisch ermittelt.
+lassen oder einen beliebigen anderen Tag-Namen wie `Günther` verwenden. Alle
+Workflow-Tags werden pro Instanz in der eZEUS-Instanzverwaltung eingestellt;
+ihre installationsabhängigen internen Paperless-IDs werden automatisch
+ermittelt. Aktive Tags derselben Instanz müssen unterschiedliche Namen haben.
 
 Paperless muss einen Webhook mit Dokument-ID und stabiler Event-ID senden. Das
 Secret wird im Header `X-EZEUS-Webhook-Secret` übermittelt.

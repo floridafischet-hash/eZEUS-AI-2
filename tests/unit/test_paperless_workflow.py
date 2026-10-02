@@ -3,7 +3,7 @@ import json
 import httpx
 import pytest
 
-from connectors.base.errors import ConnectionError
+from connectors.base.errors import ConnectionError, ValidationError
 from connectors.paperless.connector import PaperlessConnector
 from core.config.settings import Settings
 
@@ -65,11 +65,11 @@ async def test_ezeus_workflow_is_created_with_safe_public_webhook(monkeypatch) -
         if request.url.path == "/api/tags/" and request.method == "POST":
             name = json.loads(request.content)["name"]
             tag_ids = {
-                "3": 50,
-                "ezeus-ai-2-ocr-pending": 51,
-                "paperless-gpt-auto-complete": 52,
-                "ezeus-ai-2-ocr-triggered": 53,
-                "9": 54,
+                "OCR anfordern": 50,
+                "OCR wartet": 51,
+                "OCR fertig": 52,
+                "OCR verarbeitet": 53,
+                "Günther": 54,
             }
             return httpx.Response(
                 201,
@@ -83,7 +83,7 @@ async def test_ezeus_workflow_is_created_with_safe_public_webhook(monkeypatch) -
             "eZEUS-AI-2 – Paperless-gpt OCR anfordern": 15,
             "eZEUS-AI-2 – Paperless-gpt OCR-Abschluss": 16,
             "eZEUS-AI-2 – automatische Dokumentverarbeitung": 17,
-            "eZEUS-AI-2 – manuelle Neuverarbeitung (Tag 9)": 18,
+            "eZEUS-AI-2 – manuelle Neuverarbeitung": 18,
         }[workflow_name]
         return httpx.Response(201, json={"id": workflow_id}, request=request)
 
@@ -106,9 +106,12 @@ async def test_ezeus_workflow_is_created_with_safe_public_webhook(monkeypatch) -
         webhook_url=("https://webhook.example.test/webhooks/paperless/paperless-example-test"),
         webhook_secret="long-secret-value",
         ocr_handoff_enabled=True,
-        ocr_request_tag_name="3",
+        ocr_request_tag_name="OCR anfordern",
+        ocr_complete_tag_name="OCR fertig",
+        ocr_pending_tag_name="OCR wartet",
+        ocr_triggered_tag_name="OCR verarbeitet",
         manual_reprocess_enabled=True,
-        manual_reprocess_tag_name="9",
+        manual_reprocess_tag_name="Günther",
     )
 
     assert result["configured"] is True
@@ -116,13 +119,13 @@ async def test_ezeus_workflow_is_created_with_safe_public_webhook(monkeypatch) -
     assert result["workflow_id"] == 17
     assert result["workflow_name"] == "eZEUS-AI-2 – automatische Dokumentverarbeitung"
     assert result["ocr_trigger"] == {
-        "request_tag_name": "3",
+        "request_tag_name": "OCR anfordern",
         "request_tag_id": 50,
-        "pending_tag_name": "ezeus-ai-2-ocr-pending",
+        "pending_tag_name": "OCR wartet",
         "pending_tag_id": 51,
-        "complete_tag_name": "paperless-gpt-auto-complete",
+        "complete_tag_name": "OCR fertig",
         "complete_tag_id": 52,
-        "triggered_tag_name": "ezeus-ai-2-ocr-triggered",
+        "triggered_tag_name": "OCR verarbeitet",
         "triggered_tag_id": 53,
         "request_workflow": {
             "created": True,
@@ -136,11 +139,11 @@ async def test_ezeus_workflow_is_created_with_safe_public_webhook(monkeypatch) -
         },
     }
     assert result["manual_trigger"] == {
-        "tag_name": "9",
+        "tag_name": "Günther",
         "tag_id": 54,
         "created": True,
         "workflow_id": 18,
-        "workflow_name": "eZEUS-AI-2 – manuelle Neuverarbeitung (Tag 9)",
+        "workflow_name": "eZEUS-AI-2 – manuelle Neuverarbeitung",
     }
     workflow_requests = [
         request
@@ -189,7 +192,7 @@ async def test_ezeus_workflow_is_created_with_safe_public_webhook(monkeypatch) -
     assert webhook["body"] is None
     assert webhook["headers"]["X-EZEUS-Webhook-Secret"] == "long-secret-value"
 
-    manual_payload = workflow_payloads["eZEUS-AI-2 – manuelle Neuverarbeitung (Tag 9)"]
+    manual_payload = workflow_payloads["eZEUS-AI-2 – manuelle Neuverarbeitung"]
     assert manual_payload["triggers"] == [
         {"type": 3, "filter_has_all_tags": [54]},
     ]
@@ -281,6 +284,42 @@ async def test_ezeus_workflow_is_repaired_instead_of_duplicated(monkeypatch) -> 
         "/api/workflows/23/",
         "/api/workflows/24/",
     ]
+    legacy_manual_update = workflow_updates[-1]
+    assert json.loads(legacy_manual_update.content)["name"] == (
+        "eZEUS-AI-2 – manuelle Neuverarbeitung"
+    )
+
+
+@pytest.mark.asyncio
+async def test_active_workflow_tag_names_must_be_unique(monkeypatch) -> None:
+    monkeypatch.setattr("core.security.outbound.resolve_hosts", lambda _host: ["203.0.113.10"])
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"results": []}, request=request)
+
+    connector = PaperlessConnector(
+        base_url="https://paperless.example.test",
+        api_token="token",
+    )
+    connector._settings = Settings(outbound_block_private_networks=False)
+    monkeypatch.setattr(
+        connector,
+        "_client",
+        lambda: httpx.AsyncClient(
+            base_url=connector.base_url,
+            headers={"Authorization": "Token token"},
+            transport=httpx.MockTransport(handler),
+        ),
+    )
+
+    with pytest.raises(ValidationError, match="must be unique"):
+        await connector.ensure_ezeus_workflow(
+            webhook_url="https://webhook.example.test/webhooks/paperless/customer",
+            webhook_secret="long-secret-value",
+            ocr_handoff_enabled=True,
+            ocr_complete_tag_name="gleich",
+            ocr_triggered_tag_name="gleich",
+        )
 
 
 def test_paperless_pagination_cannot_switch_to_another_origin() -> None:
