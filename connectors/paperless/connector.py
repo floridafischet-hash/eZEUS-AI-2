@@ -215,32 +215,36 @@ class PaperlessConnector(DocumentConnector):
         The stable workflow name makes this operation idempotent.  User-created
         workflows are never modified.
         """
-        webhook_action = {
-            "type": 4,
-            "webhook": {
-                "url": webhook_url,
-                "use_params": True,
-                "as_json": True,
-                # Paperless 2.20.x documents ``doc_id`` but does not
-                # expose it to the workflow template context.  The
-                # stable document URL does contain the same id.
-                "params": {
-                    "document_id": '{{ doc_url.split("/")[-2] }}',
+
+        def webhook_action(trigger: str) -> dict[str, object]:
+            return {
+                "type": 4,
+                "webhook": {
+                    "url": webhook_url,
+                    "use_params": True,
+                    "as_json": True,
+                    # Paperless 2.20.x documents ``doc_id`` but does not
+                    # expose it to the workflow template context.  The
+                    # stable document URL does contain the same id.
+                    "params": {
+                        "document_id": '{{ doc_url.split("/")[-2] }}',
+                    },
+                    "body": None,
+                    "headers": {
+                        "X-EZEUS-Webhook-Secret": webhook_secret,
+                        "X-EZEUS-Workflow-Trigger": trigger,
+                        "Content-Type": "application/json",
+                    },
+                    "include_document": False,
                 },
-                "body": None,
-                "headers": {
-                    "X-EZEUS-Webhook-Secret": webhook_secret,
-                    "Content-Type": "application/json",
-                },
-                "include_document": False,
-            },
-        }
+            }
+
         automatic_payload: dict[str, object] = {
             "name": _MANAGED_WORKFLOW_NAME,
             "order": 0,
             "enabled": True,
             "triggers": [{"type": 2}],  # Default: document added
-            "actions": [webhook_action],
+            "actions": [webhook_action("document-added")],
         }
         response = await self._request("GET", "/api/workflows/?page_size=100")
         workflows = response.json().get("results", [])
@@ -273,7 +277,7 @@ class PaperlessConnector(DocumentConnector):
                 }
             ]
             automatic_payload["actions"] = [
-                webhook_action,
+                webhook_action("ocr-complete"),
                 {"type": 1, "assign_tags": [ocr_triggered_tag_id]},
             ]
             ocr_result = {
@@ -367,7 +371,7 @@ class PaperlessConnector(DocumentConnector):
                 "enabled": True,
                 "triggers": [{"type": 3, "filter_has_all_tags": [manual_tag_id]}],
                 "actions": [
-                    webhook_action,
+                    webhook_action("manual"),
                     {"type": 2, "remove_tags": [manual_tag_id]},
                 ],
             }
@@ -419,6 +423,18 @@ class PaperlessConnector(DocumentConnector):
     async def _ensure_tag(self, name: str) -> dict[str, object]:
         """Return a tag by exact name, creating it when necessary."""
 
+        existing = await self.find_tag(name)
+        if existing is not None:
+            return existing
+        response = await self._request("POST", "/api/tags/", json={"name": name})
+        created = response.json()
+        if not isinstance(created, dict):
+            raise ValidationError("Unexpected Paperless tag response")
+        return created
+
+    async def find_tag(self, name: str) -> dict[str, object] | None:
+        """Return an exact tag match without creating or changing Paperless data."""
+
         url = "/api/tags/?page_size=100"
         while url:
             response = await self._request("GET", url)
@@ -435,11 +451,7 @@ class PaperlessConnector(DocumentConnector):
                 return existing
             next_url = data.get("next")
             url = str(next_url) if next_url else ""
-        response = await self._request("POST", "/api/tags/", json={"name": name})
-        created = response.json()
-        if not isinstance(created, dict):
-            raise ValidationError("Unexpected Paperless tag response")
-        return created
+        return None
 
     async def _upsert_workflow(
         self,
@@ -493,6 +505,11 @@ class PaperlessConnector(DocumentConnector):
             correspondent_id=str(data["correspondent"]) if data.get("correspondent") else None,
             content=data.get("content"),
             custom_fields=fields,
+            tag_ids=frozenset(
+                str(tag_id)
+                for tag_id in data.get("tags", [])
+                if isinstance(tag_id, int) and not isinstance(tag_id, bool) and tag_id > 0
+            ),
             created=str(data["created"]) if data.get("created") else None,
         )
 

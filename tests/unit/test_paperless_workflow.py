@@ -48,6 +48,75 @@ async def test_optional_workflow_features_are_disabled_by_default(monkeypatch) -
     payload = json.loads(workflow_request.content)
     assert payload["triggers"] == [{"type": 2}]
     assert [action["type"] for action in payload["actions"]] == [4]
+    assert (
+        payload["actions"][0]["webhook"]["headers"]["X-EZEUS-Workflow-Trigger"] == "document-added"
+    )
+
+
+@pytest.mark.asyncio
+async def test_manual_trigger_is_independent_when_ocr_handoff_is_disabled(monkeypatch) -> None:
+    requests: list[httpx.Request] = []
+    monkeypatch.setattr("core.security.outbound.resolve_hosts", lambda _host: ["203.0.113.10"])
+
+    workflows = [
+        {"id": 71, "name": "eZEUS-AI-2 – automatische Dokumentverarbeitung", "enabled": True},
+        {"id": 76, "name": "eZEUS-AI-2 – manuelle Neuverarbeitung", "enabled": True},
+        {"id": 77, "name": "eZEUS-AI-2 – Paperless-gpt OCR anfordern", "enabled": True},
+        {"id": 78, "name": "eZEUS-AI-2 – Paperless-gpt OCR-Abschluss", "enabled": True},
+    ]
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if request.url.path == "/api/tags/" and request.method == "GET":
+            return httpx.Response(200, json={"results": [{"id": 55, "name": "9"}]}, request=request)
+        if request.url.path == "/api/workflows/" and request.method == "GET":
+            return httpx.Response(200, json={"results": workflows}, request=request)
+        workflow_id = int(request.url.path.rstrip("/").rsplit("/", 1)[-1])
+        return httpx.Response(200, json={"id": workflow_id}, request=request)
+
+    connector = PaperlessConnector(base_url="https://paperless.example.test", api_token="token")
+    connector._settings = Settings(outbound_block_private_networks=False)
+    monkeypatch.setattr(
+        connector,
+        "_client",
+        lambda: httpx.AsyncClient(
+            base_url=connector.base_url,
+            headers={"Authorization": "Token token"},
+            transport=httpx.MockTransport(handler),
+        ),
+    )
+
+    result = await connector.ensure_ezeus_workflow(
+        webhook_url="https://webhook.example.test/webhooks/paperless/pilot",
+        webhook_secret="long-secret-value",
+        ocr_handoff_enabled=False,
+        manual_reprocess_enabled=True,
+        manual_reprocess_tag_name="9",
+    )
+
+    assert result["ocr_trigger"] is None
+    assert result["manual_trigger"]["tag_name"] == "9"
+    disabled = {
+        request.url.path
+        for request in requests
+        if request.method == "PATCH" and json.loads(request.content) == {"enabled": False}
+    }
+    assert disabled == {"/api/workflows/77/", "/api/workflows/78/"}
+    updates = {
+        request.url.path: json.loads(request.content)
+        for request in requests
+        if request.method == "PUT"
+    }
+    automatic = updates["/api/workflows/71/"]
+    assert automatic["triggers"] == [{"type": 2}]
+    assert (
+        automatic["actions"][0]["webhook"]["headers"]["X-EZEUS-Workflow-Trigger"]
+        == "document-added"
+    )
+    manual = updates["/api/workflows/76/"]
+    assert manual["triggers"] == [{"type": 3, "filter_has_all_tags": [55]}]
+    assert manual["actions"][0]["webhook"]["headers"]["X-EZEUS-Workflow-Trigger"] == "manual"
+    assert manual["actions"][1] == {"type": 2, "remove_tags": [55]}
 
 
 @pytest.mark.asyncio
@@ -191,12 +260,16 @@ async def test_ezeus_workflow_is_created_with_safe_public_webhook(monkeypatch) -
     }
     assert webhook["body"] is None
     assert webhook["headers"]["X-EZEUS-Webhook-Secret"] == "long-secret-value"
+    assert webhook["headers"]["X-EZEUS-Workflow-Trigger"] == "ocr-complete"
 
     manual_payload = workflow_payloads["eZEUS-AI-2 – manuelle Neuverarbeitung"]
     assert manual_payload["triggers"] == [
         {"type": 3, "filter_has_all_tags": [54]},
     ]
-    assert manual_payload["actions"][0] == payload["actions"][0]
+    assert manual_payload["actions"][0]["type"] == 4
+    assert (
+        manual_payload["actions"][0]["webhook"]["headers"]["X-EZEUS-Workflow-Trigger"] == "manual"
+    )
     assert manual_payload["actions"][1] == {"type": 2, "remove_tags": [54]}
 
 

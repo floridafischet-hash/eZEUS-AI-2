@@ -14,6 +14,7 @@ class ConnectorDocument:
     correspondent_id: str | None = None
     content: str | None = None
     custom_fields: dict[str, object] = field(default_factory=dict)
+    tag_ids: frozenset[str] = field(default_factory=frozenset)
     created: str | None = None
 
 

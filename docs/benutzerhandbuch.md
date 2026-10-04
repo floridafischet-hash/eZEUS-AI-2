@@ -111,6 +111,10 @@ Die Option **Manuelle Neuverarbeitung per Tag** definiert ein One-shot-Tag.
 Wird dieses Tag in Paperless an ein Dokument gesetzt, startet eZEUS genau einen
 neuen Lauf und entfernt das Tag anschließend automatisch.
 
+Dieser Lauf verwendet die vollständige Feldkonfiguration der ausgewählten
+Instanz. Ein noch leerer Korrespondent wird ermittelt und noch leere aktivierte
+Custom Fields werden ergänzt. Bestehende manuelle Angaben bleiben erhalten.
+
 Beispiel mit dem Tag `Günther`:
 
 1. In eZEUS bei der Instanz das manuelle Trigger-Tag auf `Günther` setzen.

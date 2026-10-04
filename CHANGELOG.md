@@ -4,6 +4,9 @@ Alle wesentlichen Änderungen an eZEUS-AI-2 werden in dieser Datei dokumentiert.
 
 ## Unveröffentlicht
 
+- Optionale OCR- und manuelle Tag-Trigger pro Instanz getrennt sowie eine
+  serverseitige Fail-closed-Prüfung ergänzt, damit gelöschte Paperless-Tags
+  keine ungefilterten Wiederholungsjobs auslösen.
 - Produktionsnahes Kubernetes-/Helm-Chart für API, Worker, Queue-Outbox,
   PostgreSQL, Redis, Ollama, Migrationen, Ingress/OIDC, HPA/PDB und
   NetworkPolicies ergänzt.

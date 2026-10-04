@@ -5,13 +5,16 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from connectors.base.errors import ConnectorError
 from core.config.settings import get_settings
 from core.db.session import get_db
 from core.events.document_imported import DocumentImportedEvent
 from core.jobs.service import JobService
 from core.models.enums import JobPriority
+from core.models.paperless_instance import PaperlessInstance
 from core.paperless.service import (
     AmbiguousWebhookSecretError,
+    connector_for_instance,
     connector_name,
     find_enabled_instance_by_webhook_secret,
     get_enabled_instance,
@@ -25,13 +28,16 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/webhooks/paperless", tags=["webhooks"])
 
+_WORKFLOW_TRIGGERS = {"document-added", "ocr-complete", "manual"}
+
 
 @router.post("", status_code=status.HTTP_202_ACCEPTED)
-def receive_paperless_webhook(
+async def receive_paperless_webhook(
     payload: PaperlessWebhookPayload,
     response: Response,
     db: Annotated[Session, Depends(get_db)],
     x_ezeus_webhook_secret: str | None = Header(default=None),
+    x_ezeus_workflow_trigger: str | None = Header(default=None),
 ) -> dict[str, str | bool]:
     settings = get_settings()
     try:
@@ -46,6 +52,7 @@ def receive_paperless_webhook(
             ),
         ) from exc
     if instance is not None:
+        await _verify_instance_trigger(instance, payload, x_ezeus_workflow_trigger)
         return _accept_event(
             payload,
             response,
@@ -60,12 +67,13 @@ def receive_paperless_webhook(
 
 
 @router.post("/{instance_slug}", status_code=status.HTTP_202_ACCEPTED)
-def receive_instance_webhook(
+async def receive_instance_webhook(
     instance_slug: str,
     payload: PaperlessWebhookPayload,
     response: Response,
     db: Annotated[Session, Depends(get_db)],
     x_ezeus_webhook_secret: str | None = Header(default=None),
+    x_ezeus_workflow_trigger: str | None = Header(default=None),
 ) -> dict[str, str | bool]:
     instance = get_enabled_instance(db, instance_slug)
     if instance is None:
@@ -85,6 +93,7 @@ def receive_instance_webhook(
             extra={"instance_slug": instance_slug},
         )
         raise HTTPException(status_code=401, detail="Invalid webhook secret")
+    await _verify_instance_trigger(instance, payload, x_ezeus_workflow_trigger)
     return _accept_event(
         payload,
         response,
@@ -92,6 +101,70 @@ def receive_instance_webhook(
         connector=connector_name(instance.slug),
         source_prefix=str(instance.id),
     )
+
+
+async def _verify_instance_trigger(
+    instance: PaperlessInstance,
+    payload: PaperlessWebhookPayload,
+    trigger: str | None,
+) -> None:
+    """Fail closed when a managed tag workflow loses its Paperless filter.
+
+    Paperless removes references from workflows when a referenced tag is
+    deleted.  Without this independent check, the remaining update trigger
+    matches every document change and can recursively create jobs.
+
+    Missing trigger headers remain accepted for user-managed and legacy
+    workflows.  Newly provisioned eZEUS workflows always send the header.
+    """
+
+    if trigger is None or trigger == "document-added":
+        return
+    if trigger not in _WORKFLOW_TRIGGERS:
+        raise HTTPException(status_code=400, detail="Unknown workflow trigger")
+
+    if trigger == "manual":
+        if not instance.manual_reprocess_enabled:
+            raise HTTPException(status_code=409, detail="Manual reprocessing is disabled")
+        required_tag_names = (instance.manual_reprocess_tag_name,)
+        forbidden_tag_names: tuple[str, ...] = ()
+    else:
+        if not instance.ocr_handoff_enabled:
+            raise HTTPException(status_code=409, detail="OCR handoff is disabled")
+        required_tag_names = (instance.ocr_complete_tag_name,)
+        forbidden_tag_names = (instance.ocr_triggered_tag_name,)
+
+    try:
+        async with connector_for_instance(instance) as connector:
+            document = await connector.get_document(payload.document_id)
+            required_tags = [await connector.find_tag(name) for name in required_tag_names]
+            forbidden_tags = [await connector.find_tag(name) for name in forbidden_tag_names]
+    except (ConnectorError, CredentialEncryptionError) as exc:
+        logger.error(
+            "Webhook 503: unable to verify managed workflow trigger",
+            extra={"instance_slug": instance.slug, "trigger": trigger},
+            exc_info=exc,
+        )
+        raise HTTPException(status_code=503, detail="Unable to verify workflow trigger") from exc
+
+    required_ids = {
+        str(tag.get("id")) for tag in required_tags if isinstance(tag, dict) and tag.get("id")
+    }
+    forbidden_ids = {
+        str(tag.get("id")) for tag in forbidden_tags if isinstance(tag, dict) and tag.get("id")
+    }
+    valid = (
+        len(required_ids) == len(required_tag_names)
+        and len(forbidden_ids) == len(forbidden_tag_names)
+        and required_ids.issubset(document.tag_ids)
+        and document.tag_ids.isdisjoint(forbidden_ids)
+    )
+    if not valid:
+        logger.warning(
+            "Webhook 409: managed workflow trigger condition is not satisfied",
+            extra={"instance_slug": instance.slug, "trigger": trigger},
+        )
+        raise HTTPException(status_code=409, detail="Workflow trigger condition is not satisfied")
 
 
 def _accept_event(

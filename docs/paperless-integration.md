@@ -33,6 +33,12 @@ Workflow-Tags werden pro Instanz in der eZEUS-Instanzverwaltung eingestellt;
 ihre installationsabhängigen internen Paperless-IDs werden automatisch
 ermittelt. Aktive Tags derselben Instanz müssen unterschiedliche Namen haben.
 
+Der manuelle Auslöser startet denselben vollständigen Instanz-Job wie ein neu
+eingegangenes Dokument: eZEUS liest den vorhandenen OCR-Text, wendet die für
+diese Instanz aktivierten Feldregeln an, ermittelt bei einem noch leeren
+Korrespondenten einen passenden Eintrag und ergänzt noch leere Custom Fields.
+Bereits manuell gepflegte Werte werden dabei nicht überschrieben.
+
 | Einstellung | Aufgabe | Nur aktiv, wenn |
 |---|---|---|
 | Paperless-gpt-Eingangstag | fordert die vorgelagerte OCR an | OCR-Handoff aktiv und Feld nicht leer |
@@ -55,6 +61,13 @@ später erneut gesetzt werden kann.
 
 Paperless muss einen Webhook mit Dokument-ID und stabiler Event-ID senden. Das
 Secret wird im Header `X-EZEUS-Webhook-Secret` übermittelt.
+Von eZEUS verwaltete Workflows senden zusätzlich den internen Header
+`X-EZEUS-Workflow-Trigger`. Bei tag-basierten Auslösern prüft eZEUS das
+konfigurierte Tag nochmals direkt am Dokument, bevor ein Job angelegt wird.
+Wurde ein verwendetes Tag in Paperless gelöscht und dadurch der dortige Filter
+entfernt, lehnt eZEUS den Webhook ab. Der Workflow kann dann nicht unbemerkt bei
+jeder Dokumentänderung Jobs erzeugen; **Workflow einrichten** stellt Tag und
+Filter wieder her.
 
 Vor dem Schreiben lädt der Connector das Dokument erneut. Bereits gefüllter
 Inhalt und bereits gefüllte Custom Fields bleiben unverändert. Der Dokumenttitel
