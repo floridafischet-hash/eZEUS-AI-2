@@ -33,9 +33,10 @@ def help_page() -> str:
     <ol>
       <li><strong>Paperless liest:</strong> Paperless erzeugt den OCR-Text des Dokuments.</li>
       <li><strong>Der Workflow meldet:</strong> Paperless sendet die Dokument-ID an eZEUS.</li>
-      <li><strong>eZEUS extrahiert:</strong> eZEUS sucht die aktivierten Werte, prüft sie und schreibt sichere Treffer in noch leere Paperless-Felder.</li>
+      <li><strong>eZEUS extrahiert:</strong> eZEUS sucht die aktivierten Werte, prüft sie und schreibt sie in der Reihenfolge Korrespondent, Titel und benutzerdefinierte Felder.</li>
     </ol>
     <p>Ein Dokument kann deshalb in eZEUS erscheinen, obwohl einzelne Felder leer bleiben. Dann funktioniert der Workflow bereits; meistens passt das Dokumentlayout zu keiner aktiven Regel, das Zielfeld ist nicht zugeordnet oder es ist bereits gefüllt.</p>
+    <p><strong>Fehlertoleranter Ablauf:</strong> Gibt es keinen sicheren Korrespondenten-Treffer, setzt eZEUS <code>(noch nicht angelegt)</code>. Kann ein Wert nicht geschrieben werden, versucht eZEUS trotzdem den Titel und danach jedes benutzerdefinierte Feld einzeln.</p>
   </section>
 
   <section class="panel">
@@ -168,6 +169,7 @@ def help_page() -> str:
       <li><strong>Extraktionshinweise:</strong> gelten nur für die KI und verändern keine feste Regex-Regel.</li>
     </ul>
     <p>Mit den Pfeilen lässt sich die Reihenfolge ändern. Die Vorschau zeigt das spätere Ergebnis. Erst <strong>Konfiguration speichern</strong> übernimmt die Änderungen.</p>
+    <div class="notice"><strong>Schreibreihenfolge:</strong> Unabhängig von dieser Anzeige verarbeitet eZEUS zuerst den Korrespondenten, danach den Titel und anschließend jedes benutzerdefinierte Feld einzeln. Ein Fehler bei einem Wert stoppt die folgenden Versuche nicht.</div>
   </section>
 
   <section class="panel">

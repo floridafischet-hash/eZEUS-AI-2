@@ -36,8 +36,11 @@ ermittelt. Aktive Tags derselben Instanz müssen unterschiedliche Namen haben.
 Der manuelle Auslöser startet denselben vollständigen Instanz-Job wie ein neu
 eingegangenes Dokument: eZEUS liest den vorhandenen OCR-Text, wendet die für
 diese Instanz aktivierten Feldregeln an, ermittelt bei einem noch leeren
-Korrespondenten einen passenden Eintrag und ergänzt noch leere Custom Fields.
-Bereits manuell gepflegte Werte werden dabei nicht überschrieben.
+Korrespondenten einen passenden Eintrag oder verwendet `(noch nicht angelegt)`,
+setzt danach den Titel und ergänzt anschließend jedes noch leere Custom Field
+einzeln. Schlägt ein einzelner Schreibversuch fehl, werden die folgenden Werte
+trotzdem versucht. Bereits manuell gepflegte Werte werden dabei nicht
+überschrieben.
 
 | Einstellung | Aufgabe | Nur aktiv, wenn |
 |---|---|---|
@@ -77,3 +80,8 @@ Verhalten kann pro Instanz mit der Option `allow_title_overwrite` aufgehoben
 werden. HTTP-Fehler werden in einheitliche Connectorfehler übersetzt; nur
 temporäre Verbindungs-, Timeout- und Rate-Limit-Fehler werden automatisch
 wiederholt.
+
+Die Schreibreihenfolge ist unabhängig von der visuellen Sortierung der
+Feldkonfiguration fest vorgegeben: zuerst Korrespondent, dann Titel, danach die
+benutzerdefinierten Felder einzeln. Fehler eines einzelnen Schreibvorgangs
+werden protokolliert und brechen die verbleibenden Schreibversuche nicht ab.

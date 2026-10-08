@@ -112,8 +112,15 @@ Wird dieses Tag in Paperless an ein Dokument gesetzt, startet eZEUS genau einen
 neuen Lauf und entfernt das Tag anschließend automatisch.
 
 Dieser Lauf verwendet die vollständige Feldkonfiguration der ausgewählten
-Instanz. Ein noch leerer Korrespondent wird ermittelt und noch leere aktivierte
-Custom Fields werden ergänzt. Bestehende manuelle Angaben bleiben erhalten.
+Instanz. eZEUS verarbeitet die Metadaten immer in dieser Reihenfolge:
+
+1. Korrespondent: sicherer Treffer oder `(noch nicht angelegt)`
+2. Dokumenttitel
+3. aktivierte benutzerdefinierte Felder, jeweils einzeln
+
+Kann ein einzelner Wert nicht gesetzt werden, wird der Fehler protokolliert und
+mit dem nächsten Schritt beziehungsweise Feld fortgefahren. Bestehende manuelle
+Angaben bleiben erhalten.
 
 Beispiel mit dem Tag `Günther`:
 

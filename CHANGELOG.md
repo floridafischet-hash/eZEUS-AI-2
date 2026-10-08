@@ -4,6 +4,10 @@ Alle wesentlichen Änderungen an eZEUS-AI-2 werden in dieser Datei dokumentiert.
 
 ## Unveröffentlicht
 
+- Metadaten werden fehlertolerant in der festen Reihenfolge Korrespondent,
+  Titel und benutzerdefinierte Felder geschrieben. Ohne sicheren
+  Korrespondenten-Treffer wird `(noch nicht angelegt)` verwendet; fehlerhafte
+  Einzelwerte blockieren die nachfolgenden Schreibversuche nicht.
 - Optionale OCR- und manuelle Tag-Trigger pro Instanz getrennt sowie eine
   serverseitige Fail-closed-Prüfung ergänzt, damit gelöschte Paperless-Tags
   keine ungefilterten Wiederholungsjobs auslösen.

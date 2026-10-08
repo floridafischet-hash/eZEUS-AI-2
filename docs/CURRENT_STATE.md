@@ -56,18 +56,23 @@ Der derzeitige Standardablauf für verwaltete Paperless-Instanzen ist:
 3. Den von Paperless bereits erkannten OCR-Text als einzige Textquelle verwenden.
 4. Download-, OCR- und OCR-Schreibphasen existieren nicht mehr — eZEUS führt
    keine eigene Texterkennung durch.
-5. Liefert Paperless keinen Text, schließt der Job mit einem Warnhinweis ab.
+5. Liefert Paperless noch keinen Text, wird der Job als wiederholbarer Fehler
+   behandelt, damit eine noch laufende Paperless-OCR nachgeholt werden kann.
 6. Custom Fields der jeweiligen Paperless-Instanz laden und anhand ihrer Namen
    zuordnen.
 7. Werte mit deterministischen regulären Ausdrücken unmittelbar hinter
    bekannten Feldbezeichnungen suchen.
 8. Kandidaten validieren und normalisieren.
-9. Nur leere Paperless-Custom-Fields beschreiben.
-10. Jeden Verarbeitungsschritt und jede Schreiboperation protokollieren.
+9. Metadaten in der festen Reihenfolge Korrespondent, Titel und anschließend
+   jedes leere Paperless-Custom-Field einzeln schreiben.
+10. Fehler eines einzelnen Metadaten-Schreibversuchs protokollieren und die
+    verbleibenden Werte trotzdem versuchen.
+11. Jeden Verarbeitungsschritt und jede erfolgreiche Schreiboperation im Audit
+    protokollieren.
 
-Bei diesem Ablauf wird keine generative KI zur Bestimmung von Rechnungsnummern
-oder Rechnungsbeträgen eingesetzt. Ein nicht eindeutig im Dokument vorhandener
-Wert wird nicht geschrieben.
+Standardregeln arbeiten deterministisch. Pro Feld kann zusätzlich die lokale
+Ollama-Auswertung aktiviert werden. Ein nicht ausreichend sicherer oder
+widersprüchlicher Wert wird nicht in ein benutzerdefiniertes Feld geschrieben.
 
 ## Unterstützte automatische Felder
 
@@ -130,11 +135,15 @@ verwendet vorhandene Custom-Field-Werte nicht als alleinige Wahrheitsquelle.
 - Bereits gefüllte Paperless-Felder werden nicht überschrieben.
 - Eine eindeutig erkannte Rechnungsnummer wird zusätzlich als Dokumenttitel
   gesetzt. Ein bereits identischer Titel verursacht keine Schreiboperation.
-- Ein leerer Korrespondent wird nur gesetzt, wenn die Paperless-Matching-Regel
-  beziehungsweise ersatzweise der Korrespondentenname mindestens 60 Prozent
-  mit dem OCR-Text übereinstimmt. Der beste eindeutige Treffer gewinnt;
-  Gleichstände und niedrigere Treffer bleiben leer. Bereits gesetzte
-  Korrespondenten werden nicht überschrieben.
+- Für einen leeren Korrespondenten muss die Paperless-Matching-Regel
+  beziehungsweise ersatzweise der Korrespondentenname mindestens 75 Prozent
+  mit einer OCR-Zeile übereinstimmen. Der beste eindeutige Treffer gewinnt. Bei
+  Gleichstand oder ohne sicheren Treffer wird `(noch nicht angelegt)` verwendet
+  und bei Bedarf in Paperless angelegt. Bereits gesetzte Korrespondenten werden
+  nicht überschrieben.
+- Die Schreibreihenfolge lautet Korrespondent, Titel, benutzerdefinierte Felder.
+  Fehler beim Setzen eines Wertes verhindern die nachfolgenden Schreibversuche
+  nicht; Custom Fields werden dafür einzeln geschrieben.
 - Ein Auftrag ist nur `COMPLETED`, wenn alle vorgesehenen Felder eindeutig
   erkannt wurden.
 - Fehlende Felder führen zu `COMPLETED_WITH_WARNINGS`.

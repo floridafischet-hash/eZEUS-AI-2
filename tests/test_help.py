@@ -13,6 +13,9 @@ def test_help_page_contains_beginner_guide() -> None:
     assert "Optionale Workflows und eigene Tag-Namen" in response.text
     assert "Günther" in response.text
     assert "Alte Tags" in response.text
+    assert "Korrespondent, Titel und benutzerdefinierte Felder" in response.text
+    assert "(noch nicht angelegt)" in response.text
+    assert "Ein Fehler bei einem Wert stoppt die folgenden Versuche nicht" in response.text
     assert "Paperless-Webhook einrichten" in response.text
     assert "X-EZEUS-Webhook-Secret" in response.text
     assert "document_id" in response.text

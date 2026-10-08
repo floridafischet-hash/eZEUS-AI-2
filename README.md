@@ -87,8 +87,8 @@ Die drei Prüfbereiche dürfen nicht verwechselt werden:
 - Validierung und Normalisierung der gefundenen Werte
 - Erneutes Laden der aktuellen Paperless-Metadaten unmittelbar vor dem
   Schreiben
-- Geschütztes Schreiben von Titel, Korrespondent und benutzerdefinierten
-  Feldern
+- Fehlertolerantes Schreiben in der festen Reihenfolge Korrespondent, Titel und
+  anschließend jedes benutzerdefinierte Feld einzeln
 - Vollständige Phasenhistorie und Audit-Einträge
 
 ### Mehrere Paperless-Instanzen
@@ -171,7 +171,9 @@ Ein Dokument durchläuft folgende Komponenten:
 8. Ergebnisse werden validiert und normalisiert.
 9. Der Worker lädt das Dokument genau einmal erneut.
 10. Derselbe aktuelle Snapshot wird an alle Schreiboperationen weitergegeben.
-11. Erlaubte Änderungen werden an Paperless geschrieben.
+11. Erlaubte Änderungen werden in der Reihenfolge Korrespondent, Titel und
+    benutzerdefinierte Felder an Paperless geschrieben. Ein fehlgeschlagener
+    Einzelwert blockiert die nachfolgenden Schreibversuche nicht.
 12. Status, Phasen, Metriken und Audit-Daten werden gespeichert.
 
 Die wichtigsten Laufzeitkomponenten sind:
@@ -433,6 +435,13 @@ Ziel noch leer ist. Dokumenttitel werden nur geändert, wenn:
 Ein davon abweichender, manuell gesetzter Titel bleibt erhalten. Pro Instanz
 kann mit `allow_title_overwrite` ein bewusstes Überschreiben aktiviert werden.
 Diese Option ist standardmäßig ausgeschaltet.
+
+Beim Korrespondenten gewinnt ein eindeutiger Treffer. Gibt es keinen sicheren
+Treffer, verwendet eZEUS den Standard-Korrespondenten
+`(noch nicht angelegt)` und legt ihn bei Bedarf an. Danach wird der Titel
+versucht. Abschließend wird jedes aktivierte benutzerdefinierte Feld einzeln
+geschrieben. Ein Fehler bei einem dieser Schreibversuche wird protokolliert;
+die verbleibenden Werte werden trotzdem weiterverarbeitet.
 
 ## Warteschlangen, Wiederholungen und Sweeper
 

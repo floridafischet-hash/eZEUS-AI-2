@@ -5,7 +5,6 @@ from uuid import UUID
 
 from sqlalchemy.orm import Session
 
-from connectors.base.errors import ConnectorError
 from connectors.base.interface import ConnectorDocument, DocumentConnector
 from core.correspondents.matcher import (
     DEFAULT_CORRESPONDENT_NAME,
@@ -26,10 +25,7 @@ from core.paperless.service import (
     get_enabled_instance,
     instance_slug_from_connector,
 )
-from core.paperless.title_template import (
-    InvalidTemplateError,
-    render_title,
-)
+from core.paperless.title_template import render_title
 from core.security.documents import validate_paperless_document
 from core.security.redaction import redact_sensitive_text
 from core.templates.automatic import config_from_custom_fields
@@ -320,81 +316,39 @@ class Orchestrator:
             )
 
             active_phase = self._start_phase(job, JobPhase.WRITE_METADATA)
-            changed = await connector.write_empty_fields(before_write, extracted_values)
-            for field_id, value in changed.items():
-                self._audit(
-                    job,
-                    "WRITE_CUSTOM_FIELD",
-                    field_id,
-                    before_write.custom_fields.get(field_id),
-                    value,
-                )
-            title_written = False
-            invoice_number = extracted_by_key.get("invoice_number")
-            title_template = (instance.title_template or "").strip() if instance is not None else ""
-            title_enabled = runtime_fields.title_enabled if runtime_fields is not None else True
-            new_title: str | None = None
-            if title_enabled and runtime_fields is not None and runtime_fields.title_ai_enabled:
-                try:
-                    new_title = await OllamaMetadataProvider().suggest_title(
-                        extraction_text,
-                        runtime_fields.title_instructions,
-                    )
-                except Exception as exc:
-                    logger.warning(
-                        "title_generation.failed",
-                        extra={
-                            "instance": instance.slug if instance is not None else None,
-                            "error_type": type(exc).__name__,
-                        },
-                    )
-            title_rule_enabled = (
-                runtime_fields.title_rule_enabled if runtime_fields is not None else True
-            )
-            if title_enabled and title_rule_enabled and not new_title and title_template:
-                context = await self._build_title_context(connector, before_write, invoice_number)
-                try:
-                    new_title = render_title(title_template, context)
-                except InvalidTemplateError as exc:
-                    logger.warning(
-                        "title_template.invalid",
-                        extra={
-                            "instance": instance.slug if instance is not None else None,
-                            "placeholder": getattr(exc, "name", None),
-                        },
-                    )
-                    new_title = str(invoice_number) if invoice_number is not None else None
-            elif (
-                title_enabled
-                and title_rule_enabled
-                and not new_title
-                and invoice_number is not None
-            ):
-                new_title = str(invoice_number)
-            if new_title:
-                title_written = await connector.write_title(before_write, new_title)
-                if title_written:
-                    self._audit(
-                        job,
-                        "WRITE_TITLE",
-                        "title",
-                        before_write.title,
-                        new_title,
-                    )
             correspondent_written = False
             correspondent_match = None
             correspondent_enabled = (
                 runtime_fields.correspondent_enabled if runtime_fields is not None else True
             )
             if correspondent_enabled and before_write.correspondent_id is None:
-                correspondents = await connector.list_correspondents()
+                try:
+                    correspondents = await connector.list_correspondents()
+                except Exception as exc:  # noqa: BLE001 -- continue with remaining metadata
+                    logger.warning(
+                        "correspondent_list.failed",
+                        extra={
+                            "instance": instance.slug if instance is not None else None,
+                            "error_type": type(exc).__name__,
+                        },
+                    )
+                    correspondents = []
                 rule_enabled = (
                     runtime_fields.correspondent_rule_enabled
                     if runtime_fields is not None
                     else True
                 )
                 if rule_enabled:
-                    correspondent_match = match_correspondent(extraction_text, correspondents)
+                    try:
+                        correspondent_match = match_correspondent(extraction_text, correspondents)
+                    except Exception as exc:  # noqa: BLE001 -- use fallback and continue
+                        logger.warning(
+                            "correspondent_match.failed",
+                            extra={
+                                "instance": instance.slug if instance is not None else None,
+                                "error_type": type(exc).__name__,
+                            },
+                        )
                 ai_enabled = (
                     runtime_fields.correspondent_ai_enabled if runtime_fields is not None else False
                 )
@@ -437,7 +391,7 @@ class Orchestrator:
                                 DEFAULT_CORRESPONDENT_NAME,
                                 correspondents,
                             )
-                        except (ConnectorError, NotImplementedError) as exc:
+                        except Exception as exc:  # noqa: BLE001 -- title and fields must still run
                             logger.warning(
                                 "correspondent_fallback.failed",
                                 extra={
@@ -454,10 +408,50 @@ class Orchestrator:
                             line_number=-1,
                         )
                 if correspondent_match is not None:
-                    correspondent_written = await connector.write_correspondent_if_empty(
-                        before_write,
-                        correspondent_match.correspondent_id,
-                    )
+                    try:
+                        correspondent_written = await connector.write_correspondent_if_empty(
+                            before_write,
+                            correspondent_match.correspondent_id,
+                        )
+                    except Exception as exc:  # noqa: BLE001 -- title and fields must still run
+                        logger.warning(
+                            "correspondent_write.failed",
+                            extra={
+                                "instance": instance.slug if instance is not None else None,
+                                "error_type": type(exc).__name__,
+                            },
+                        )
+                        if correspondent_match.source != "default_fallback":
+                            try:
+                                fallback = default_correspondent(correspondents)
+                                if fallback is None:
+                                    fallback = await connector.ensure_correspondent(
+                                        DEFAULT_CORRESPONDENT_NAME,
+                                        correspondents,
+                                    )
+                                correspondent_written = (
+                                    await connector.write_correspondent_if_empty(
+                                        before_write,
+                                        fallback.external_id,
+                                    )
+                                )
+                                correspondent_match = CorrespondentMatch(
+                                    correspondent_id=fallback.external_id,
+                                    name=fallback.name,
+                                    score=1.0,
+                                    source="default_fallback",
+                                    line_number=-1,
+                                )
+                            except Exception as fallback_exc:  # noqa: BLE001
+                                logger.warning(
+                                    "correspondent_fallback_write.failed",
+                                    extra={
+                                        "instance": (
+                                            instance.slug if instance is not None else None
+                                        ),
+                                        "error_type": type(fallback_exc).__name__,
+                                    },
+                                )
                     if correspondent_written:
                         self._audit(
                             job,
@@ -466,6 +460,98 @@ class Orchestrator:
                             None,
                             correspondent_match.correspondent_id,
                         )
+                        before_write.correspondent_id = correspondent_match.correspondent_id
+
+            title_written = False
+            invoice_number = extracted_by_key.get("invoice_number")
+            title_template = (instance.title_template or "").strip() if instance is not None else ""
+            title_enabled = runtime_fields.title_enabled if runtime_fields is not None else True
+            new_title: str | None = None
+            if title_enabled and runtime_fields is not None and runtime_fields.title_ai_enabled:
+                try:
+                    new_title = await OllamaMetadataProvider().suggest_title(
+                        extraction_text,
+                        runtime_fields.title_instructions,
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "title_generation.failed",
+                        extra={
+                            "instance": instance.slug if instance is not None else None,
+                            "error_type": type(exc).__name__,
+                        },
+                    )
+            title_rule_enabled = (
+                runtime_fields.title_rule_enabled if runtime_fields is not None else True
+            )
+            if title_enabled and title_rule_enabled and not new_title and title_template:
+                context = await self._build_title_context(connector, before_write, invoice_number)
+                try:
+                    new_title = render_title(title_template, context)
+                except Exception as exc:  # noqa: BLE001 -- custom fields must still run
+                    logger.warning(
+                        "title_template.invalid",
+                        extra={
+                            "instance": instance.slug if instance is not None else None,
+                            "placeholder": getattr(exc, "name", None),
+                        },
+                    )
+                    new_title = str(invoice_number) if invoice_number is not None else None
+            elif (
+                title_enabled
+                and title_rule_enabled
+                and not new_title
+                and invoice_number is not None
+            ):
+                new_title = str(invoice_number)
+            if new_title:
+                try:
+                    title_written = await connector.write_title(before_write, new_title)
+                except Exception as exc:  # noqa: BLE001 -- custom fields must still run
+                    logger.warning(
+                        "title_write.failed",
+                        extra={
+                            "instance": instance.slug if instance is not None else None,
+                            "error_type": type(exc).__name__,
+                        },
+                    )
+                if title_written:
+                    self._audit(
+                        job,
+                        "WRITE_TITLE",
+                        "title",
+                        before_write.title,
+                        new_title,
+                    )
+
+            changed: dict[str, object] = {}
+            for field_id, value in extracted_values.items():
+                try:
+                    field_changed = await connector.write_empty_fields(
+                        before_write,
+                        {field_id: value},
+                    )
+                except Exception as exc:  # noqa: BLE001 -- try every remaining field
+                    logger.warning(
+                        "custom_field_write.failed",
+                        extra={
+                            "instance": instance.slug if instance is not None else None,
+                            "field_id": field_id,
+                            "error_type": type(exc).__name__,
+                        },
+                    )
+                    continue
+                for written_field_id, written_value in field_changed.items():
+                    old_value = before_write.custom_fields.get(written_field_id)
+                    changed[written_field_id] = written_value
+                    self._audit(
+                        job,
+                        "WRITE_CUSTOM_FIELD",
+                        written_field_id,
+                        old_value,
+                        written_value,
+                    )
+                    before_write.custom_fields[written_field_id] = written_value
             if (
                 runtime_fields is not None
                 and runtime_fields.correspondent_required
