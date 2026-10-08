@@ -4,6 +4,8 @@ Alle wesentlichen Änderungen an eZEUS-AI-2 werden in dieser Datei dokumentiert.
 
 ## Unveröffentlicht
 
+- Mindestwert für das regelbasierte Korrespondenten-Matching von 75 auf
+  60 Prozent reduziert.
 - Metadaten werden fehlertolerant in der festen Reihenfolge Korrespondent,
   Titel und benutzerdefinierte Felder geschrieben. Ohne sicheren
   Korrespondenten-Treffer wird `(noch nicht angelegt)` verwendet; fehlerhafte

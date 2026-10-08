@@ -103,7 +103,7 @@ def _score_rule(correspondent: ConnectorCorrespondent, text: str) -> tuple[float
 def match_correspondent(
     text: str,
     correspondents: list[ConnectorCorrespondent],
-    minimum_score: float = 0.75,
+    minimum_score: float = 0.60,
 ) -> CorrespondentMatch | None:
     candidates: list[tuple[float, int, int, ConnectorCorrespondent, str]] = []
     for correspondent in correspondents:

@@ -136,7 +136,7 @@ verwendet vorhandene Custom-Field-Werte nicht als alleinige Wahrheitsquelle.
 - Eine eindeutig erkannte Rechnungsnummer wird zusätzlich als Dokumenttitel
   gesetzt. Ein bereits identischer Titel verursacht keine Schreiboperation.
 - Für einen leeren Korrespondenten muss die Paperless-Matching-Regel
-  beziehungsweise ersatzweise der Korrespondentenname mindestens 75 Prozent
+  beziehungsweise ersatzweise der Korrespondentenname mindestens 60 Prozent
   mit einer OCR-Zeile übereinstimmen. Der beste eindeutige Treffer gewinnt. Bei
   Gleichstand oder ohne sicheren Treffer wird `(noch nicht angelegt)` verwendet
   und bei Bedarf in Paperless angelegt. Bereits gesetzte Korrespondenten werden

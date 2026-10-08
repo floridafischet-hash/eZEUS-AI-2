@@ -35,7 +35,7 @@ def test_exact_supplier_name_is_selected() -> None:
     assert result.score == 1.0
 
 
-def test_match_below_seventy_five_percent_is_rejected() -> None:
+def test_match_below_sixty_percent_is_rejected() -> None:
     result = match_correspondent(
         "Completely unrelated document",
         [_correspondent("1", "PS Hydraulik GmbH")],
@@ -80,22 +80,22 @@ def test_equal_matches_remain_unassigned() -> None:
 
 def test_explicit_any_word_rule_below_threshold_is_rejected() -> None:
     result = match_correspondent(
-        "Invoice issued by Alpha Service",
+        "Invoice issued by Alpha",
         [_correspondent("1", "Unrelated Name", "Alpha Service Nord", 1)],
     )
 
     assert result is None
 
 
-def test_explicit_any_word_rule_accepts_seventy_five_percent_boundary() -> None:
+def test_explicit_any_word_rule_accepts_sixty_percent_boundary() -> None:
     result = match_correspondent(
         "Invoice issued by Alpha Service Nord",
-        [_correspondent("1", "Unrelated Name", "Alpha Service Nord West", 1)],
+        [_correspondent("1", "Unrelated Name", "Alpha Service Nord West Süd", 1)],
     )
 
     assert result is not None
     assert result.correspondent_id == "1"
-    assert result.score == 0.75
+    assert result.score == 0.6
 
 
 def test_default_correspondent_is_only_used_as_explicit_fallback() -> None:
