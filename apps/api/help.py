@@ -37,6 +37,13 @@ def help_page() -> str:
     </ol>
     <p>Ein Dokument kann deshalb in eZEUS erscheinen, obwohl einzelne Felder leer bleiben. Dann funktioniert der Workflow bereits; meistens passt das Dokumentlayout zu keiner aktiven Regel, das Zielfeld ist nicht zugeordnet oder es ist bereits gefüllt.</p>
     <p><strong>Fehlertoleranter Ablauf:</strong> Gibt es keinen sicheren Korrespondenten-Treffer, setzt eZEUS <code>(noch nicht angelegt)</code>. Kann ein Wert nicht geschrieben werden, versucht eZEUS trotzdem den Titel und danach jedes benutzerdefinierte Feld einzeln.</p>
+    <h3>So wird der Korrespondent gewählt</h3>
+    <ol>
+      <li>Ist <strong>Paperless-Regeln</strong> aktiviert, prüft eZEUS zuerst die Matching-Regel beziehungsweise den Korrespondentennamen. Der beste eindeutige Kandidat muss mindestens 60 Prozent erreichen.</li>
+      <li>Nur wenn dabei nichts gefunden wurde, läuft der <strong>KI-Fallback</strong> – vorausgesetzt, er ist für den Korrespondenten eingeschaltet und Ollama ist systemweit aktiv.</li>
+      <li>Ohne eindeutiges Ergebnis verwendet eZEUS <code>(noch nicht angelegt)</code>.</li>
+    </ol>
+    <p>Ein bereits in Paperless gesetzter Korrespondent wird nicht überschrieben.</p>
   </section>
 
   <section class="panel">

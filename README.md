@@ -438,10 +438,23 @@ Diese Option ist standardmäßig ausgeschaltet.
 
 Beim Korrespondenten gewinnt ein eindeutiger Treffer. Gibt es keinen sicheren
 Treffer, verwendet eZEUS den Standard-Korrespondenten
-`(noch nicht angelegt)` und legt ihn bei Bedarf an. Danach wird der Titel
-versucht. Abschließend wird jedes aktivierte benutzerdefinierte Feld einzeln
-geschrieben. Ein Fehler bei einem dieser Schreibversuche wird protokolliert;
-die verbleibenden Werte werden trotzdem weiterverarbeitet.
+`(noch nicht angelegt)` und legt ihn bei Bedarf an. Die Zuordnung läuft dabei
+in drei Stufen:
+
+1. Wenn **Paperless-Regeln** aktiviert sind, werden die hinterlegte
+   Matching-Regel beziehungsweise ersatzweise der Korrespondentenname gegen den
+   OCR-Text geprüft. Ein Kandidat muss mindestens 60 Prozent erreichen; bei
+   einem nicht auflösbaren Gleichstand gibt es keinen Regel-Treffer.
+2. Nur ohne Regel-Treffer wird **KI-Fallback** verwendet, sofern der Schalter
+   beim Korrespondenten und `OLLAMA_ENABLED=true` aktiv sind. Ollama darf nur
+   eine bereits vorhandene Paperless-Korrespondenten-ID auswählen.
+3. Bleibt auch die KI ohne eindeutiges Ergebnis, wird
+   `(noch nicht angelegt)` verwendet.
+
+Danach wird der Titel versucht. Abschließend wird jedes aktivierte
+benutzerdefinierte Feld einzeln geschrieben. Ein Fehler bei einem dieser
+Schreibversuche wird protokolliert; die verbleibenden Werte werden trotzdem
+weiterverarbeitet.
 
 ## Warteschlangen, Wiederholungen und Sweeper
 
