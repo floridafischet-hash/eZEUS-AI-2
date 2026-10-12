@@ -96,7 +96,24 @@ def trigger_admin_page() -> str:
         button.type="button"; button.textContent="Trigger speichern und einrichten";
         button.addEventListener("click",()=>saveTrigger(
           item,mode.value,tag.value.trim(),button,message));
-        actions.appendChild(button); form.append(modeWrap,tagWrap);
+        const testButton=document.createElement("button"); testButton.type="button";
+        testButton.textContent="Verbindung testen";
+        testButton.addEventListener("click",async()=>{
+          window.ezeusUI?.setBusy(testButton,true,"Prüft …");
+          try {
+            const response=await fetch(`/api/paperless-instances/${item.id}/test`,{
+              method:"POST"
+            });
+            const body=await response.json();
+            const ok=response.ok&&body.reachable&&body.webhook_configured;
+            window.ezeusUI?.announce(
+              message,body.detail||`HTTP ${response.status}`,ok?"success":"error");
+          } catch(error) {
+            window.ezeusUI?.announce(
+              message,`Verbindungstest fehlgeschlagen: ${error.message}`,"error");
+          } finally { window.ezeusUI?.setBusy(testButton,false); }
+        });
+        actions.append(button,testButton); form.append(modeWrap,tagWrap);
         const info=document.createElement("div"); info.append(title,meta,form,message,actions);
         card.appendChild(info); container.appendChild(card);
       });

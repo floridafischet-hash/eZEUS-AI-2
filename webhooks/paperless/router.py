@@ -52,14 +52,18 @@ async def receive_paperless_webhook(
             ),
         ) from exc
     if instance is not None:
-        await _verify_instance_trigger(instance, payload, x_ezeus_workflow_trigger)
-        return _accept_event(
+        consumed_tag_id = await _verify_instance_trigger(
+            instance, payload, x_ezeus_workflow_trigger
+        )
+        result = _accept_event(
             payload,
             response,
             db,
             connector=connector_name(instance.slug),
             source_prefix=str(instance.id),
         )
+        await _consume_tag_trigger(instance, payload, consumed_tag_id)
+        return result
     if not verify_shared_secret(x_ezeus_webhook_secret, settings.paperless_webhook_secret):
         logger.warning("Webhook 401: invalid shared secret for legacy endpoint")
         raise HTTPException(status_code=401, detail="Invalid webhook secret")
@@ -93,21 +97,25 @@ async def receive_instance_webhook(
             extra={"instance_slug": instance_slug},
         )
         raise HTTPException(status_code=401, detail="Invalid webhook secret")
-    await _verify_instance_trigger(instance, payload, x_ezeus_workflow_trigger)
-    return _accept_event(
+    consumed_tag_id = await _verify_instance_trigger(
+        instance, payload, x_ezeus_workflow_trigger
+    )
+    result = _accept_event(
         payload,
         response,
         db,
         connector=connector_name(instance.slug),
         source_prefix=str(instance.id),
     )
+    await _consume_tag_trigger(instance, payload, consumed_tag_id)
+    return result
 
 
 async def _verify_instance_trigger(
     instance: PaperlessInstance,
     payload: PaperlessWebhookPayload,
     trigger: str | None,
-) -> None:
+) -> str | None:
     """Fail closed when a managed tag workflow loses its Paperless filter.
 
     Paperless removes references from workflows when a referenced tag is
@@ -119,11 +127,11 @@ async def _verify_instance_trigger(
     """
 
     if trigger is None:
-        return
+        return None
     if trigger == "document-added":
         if instance.automatic_trigger_mode != "document_added":
             raise HTTPException(status_code=409, detail="Document-added trigger is disabled")
-        return
+        return None
     if trigger not in _WORKFLOW_TRIGGERS:
         raise HTTPException(status_code=400, detail="Unknown workflow trigger")
 
@@ -176,6 +184,25 @@ async def _verify_instance_trigger(
             extra={"instance_slug": instance.slug, "trigger": trigger},
         )
         raise HTTPException(status_code=409, detail="Workflow trigger condition is not satisfied")
+    return next(iter(required_ids)) if trigger == "tag-added" else None
+
+
+async def _consume_tag_trigger(
+    instance: PaperlessInstance,
+    payload: PaperlessWebhookPayload,
+    tag_id: str | None,
+) -> None:
+    if tag_id is None:
+        return
+    try:
+        async with connector_for_instance(instance) as connector:
+            await connector.remove_document_tag(payload.document_id, tag_id)
+    except (ConnectorError, CredentialEncryptionError) as exc:
+        logger.warning(
+            "Accepted tag trigger but could not remove one-shot tag",
+            extra={"instance_slug": instance.slug},
+            exc_info=exc,
+        )
 
 
 def _accept_event(

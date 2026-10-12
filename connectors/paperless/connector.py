@@ -265,7 +265,6 @@ class PaperlessConnector(DocumentConnector):
             ]
             automatic_payload["actions"] = [
                 webhook_action("tag-added"),
-                {"type": 2, "remove_tags": [automatic_tag_id]},
             ]
             automatic_tag_result = {
                 "tag_name": automatic_tag_name,
@@ -373,6 +372,45 @@ class PaperlessConnector(DocumentConnector):
             await self._disable_workflow(workflows, _OCR_REQUEST_WORKFLOW_NAME)
             await self._disable_workflow(workflows, _OCR_COMPLETE_WORKFLOW_NAME)
 
+        disabled_conflicts: list[dict[str, object]] = []
+        managed_names = {
+            _MANAGED_WORKFLOW_NAME,
+            _MANUAL_WORKFLOW_NAME,
+            _LEGACY_MANUAL_WORKFLOW_NAME,
+            _OCR_REQUEST_WORKFLOW_NAME,
+            _OCR_COMPLETE_WORKFLOW_NAME,
+        }
+        for workflow in workflows:
+            if not isinstance(workflow, dict):
+                continue
+            if workflow.get("name") in managed_names or not workflow.get("enabled", True):
+                continue
+            actions = workflow.get("actions") or []
+            targets_instance = any(
+                isinstance(action, dict)
+                and isinstance(action.get("webhook"), dict)
+                and action["webhook"].get("url") == webhook_url
+                for action in actions
+            )
+            trigger_types = {
+                trigger.get("type")
+                for trigger in (workflow.get("triggers") or [])
+                if isinstance(trigger, dict)
+            }
+            if not targets_instance or not trigger_types.intersection({2, 3}):
+                continue
+            workflow_id = workflow.get("id")
+            if workflow_id is None:
+                raise ValidationError("Paperless workflow has no id")
+            await self._request(
+                "PATCH",
+                f"/api/workflows/{_path_id(workflow_id)}/",
+                json={"enabled": False},
+            )
+            disabled_conflicts.append(
+                {"workflow_id": workflow_id, "workflow_name": workflow.get("name")}
+            )
+
         automatic = await self._upsert_workflow(
             workflows,
             name=_MANAGED_WORKFLOW_NAME,
@@ -385,6 +423,7 @@ class PaperlessConnector(DocumentConnector):
             "workflow_name": _MANAGED_WORKFLOW_NAME,
             "ocr_trigger": ocr_result,
             "automatic_tag_trigger": automatic_tag_result,
+            "disabled_conflicting_workflows": disabled_conflicts,
             "manual_trigger": None,
         }
         if manual_reprocess_enabled:
@@ -421,6 +460,15 @@ class PaperlessConnector(DocumentConnector):
                 aliases=(_LEGACY_MANUAL_WORKFLOW_NAME,),
             )
         return result
+
+    async def remove_document_tag(self, external_document_id: str, tag_id: str) -> None:
+        document = await self.get_document(external_document_id)
+        remaining_tags = sorted(int(item) for item in document.tag_ids if item != tag_id)
+        await self._request(
+            "PATCH",
+            f"/api/documents/{_path_id(external_document_id)}/",
+            json={"tags": remaining_tags},
+        )
 
     async def _disable_workflow(
         self,

@@ -67,7 +67,31 @@ async def test_automatic_trigger_can_wait_for_instance_specific_tag(monkeypatch)
                 request=request,
             )
         if request.url.path == "/api/workflows/" and request.method == "GET":
-            return httpx.Response(200, json={"results": []}, request=request)
+            return httpx.Response(
+                200,
+                json={
+                    "results": [
+                        {
+                            "id": 99,
+                            "name": "Alter Dokument-hinzugefügt-Workflow",
+                            "enabled": True,
+                            "triggers": [{"type": 2}],
+                            "actions": [
+                                {
+                                    "type": 4,
+                                    "webhook": {
+                                        "url": (
+                                            "https://webhook.example.test/webhooks/"
+                                            "paperless/pilot"
+                                        )
+                                    },
+                                }
+                            ],
+                        }
+                    ]
+                },
+                request=request,
+            )
         return httpx.Response(201, json={"id": 17}, request=request)
 
     connector = PaperlessConnector(
@@ -96,6 +120,15 @@ async def test_automatic_trigger_can_wait_for_instance_specific_tag(monkeypatch)
         "tag_name": "bereit-für-ezeus",
         "tag_id": 81,
     }
+    assert result["disabled_conflicting_workflows"] == [
+        {"workflow_id": 99, "workflow_name": "Alter Dokument-hinzugefügt-Workflow"}
+    ]
+    assert any(
+        request.method == "PATCH"
+        and request.url.path == "/api/workflows/99/"
+        and json.loads(request.content) == {"enabled": False}
+        for request in requests
+    )
     workflow_request = next(
         request
         for request in requests
@@ -107,7 +140,7 @@ async def test_automatic_trigger_can_wait_for_instance_specific_tag(monkeypatch)
         payload["actions"][0]["webhook"]["headers"]["X-EZEUS-Workflow-Trigger"]
         == "tag-added"
     )
-    assert payload["actions"][1] == {"type": 2, "remove_tags": [81]}
+    assert len(payload["actions"]) == 1
 
 
 @pytest.mark.asyncio

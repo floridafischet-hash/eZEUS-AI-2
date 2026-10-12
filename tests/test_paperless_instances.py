@@ -161,6 +161,7 @@ def test_trigger_admin_page_is_available() -> None:
     assert "Beim Hinzufügen des Dokuments" in response.text
     assert "Erst nach gesetztem Paperless-Tag" in response.text
     assert "Trigger speichern und einrichten" in response.text
+    assert "Verbindung testen" in response.text
 
 
 def test_only_disabled_instance_can_be_deleted_and_deletion_is_audited(
