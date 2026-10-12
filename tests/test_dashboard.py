@@ -14,6 +14,7 @@ from core.db.base import Base
 from core.db.session import get_db
 from core.models.admin_user import AdminUser
 from core.models.document import Document
+from core.models.enums import JobStatus
 from core.models.job import Job
 from core.models.paperless_instance import PaperlessInstance
 from core.security.passwords import hash_password
@@ -161,6 +162,49 @@ def test_processing_logs_filter_by_instance_and_return_urls() -> None:
         ]
     finally:
         app.dependency_overrides.clear()
+
+
+def test_processing_logs_searches_across_all_matching_rows() -> None:
+    app.dependency_overrides[get_db] = populated_log_db
+    try:
+        client = TestClient(app)
+        by_filename = client.get("/api/logs", params={"q": "b.pdf"}, headers=ADMIN_HEADERS)
+        assert by_filename.status_code == 200
+        assert [entry["document_id"] for entry in by_filename.json()["entries"]] == ["202"]
+
+        by_instance = client.get("/api/logs", params={"q": "Kunde A"}, headers=ADMIN_HEADERS)
+        assert by_instance.status_code == 200
+        assert [entry["document_id"] for entry in by_instance.json()["entries"]] == ["101"]
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_completed_processing_log_can_be_deleted_but_active_job_is_protected() -> None:
+    database_generator = populated_log_db()
+    session = next(database_generator)
+
+    def database() -> Generator[Session, None, None]:
+        yield session
+
+    app.dependency_overrides[get_db] = database
+    try:
+        client = TestClient(app)
+        listing = client.get("/api/logs", headers=ADMIN_HEADERS).json()["entries"]
+        active_id = listing[0]["job_id"]
+        assert client.delete(f"/api/logs/{active_id}", headers=ADMIN_HEADERS).status_code == 409
+
+        job = session.get(Job, UUID(active_id))
+        assert job is not None
+        job.status = JobStatus.COMPLETED
+        job.finished_at = datetime.now(UTC)
+        session.commit()
+
+        deleted = client.delete(f"/api/logs/{active_id}", headers=ADMIN_HEADERS)
+        assert deleted.status_code == 204
+        assert session.get(Job, UUID(active_id)) is None
+    finally:
+        app.dependency_overrides.clear()
+        database_generator.close()
 
 
 def test_processing_logs_reject_unknown_instance_and_excessive_limit() -> None:

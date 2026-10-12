@@ -95,6 +95,7 @@ class Settings(BaseSettings):
 
     sweeper_interval_seconds: float = 60.0
     sweeper_stale_threshold_seconds: int = 900
+    log_retention_days: int = 20
 
     outbox_poll_seconds: float = 1.0
     outbox_claim_timeout_seconds: int = 300
@@ -233,6 +234,8 @@ class Settings(BaseSettings):
             raise ValueError("MAX_WEBHOOK_BODY_BYTES must not exceed MAX_REQUEST_BODY_BYTES")
         if self.sweeper_interval_seconds <= 0 or self.sweeper_stale_threshold_seconds <= 0:
             raise ValueError("Sweeper timing values must be positive")
+        if not 1 <= self.log_retention_days <= 20:
+            raise ValueError("LOG_RETENTION_DAYS must be between 1 and 20")
         if self.outbox_poll_seconds <= 0 or self.outbox_claim_timeout_seconds <= 0:
             raise ValueError("Outbox timing values must be positive")
         if self.outbox_batch_size <= 0 or self.outbox_max_backoff_seconds <= 0:

@@ -141,6 +141,7 @@ def test_instance_admin_page_is_available() -> None:
     assert "eZEUS erzeugt das Secret sicher" in response.text
     assert "Instanz speichern" in response.text
     assert 'id="edit-instance-dialog"' in response.text
+    assert 'id="edit-processing-delay-hours"' in response.text
     assert 'id="edit-name"' in response.text
     assert 'id="edit-api-token"' in response.text
     assert 'id="edit-ocr-request-tag"' in response.text
@@ -284,6 +285,7 @@ def test_instance_can_be_edited_without_exposing_or_replacing_secrets(
                 "name": "Neuer Name",
                 "base_url": "https://new.example.test",
                 "verify_tls": False,
+                "processing_delay_hours": 24,
                 "ocr_handoff_enabled": True,
                 "ocr_request_tag_name": "  kundenspezifisch  ",
                 "ocr_complete_tag_name": "ocr-fertig",
@@ -297,6 +299,7 @@ def test_instance_can_be_edited_without_exposing_or_replacing_secrets(
         body = response.json()
         assert body["name"] == "Neuer Name"
         assert body["base_url"] == "https://new.example.test"
+        assert body["processing_delay_hours"] == 24
         assert body["slug"] == old_slug
         assert body["ocr_handoff_enabled"] is True
         assert body["ocr_request_tag_name"] == "kundenspezifisch"
@@ -313,6 +316,7 @@ def test_instance_can_be_edited_without_exposing_or_replacing_secrets(
             assert updated is not None
             assert updated.api_token_encrypted == old_token
             assert updated.webhook_secret_encrypted == old_secret
+            assert updated.processing_delay_hours == 24
             assert updated.ocr_handoff_enabled is True
             assert updated.ocr_request_tag_name == "kundenspezifisch"
             assert updated.ocr_complete_tag_name == "ocr-fertig"

@@ -307,7 +307,17 @@ ausgelöst werden.
 
 ## Verarbeitung kontrollieren
 
-Auf der **Übersicht** zeigt das Verarbeitungsprotokoll den Zustand der Dokumente. Instanzfilter und Suche helfen beim Auffinden eines Dokuments.
+Auf der **Übersicht** zeigt das Verarbeitungsprotokoll den Zustand der Dokumente.
+Instanzfilter und die serverseitige Suche helfen auch über die ersten 50 Einträge
+hinaus beim Auffinden eines Dokuments. Abgeschlossene Einträge können einzeln
+oder als geladene Auswahl gelöscht werden. Laufende und wartende Aufträge sind
+gegen versehentliches Löschen geschützt. Abgeschlossene Logs werden spätestens
+nach 20 Tagen automatisch entfernt.
+
+Soll ein neues Dokument erst nach einem Tag verarbeitet werden, unter
+**Instanzen → Bearbeiten** bei der gewünschten Instanz die
+**Verzögerung neuer Dokumente (Stunden)** auf `24` setzen. `0` bedeutet sofort.
+Die Einstellung gilt ausschließlich für diese Instanz.
 
 - **Erfolgreich:** Schritt abgeschlossen
 - **Mit Warnungen abgeschlossen:** Dokument wurde verarbeitet, aber mindestens

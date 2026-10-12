@@ -68,10 +68,21 @@ def _queue_priority(db: Session, job: Job, settings: Settings) -> JobPriority:
     return JobPriority.LOW
 
 
-def add_job_to_outbox(db: Session, job: Job, *, settings: Settings | None = None) -> QueueOutbox:
+def add_job_to_outbox(
+    db: Session,
+    job: Job,
+    *,
+    settings: Settings | None = None,
+    available_at: datetime | None = None,
+) -> QueueOutbox:
     priority = _queue_priority(db, job, settings or get_settings())
     job.priority = priority
-    event = QueueOutbox(job_id=job.id, priority=priority.value, status=PENDING)
+    event = QueueOutbox(
+        job_id=job.id,
+        priority=priority.value,
+        status=PENDING,
+        available_at=available_at or datetime.now(UTC),
+    )
     job.status = JobStatus.QUEUED
     db.add(event)
     return event

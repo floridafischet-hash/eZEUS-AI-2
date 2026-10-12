@@ -6,13 +6,15 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from threading import Event
 
-from sqlalchemy import select
+from sqlalchemy import exists, select
 from sqlalchemy.orm import Session
 
 from core.config.settings import Settings, get_settings
 from core.db.session import SessionLocal
+from core.jobs.retention import purge_expired_logs
 from core.models.enums import JobStatus
 from core.models.job import Job
+from core.models.queue_outbox import QueueOutbox
 from core.queue.outbox import add_job_to_outbox, publish_outbox_event
 
 logger = logging.getLogger(__name__)
@@ -38,6 +40,11 @@ def sweep_stale_jobs(
         .where(
             Job.status.in_(ACTIVE_STATUSES),
             Job.updated_at <= threshold,
+            ~exists().where(
+                QueueOutbox.job_id == Job.id,
+                QueueOutbox.status == "PENDING",
+                QueueOutbox.available_at > datetime.now(UTC),
+            ),
         )
         .with_for_update(skip_locked=True)
     ).all()
@@ -90,8 +97,11 @@ def run_sweeper() -> None:
         try:
             with SessionLocal() as db:
                 result = sweep_stale_jobs(db, settings=runtime)
+                purged = purge_expired_logs(db, retention_days=runtime.log_retention_days)
             if result.requeued or result.failed:
                 logger.info("Sweep: requeued=%d failed=%d", result.requeued, result.failed)
+            if purged:
+                logger.info("Deleted %d processing logs past retention", purged)
         except Exception:
             logger.exception("Job sweeper iteration failed")
         stop.wait(runtime.sweeper_interval_seconds)

@@ -239,8 +239,10 @@ SSRF. Loopback- und Link-Local-Ziele sind nicht frei erreichbar.
 ### Optionale Workflows und frei benennbare Tags
 
 Der Standard bleibt pro Instanz unverändert: Ein neu hinzugefügtes Dokument
-startet eZEUS direkt. In der Administrationsoberfläche unter **Instanzen →
-Bearbeiten** können zusätzlich zwei voneinander unabhängige Erweiterungen
+startet eZEUS direkt. Unter **Instanzen → Bearbeiten** lässt sich mit
+**Verzögerung neuer Dokumente (Stunden)** pro Instanz ein späterer Start
+konfigurieren (`24` = ein Tag). Manuelle und OCR-Abschluss-Trigger bleiben
+sofort. Zusätzlich können zwei voneinander unabhängige Erweiterungen
 aktiviert werden:
 
 - Übergabe an eZEUS erst nach einem Paperless-gpt-OCR-Abschluss

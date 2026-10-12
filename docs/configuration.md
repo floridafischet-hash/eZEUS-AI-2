@@ -65,6 +65,8 @@ Alle Werte werden über Umgebungsvariablen gelesen.
   höchstens 1 MiB und niemals größer als das allgemeine Limit)
 - `OUTBOX_POLL_SECONDS`, `OUTBOX_CLAIM_TIMEOUT_SECONDS`, `OUTBOX_BATCH_SIZE`,
   `OUTBOX_MAX_BACKOFF_SECONDS`: Zustellparameter der transaktionalen Outbox
+- `LOG_RETENTION_DAYS`: Aufbewahrung abgeschlossener Verarbeitungslogs
+  (Standard und zulässiges Maximum: 20 Tage)
 
 Secrets dürfen nicht in Images, Versionsverwaltung oder Logs abgelegt werden.
 Im Produktionsmodus werden leere, mit `example-` beginnende und als

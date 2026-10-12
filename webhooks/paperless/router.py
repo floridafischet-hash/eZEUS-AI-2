@@ -59,6 +59,11 @@ async def receive_paperless_webhook(
             db,
             connector=connector_name(instance.slug),
             source_prefix=str(instance.id),
+            delay_hours=(
+                instance.processing_delay_hours
+                if x_ezeus_workflow_trigger in (None, "document-added")
+                else 0
+            ),
         )
     if not verify_shared_secret(x_ezeus_webhook_secret, settings.paperless_webhook_secret):
         logger.warning("Webhook 401: invalid shared secret for legacy endpoint")
@@ -100,6 +105,11 @@ async def receive_instance_webhook(
         db,
         connector=connector_name(instance.slug),
         source_prefix=str(instance.id),
+        delay_hours=(
+            instance.processing_delay_hours
+            if x_ezeus_workflow_trigger in (None, "document-added")
+            else 0
+        ),
     )
 
 
@@ -174,6 +184,7 @@ def _accept_event(
     *,
     connector: str,
     source_prefix: str,
+    delay_hours: int = 0,
 ) -> dict[str, str | bool]:
     event = DocumentImportedEvent(
         connector=connector,
@@ -183,7 +194,11 @@ def _accept_event(
     )
     try:
         service = JobService(db)
-        job, created, outbox = service.create_from_event(event, priority=JobPriority.NORMAL)
+        job, created, outbox = service.create_from_event(
+            event,
+            priority=JobPriority.NORMAL,
+            delay_hours=delay_hours,
+        )
         if outbox is not None:
             publish_outbox_event(db, event_id=outbox.id)
         else:

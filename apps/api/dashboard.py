@@ -3,20 +3,23 @@ from html import escape
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import HTMLResponse
-from sqlalchemy import and_, or_, select
+from sqlalchemy import String, and_, cast, func, or_, select
 from sqlalchemy.orm import Session
 
 from apps.api.ui import page_shell
 from core.config.settings import get_settings
 from core.db.session import get_db
+from core.jobs.retention import delete_jobs
+from core.models.audit import AuditEntry
 from core.models.document import Document
+from core.models.enums import JobStatus
 from core.models.job import Job
 from core.models.job_phase import JobPhaseEntry
 from core.models.paperless_instance import PaperlessInstance
 from core.paperless.service import instance_slug_from_connector
-from core.security.admin_auth import require_admin_user
+from core.security.admin_auth import AdminPrincipal, require_admin_secret, require_admin_user
 from core.security.redaction import redact_sensitive_text
 
 router = APIRouter(tags=["dashboard"])
@@ -118,6 +121,7 @@ DASHBOARD_CONTENT = """
         placeholder="Dokument-ID, Dateiname, Status oder Job-ID">
     </div>
     <button id="refresh-logs" class="primary" type="button">Aktualisieren</button>
+    <button id="delete-visible-logs" class="danger" type="button">Geladene löschen</button>
     <span class="help-text" id="refresh-info" role="status">Wird geladen</span>
   </div>
   <div class="table-wrap">
@@ -236,11 +240,7 @@ DASHBOARD_SCRIPT = """
   function renderLogs() {
     const body = document.getElementById("log-body");
     const empty = document.getElementById("log-empty");
-    const query = document.getElementById("log-search").value.trim().toLocaleLowerCase("de");
-    const filtered = logEntries.filter((entry) =>
-      !query || [entry.filename, entry.document_id, entry.status, entry.job_id,
-        entry.instance_name].some((value) =>
-          String(value ?? "").toLocaleLowerCase("de").includes(query)));
+    const filtered = logEntries;
     body.replaceChildren();
     filtered.forEach((entry) => {
       const row = document.createElement("tr"); row.className = "job-row";
@@ -259,6 +259,25 @@ DASHBOARD_SCRIPT = """
         } else { setText(cell,value); }
         row.appendChild(cell);
       });
+      const deleteButton=document.createElement("button");
+      deleteButton.type="button"; deleteButton.className="small danger";
+      deleteButton.textContent="Löschen";
+      deleteButton.disabled=!entry.deletable;
+      deleteButton.title=entry.deletable?"Diesen Logeintrag löschen":
+        "Laufende oder wartende Aufträge können nicht als Log gelöscht werden";
+      deleteButton.addEventListener("click",async(event)=>{
+        event.stopPropagation();
+        if(!confirm(`Log ${entry.job_id.slice(0,8)} wirklich löschen?`)) return;
+        const response=await fetch(`/api/logs/${entry.job_id}`,{method:"DELETE"});
+        if(!response.ok) {
+          let detail=`HTTP ${response.status}`;
+          try { detail=(await response.json()).detail||detail; } catch(error) {}
+          alert(`Löschen fehlgeschlagen: ${detail}`); return;
+        }
+        logEntries=logEntries.filter((item)=>item.job_id!==entry.job_id);
+        renderLogs();
+      });
+      row.cells[5].append(" ",deleteButton);
       const detailRow = buildDetails(entry); detailRow.hidden = !isExpanded;
       const toggle = () => {
         detailRow.hidden = !detailRow.hidden;
@@ -277,7 +296,8 @@ DASHBOARD_SCRIPT = """
     });
     empty.className = "empty-state";
     empty.hidden = filtered.length > 0;
-    empty.textContent = query ? "Keine passenden Einträge gefunden." :
+    empty.textContent = document.getElementById("log-search").value.trim() ?
+      "Keine passenden Einträge gefunden." :
       "Noch keine Verarbeitungseinträge vorhanden.";
   }
   function renderInstances(instances) {
@@ -306,6 +326,8 @@ DASHBOARD_SCRIPT = """
     const instance = document.getElementById("log-instance").value;
     const params = new URLSearchParams({limit: "50"});
     if (instance) params.set("instance_slug", instance);
+    const query=document.getElementById("log-search").value.trim();
+    if(query) params.set("q",query);
     if (cursor) params.set("before", cursor);
     const response = await fetch(`/api/logs?${params.toString()}`,
       {headers:{"Accept":"application/json"},cache:"no-store"});
@@ -346,7 +368,20 @@ DASHBOARD_SCRIPT = """
   }
   document.getElementById("refresh-logs").addEventListener("click", loadLogs);
   document.getElementById("log-instance").addEventListener("change", loadLogs);
-  document.getElementById("log-search").addEventListener("input", renderLogs);
+  let searchTimer=null;
+  document.getElementById("log-search").addEventListener("input",()=>{
+    clearTimeout(searchTimer); searchTimer=setTimeout(loadLogs,300);
+  });
+  document.getElementById("delete-visible-logs").addEventListener("click",async()=>{
+    const ids=logEntries.filter((entry)=>entry.deletable).map((entry)=>entry.job_id);
+    if(!ids.length) { alert("Keine abgeschlossenen Logeinträge zum Löschen geladen."); return; }
+    if(!confirm(`${ids.length} geladene Logeinträge wirklich löschen?`)) return;
+    for(const id of ids) {
+      const response=await fetch(`/api/logs/${id}`,{method:"DELETE"});
+      if(!response.ok) { alert(`Löschen bei ${id.slice(0,8)} abgebrochen.`); break; }
+    }
+    await loadLogs();
+  });
   fetch("/ready",{cache:"no-store"}).then((response) => {
     if (!response.ok) throw new Error();
     document.getElementById("api-dot").classList.add("ok");
@@ -386,6 +421,7 @@ def processing_logs(
     limit: Annotated[int, Query(ge=1, le=500)] = 50,
     instance_slug: Annotated[str | None, Query(max_length=64)] = None,
     before: Annotated[str | None, Query(max_length=80)] = None,
+    q: Annotated[str | None, Query(max_length=255)] = None,
 ) -> dict[str, object]:
     instances = db.scalars(
         select(PaperlessInstance)
@@ -398,6 +434,25 @@ def processing_logs(
         if instance_slug not in instances_by_slug:
             raise HTTPException(status_code=404, detail="Paperless instance not found")
         jobs_query = jobs_query.where(Document.connector == f"paperless:{instance_slug}")
+    if q and (search_term := q.strip()):
+        pattern = f"%{search_term.lower()}%"
+        matching_connectors = [
+            f"paperless:{instance.slug}"
+            for instance in instances
+            if search_term.lower() in instance.name.lower()
+            or search_term.lower() in instance.slug.lower()
+        ]
+        conditions = [
+            func.lower(func.coalesce(Document.filename, "")).like(pattern),
+            func.lower(Document.external_document_id).like(pattern),
+            func.lower(Document.connector).like(pattern),
+            func.lower(cast(Job.id, String)).like(pattern),
+            func.lower(cast(Job.status, String)).like(pattern),
+            func.lower(func.coalesce(Job.error_type, "")).like(pattern),
+        ]
+        if matching_connectors:
+            conditions.append(Document.connector.in_(matching_connectors))
+        jobs_query = jobs_query.where(or_(*conditions))
     if before:
         try:
             cursor_timestamp, cursor_id_value = before.rsplit("|", 1)
@@ -494,6 +549,7 @@ def processing_logs(
                 ),
                 "worker_id": job.worker_id,
                 "retry_count": job.retry_count,
+                "deletable": job.status in (JobStatus.COMPLETED, JobStatus.FAILED),
                 "warnings": job_warnings,
                 "steps": steps,
             }
@@ -513,3 +569,31 @@ def processing_logs(
         ],
         "generated_at": now.isoformat(),
     }
+
+
+@router.delete("/api/logs/{job_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_processing_log(
+    job_id: UUID,
+    db: Annotated[Session, Depends(get_db)],
+    principal: Annotated[AdminPrincipal, Depends(require_admin_secret)],
+) -> None:
+    job = db.get(Job, job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Logeintrag nicht gefunden")
+    if job.status not in (JobStatus.COMPLETED, JobStatus.FAILED):
+        raise HTTPException(
+            status_code=409,
+            detail="Laufende oder wartende Aufträge können nicht als Log gelöscht werden",
+        )
+    db.add(
+        AuditEntry(
+            actor=principal.username,
+            action="DELETE_PROCESSING_LOG",
+            entity_type="job",
+            entity_id=str(job.id),
+            old_value={"status": job.status.value},
+            details={"retention": "manual"},
+        )
+    )
+    delete_jobs(db, [job.id])
+    db.commit()

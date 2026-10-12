@@ -4,6 +4,9 @@ Alle wesentlichen Änderungen an eZEUS-AI-2 werden in dieser Datei dokumentiert.
 
 ## Unveröffentlicht
 
+- Pro Instanz konfigurierbare Verzögerung für neue Dokumente sowie serverseitige
+  Logsuche, manuelles Löschen und automatische Aufbewahrung von höchstens
+  20 Tagen ergänzt.
 - Mindestwert für das regelbasierte Korrespondenten-Matching von 75 auf
   60 Prozent reduziert.
 - Metadaten werden fehlertolerant in der festen Reihenfolge Korrespondent,

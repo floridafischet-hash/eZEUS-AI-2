@@ -11,6 +11,7 @@ from core.db.base import Base
 from core.models.document import Document
 from core.models.enums import JobStatus
 from core.models.job import Job
+from core.queue.outbox import add_job_to_outbox
 from core.queue.sweeper import sweep_stale_jobs
 
 
@@ -109,6 +110,28 @@ def test_sweeper_ignores_terminal_jobs() -> None:
     assert result.failed == 0
     db.refresh(job)
     assert job.status == JobStatus.COMPLETED
+
+
+def test_sweeper_does_not_requeue_intentionally_delayed_job() -> None:
+    db, _ = _make_db()
+    settings = _settings(sweeper_stale_threshold_seconds=60)
+    job = _create_stale_job(db, JobStatus.QUEUED, minutes_old=30)
+    event = add_job_to_outbox(
+        db,
+        job,
+        available_at=datetime.now(UTC) + timedelta(hours=24),
+    )
+    db.commit()
+
+    result = sweep_stale_jobs(db, settings=settings)
+
+    assert result.requeued == 0
+    assert result.failed == 0
+    db.refresh(event)
+    available_at = event.available_at
+    if available_at.tzinfo is None:
+        available_at = available_at.replace(tzinfo=UTC)
+    assert available_at > datetime.now(UTC)
 
 
 def test_sweeper_handles_all_active_statuses() -> None:
