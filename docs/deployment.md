@@ -2,7 +2,7 @@
 
 ## Docker Compose
 
-`docker compose up --build` erstellt API, Worker, Outbox-Dispatcher,
+`docker compose up --build` erstellt API, Worker, Outbox-Dispatcher, Sweeper,
 PostgreSQL, Redis und den Paperless-API-Mock. Der Mock dient ausschließlich
 reproduzierbaren Entwicklungs- und Smoke-Tests. Im Produktivbetrieb setzt
 `docker-compose.production.yml` `APP_ENV=production` verbindlich und liest die

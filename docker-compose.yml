@@ -83,6 +83,29 @@ services:
     mem_limit: 256m
     cpus: 0.5
 
+  sweeper:
+    build: .
+    command: sh -c "python -m core.db.migrate && exec python -m core.queue.sweeper"
+    init: true
+    env_file:
+      - path: .env.example
+        required: true
+      - path: .env
+        required: false
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: ezeus
+      POSTGRES_DATABASE: ezeus
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-example-postgres-password-change-me}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    mem_limit: 256m
+    cpus: 0.5
+
   postgres:
     image: postgres:16.15-alpine
     environment:
