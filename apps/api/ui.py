@@ -5,6 +5,7 @@ from html import escape
 NAVIGATION = (
     ("dashboard", "/", "Übersicht", "dashboard"),
     ("instances", "/admin/instances", "Instanzen", "instances"),
+    ("triggers", "/admin/triggers", "Trigger", "triggers"),
     ("users", "/api/admin-users/page", "Benutzer", "users"),
     ("help", "/help", "Hilfe", "help"),
 )
@@ -15,6 +16,9 @@ ICONS = {
     ),
     "instances": (
         '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3h11A2.5 2.5 0 0 1 20 5.5v3A2.5 2.5 0 0 1 17.5 11h-11A2.5 2.5 0 0 1 4 8.5v-3Zm0 10A2.5 2.5 0 0 1 6.5 13h11a2.5 2.5 0 0 1 2.5 2.5v3a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 18.5v-3ZM7 6v2h2V6H7Zm0 10v2h2v-2H7Z"/></svg>'
+    ),
+    "triggers": (
+        '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2 4 14h7l-1 8 9-12h-7l1-8Z"/></svg>'
     ),
     "users": (
         '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 12a4.5 4.5 0 1 0 0-9 4.5 4.5 0 0 0 0 9Zm-8 9a8 8 0 0 1 16 0H4Z"/></svg>'

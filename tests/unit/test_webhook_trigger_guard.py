@@ -20,6 +20,8 @@ def _instance(**changes: object) -> PaperlessInstance:
         "webhook_secret_hmac": "0" * 64,
         "verify_tls": True,
         "enabled": True,
+        "automatic_trigger_mode": "document_added",
+        "automatic_trigger_tag_name": None,
         "ocr_handoff_enabled": False,
         "ocr_request_tag_name": None,
         "ocr_complete_tag_name": "OCR fertig",
@@ -118,3 +120,26 @@ async def test_document_added_and_legacy_webhooks_keep_standard_behavior() -> No
 
     await _verify_instance_trigger(instance, payload, "document-added")
     await _verify_instance_trigger(instance, payload, None)
+
+
+@pytest.mark.asyncio
+async def test_automatic_tag_trigger_requires_configured_tag(monkeypatch) -> None:
+    connector = _Connector(document_tags={"81"}, tags={"bereit-für-ezeus": 81})
+    monkeypatch.setattr(
+        "webhooks.paperless.router.connector_for_instance", _connector_factory(connector)
+    )
+    instance = _instance(
+        automatic_trigger_mode="tag_added",
+        automatic_trigger_tag_name="bereit-für-ezeus",
+    )
+    payload = PaperlessWebhookPayload(document_id=257)
+
+    await _verify_instance_trigger(instance, payload, "tag-added")
+    with pytest.raises(HTTPException) as old_trigger:
+        await _verify_instance_trigger(instance, payload, "document-added")
+    assert old_trigger.value.status_code == 409
+
+    connector.document_tags.clear()
+    with pytest.raises(HTTPException) as missing_tag:
+        await _verify_instance_trigger(instance, payload, "tag-added")
+    assert missing_tag.value.status_code == 409

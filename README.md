@@ -239,11 +239,12 @@ SSRF. Loopback- und Link-Local-Ziele sind nicht frei erreichbar.
 ### Optionale Workflows und frei benennbare Tags
 
 Der Standard bleibt pro Instanz unverändert: Ein neu hinzugefügtes Dokument
-startet eZEUS direkt. Unter **Instanzen → Bearbeiten** lässt sich mit
-**Verzögerung neuer Dokumente (Stunden)** pro Instanz ein späterer Start
-konfigurieren (`24` = ein Tag). Manuelle und OCR-Abschluss-Trigger bleiben
-sofort. Zusätzlich können zwei voneinander unabhängige Erweiterungen
-aktiviert werden:
+startet eZEUS direkt. Unter **Trigger** lässt sich pro Instanz stattdessen ein
+frei benennbares Paperless-Tag konfigurieren. Dann startet eZEUS erst, wenn
+dieses Tag am Dokument gesetzt wird. Nach Annahme entfernt der verwaltete
+Workflow das Trigger-Tag wieder, damit spätere Dokumentänderungen keine Schleife
+auslösen und dasselbe Dokument bei Bedarf erneut getriggert werden kann.
+Zusätzlich können zwei voneinander unabhängige Erweiterungen aktiviert werden:
 
 - Übergabe an eZEUS erst nach einem Paperless-gpt-OCR-Abschluss
 - manuelle Neuverarbeitung eines vorhandenen Dokuments über ein Einmal-Tag

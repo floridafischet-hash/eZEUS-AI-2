@@ -1,4 +1,3 @@
-from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 from sqlalchemy import create_engine, select
@@ -8,8 +7,6 @@ from sqlalchemy.pool import StaticPool
 from apps.worker.tasks import _claim_job
 from core.config.settings import Settings
 from core.db.base import Base
-from core.events.document_imported import DocumentImportedEvent
-from core.jobs.service import JobService
 from core.models.document import Document
 from core.models.enums import JobPriority, JobStatus
 from core.models.job import Job
@@ -63,43 +60,6 @@ def test_outbox_publishes_durable_job() -> None:
     with factory() as db:
         assert db.get(Job, job_id).status == JobStatus.QUEUED  # type: ignore[union-attr]
         assert db.get(QueueOutbox, event_id).status == PUBLISHED  # type: ignore[union-attr]
-
-
-def test_job_service_delays_outbox_without_publishing_early() -> None:
-    engine = create_engine(
-        "sqlite://",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
-    Base.metadata.create_all(engine)
-    queue = RecordingQueue()
-    before = datetime.now(UTC) + timedelta(hours=23, minutes=59)
-
-    with Session(engine) as db:
-        _job, created, event = JobService(db).create_from_event(
-            DocumentImportedEvent(
-                connector="paperless:delayed",
-                external_document_id="42",
-                source_event_id="delayed:42",
-                payload={},
-            ),
-            delay_hours=24,
-        )
-        assert created is True
-        assert event is not None
-        available_at = event.available_at
-        if available_at.tzinfo is None:
-            available_at = available_at.replace(tzinfo=UTC)
-        assert available_at > before
-        result = publish_outbox_event(
-            db,
-            event_id=event.id,
-            adapter=queue,  # type: ignore[arg-type]
-            settings=Settings(),
-        )
-
-    assert result.published == 0
-    assert queue.calls == []
 
 
 def test_failed_publish_remains_pending_and_redacts_error() -> None:

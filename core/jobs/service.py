@@ -1,4 +1,4 @@
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -20,7 +20,6 @@ class JobService:
         self,
         event: DocumentImportedEvent,
         priority: JobPriority = JobPriority.NORMAL,
-        delay_hours: int = 0,
     ) -> tuple[Job, bool, QueueOutbox | None]:
         if event.source_event_id:
             existing = self.db.scalar(
@@ -84,8 +83,7 @@ class JobService:
                 metadata_json={"connector": event.connector},
             )
         )
-        available_at = datetime.now(UTC) + timedelta(hours=delay_hours)
-        outbox = add_job_to_outbox(self.db, job, available_at=available_at)
+        outbox = add_job_to_outbox(self.db, job)
         self.db.commit()
         self.db.refresh(job)
         self.db.refresh(outbox)

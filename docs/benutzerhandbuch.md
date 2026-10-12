@@ -314,10 +314,15 @@ oder als geladene Auswahl gelöscht werden. Laufende und wartende Aufträge sind
 gegen versehentliches Löschen geschützt. Abgeschlossene Logs werden spätestens
 nach 20 Tagen automatisch entfernt.
 
-Soll ein neues Dokument erst nach einem Tag verarbeitet werden, unter
-**Instanzen → Bearbeiten** bei der gewünschten Instanz die
-**Verzögerung neuer Dokumente (Stunden)** auf `24` setzen. `0` bedeutet sofort.
-Die Einstellung gilt ausschließlich für diese Instanz.
+Unter **Trigger** wird für jede Instanz separat gewählt:
+
+- **Beim Hinzufügen des Dokuments:** eZEUS startet unmittelbar nach dem Import.
+- **Erst nach gesetztem Paperless-Tag:** eZEUS startet erst, wenn das dort frei
+  konfigurierte Tag am Dokument gesetzt wurde.
+
+Nach **Trigger speichern und einrichten** legt eZEUS das Tag bei Bedarf in
+Paperless an und aktualisiert nur den verwalteten Workflow dieser Instanz. Das
+Trigger-Tag wird nach erfolgreicher Annahme als One-shot-Kommando entfernt.
 
 - **Erfolgreich:** Schritt abgeschlossen
 - **Mit Warnungen abgeschlossen:** Dokument wurde verarbeitet, aber mindestens

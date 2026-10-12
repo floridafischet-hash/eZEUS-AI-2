@@ -54,6 +54,63 @@ async def test_optional_workflow_features_are_disabled_by_default(monkeypatch) -
 
 
 @pytest.mark.asyncio
+async def test_automatic_trigger_can_wait_for_instance_specific_tag(monkeypatch) -> None:
+    requests: list[httpx.Request] = []
+    monkeypatch.setattr("core.security.outbound.resolve_hosts", lambda _host: ["203.0.113.10"])
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if request.url.path == "/api/tags/" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"results": [{"id": 81, "name": "bereit-für-ezeus"}]},
+                request=request,
+            )
+        if request.url.path == "/api/workflows/" and request.method == "GET":
+            return httpx.Response(200, json={"results": []}, request=request)
+        return httpx.Response(201, json={"id": 17}, request=request)
+
+    connector = PaperlessConnector(
+        base_url="https://paperless.example.test",
+        api_token="token",
+    )
+    connector._settings = Settings(outbound_block_private_networks=False)
+    monkeypatch.setattr(
+        connector,
+        "_client",
+        lambda: httpx.AsyncClient(
+            base_url=connector.base_url,
+            headers={"Authorization": "Token token"},
+            transport=httpx.MockTransport(handler),
+        ),
+    )
+
+    result = await connector.ensure_ezeus_workflow(
+        webhook_url="https://webhook.example.test/webhooks/paperless/pilot",
+        webhook_secret="long-secret-value",
+        automatic_trigger_mode="tag_added",
+        automatic_trigger_tag_name="bereit-für-ezeus",
+    )
+
+    assert result["automatic_tag_trigger"] == {
+        "tag_name": "bereit-für-ezeus",
+        "tag_id": 81,
+    }
+    workflow_request = next(
+        request
+        for request in requests
+        if request.url.path == "/api/workflows/" and request.method == "POST"
+    )
+    payload = json.loads(workflow_request.content)
+    assert payload["triggers"] == [{"type": 3, "filter_has_all_tags": [81]}]
+    assert (
+        payload["actions"][0]["webhook"]["headers"]["X-EZEUS-Workflow-Trigger"]
+        == "tag-added"
+    )
+    assert payload["actions"][1] == {"type": 2, "remove_tags": [81]}
+
+
+@pytest.mark.asyncio
 async def test_manual_trigger_is_independent_when_ocr_handoff_is_disabled(monkeypatch) -> None:
     requests: list[httpx.Request] = []
     monkeypatch.setattr("core.security.outbound.resolve_hosts", lambda _host: ["203.0.113.10"])

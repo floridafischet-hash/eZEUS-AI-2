@@ -50,7 +50,8 @@ class InstanceUpdate(BaseModel):
     webhook_secret: str | None = Field(default=None, min_length=16, max_length=4096)
     verify_tls: bool | None = None
     enabled: bool | None = None
-    processing_delay_hours: int | None = Field(default=None, ge=0, le=720)
+    automatic_trigger_mode: str | None = Field(default=None, pattern="^(document_added|tag_added)$")
+    automatic_trigger_tag_name: str | None = Field(default=None, max_length=128)
     title_template: str | None = Field(default=None, max_length=512)
     ocr_handoff_enabled: bool | None = None
     ocr_request_tag_name: str | None = Field(default=None, max_length=128)
@@ -66,6 +67,7 @@ class InstanceUpdate(BaseModel):
         "ocr_pending_tag_name",
         "ocr_triggered_tag_name",
         "manual_reprocess_tag_name",
+        "automatic_trigger_tag_name",
     )
     @classmethod
     def normalize_tag_name(cls, value: str | None) -> str | None:
@@ -102,6 +104,15 @@ def _instance_slug(base_url: str, db: Session) -> str:
 
 def _validate_active_workflow_tags(instance: PaperlessInstance) -> None:
     active_tags: list[str] = []
+    if instance.ocr_handoff_enabled and instance.automatic_trigger_mode == "tag_added":
+        raise HTTPException(
+            status_code=422,
+            detail="OCR-Übergabe und Trigger-Tag können nicht gleichzeitig aktiv sein",
+        )
+    if instance.automatic_trigger_mode == "tag_added":
+        if not instance.automatic_trigger_tag_name:
+            raise HTTPException(status_code=422, detail="Trigger-Tag darf nicht leer sein")
+        active_tags.append(instance.automatic_trigger_tag_name)
     if instance.ocr_handoff_enabled:
         active_tags.extend([instance.ocr_complete_tag_name, instance.ocr_triggered_tag_name])
         if instance.ocr_request_tag_name:
@@ -127,7 +138,8 @@ def _serialize(instance: PaperlessInstance) -> dict[str, object]:
         "base_url": instance.base_url,
         "verify_tls": instance.verify_tls,
         "enabled": instance.enabled,
-        "processing_delay_hours": instance.processing_delay_hours,
+        "automatic_trigger_mode": instance.automatic_trigger_mode,
+        "automatic_trigger_tag_name": instance.automatic_trigger_tag_name or "",
         "has_api_token": bool(instance.api_token_encrypted),
         "has_webhook_secret": bool(instance.webhook_secret_encrypted),
         "created_at": instance.created_at.isoformat(),
@@ -179,6 +191,8 @@ async def _provision_workflow(instance: PaperlessInstance) -> dict[str, object]:
             ocr_triggered_tag_name=instance.ocr_triggered_tag_name,
             manual_reprocess_enabled=instance.manual_reprocess_enabled,
             manual_reprocess_tag_name=instance.manual_reprocess_tag_name,
+            automatic_trigger_mode=instance.automatic_trigger_mode,
+            automatic_trigger_tag_name=instance.automatic_trigger_tag_name,
         )
 
 
@@ -260,7 +274,8 @@ def update_instance(
         "base_url": instance.base_url,
         "verify_tls": instance.verify_tls,
         "enabled": instance.enabled,
-        "processing_delay_hours": instance.processing_delay_hours,
+        "automatic_trigger_mode": instance.automatic_trigger_mode,
+        "automatic_trigger_tag_name": instance.automatic_trigger_tag_name or "",
         "has_api_token": bool(instance.api_token_encrypted),
         "has_webhook_secret": bool(instance.webhook_secret_encrypted),
         "title_template": instance.title_template or "",
@@ -286,8 +301,12 @@ def update_instance(
         instance.verify_tls = bool(changes["verify_tls"])
     if "enabled" in changes:
         instance.enabled = bool(changes["enabled"])
-    if "processing_delay_hours" in changes:
-        instance.processing_delay_hours = int(changes["processing_delay_hours"])
+    if "automatic_trigger_mode" in changes:
+        instance.automatic_trigger_mode = str(changes["automatic_trigger_mode"])
+    if "automatic_trigger_tag_name" in changes:
+        instance.automatic_trigger_tag_name = changes["automatic_trigger_tag_name"]
+    if instance.automatic_trigger_mode == "tag_added" and not instance.automatic_trigger_tag_name:
+        raise HTTPException(status_code=422, detail="Trigger-Tag darf nicht leer sein")
     if "title_template" in changes:
         raw_template = changes["title_template"]
         template = str(raw_template).strip() if raw_template is not None else ""
@@ -333,7 +352,8 @@ def update_instance(
         "base_url": instance.base_url,
         "verify_tls": instance.verify_tls,
         "enabled": instance.enabled,
-        "processing_delay_hours": instance.processing_delay_hours,
+        "automatic_trigger_mode": instance.automatic_trigger_mode,
+        "automatic_trigger_tag_name": instance.automatic_trigger_tag_name or "",
         "has_api_token": bool(instance.api_token_encrypted),
         "has_webhook_secret": bool(instance.webhook_secret_encrypted),
         "api_token_replaced": "api_token" in changes,
@@ -586,11 +606,6 @@ def instance_admin_page() -> str:
           <input id="edit-verify-tls" type="checkbox"> TLS-Zertifikat prüfen
         </label>
       </div>
-      <div><label for="edit-processing-delay-hours">Verzögerung neuer Dokumente (Stunden)</label>
-        <input id="edit-processing-delay-hours" type="number" min="0" max="720" required>
-        <p class="help-text"><code>0</code> verarbeitet sofort, <code>24</code> erst nach
-          einem Tag. Gilt nur für automatisch neu hinzugefügte Dokumente dieser Instanz;
-          manuelle und OCR-Abschluss-Trigger bleiben sofort.</p></div>
       <div class="full"><label for="edit-title-template">Titel-Vorlage</label>
         <input id="edit-title-template" maxlength="512"
           placeholder="{document_type}, {invoice_number}, {correspondent}">
@@ -676,8 +691,6 @@ def instance_admin_page() -> str:
     document.getElementById("edit-api-token").value="";
     document.getElementById("edit-webhook-secret").value="";
     document.getElementById("edit-verify-tls").checked=item.verify_tls;
-    document.getElementById("edit-processing-delay-hours").value=
-      item.processing_delay_hours??0;
     document.getElementById("edit-title-template").value=item.title_template||"";
     document.getElementById("edit-ocr-handoff-enabled").checked=item.ocr_handoff_enabled;
     document.getElementById("edit-ocr-request-tag").value=item.ocr_request_tag_name||"";
@@ -729,11 +742,7 @@ def instance_admin_page() -> str:
         const url=document.createElement("span"); url.textContent=item.base_url;
         const webhook=document.createElement("span"); webhook.className="mono";
         webhook.textContent=item.webhook_url||webhookUrl(item.webhook_path);
-        const delay=document.createElement("span");
-        delay.textContent=item.processing_delay_hours?
-          `Verarbeitung nach ${item.processing_delay_hours} Stunden`:
-          "Verarbeitung sofort";
-        meta.append(url,webhook,delay); info.append(heading,meta);
+        meta.append(url,webhook); info.append(heading,meta);
         const actions=document.createElement("div"); actions.className="instance-actions";
         actions.append(
           actionButton("Bearbeiten","",()=>openEditDialog(item)),
@@ -833,8 +842,6 @@ def instance_admin_page() -> str:
       name:document.getElementById("edit-name").value,
       base_url:document.getElementById("edit-base-url").value,
       verify_tls:document.getElementById("edit-verify-tls").checked,
-      processing_delay_hours:
-        Number(document.getElementById("edit-processing-delay-hours").value),
       title_template:document.getElementById("edit-title-template").value.trim(),
       ocr_handoff_enabled:document.getElementById("edit-ocr-handoff-enabled").checked,
       ocr_request_tag_name:document.getElementById("edit-ocr-request-tag").value.trim(),

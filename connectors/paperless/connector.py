@@ -209,12 +209,17 @@ class PaperlessConnector(DocumentConnector):
         ocr_triggered_tag_name: str = "ezeus-ai-2-ocr-triggered",
         manual_reprocess_enabled: bool = False,
         manual_reprocess_tag_name: str = "9",
+        automatic_trigger_mode: str = "document_added",
+        automatic_trigger_tag_name: str | None = None,
     ) -> dict[str, object]:
         """Create or repair the workflow managed by eZEUS.
 
         The stable workflow name makes this operation idempotent.  User-created
         workflows are never modified.
         """
+
+        if ocr_handoff_enabled and automatic_trigger_mode == "tag_added":
+            raise ValidationError("OCR handoff and automatic tag trigger cannot both be enabled")
 
         def webhook_action(trigger: str) -> dict[str, object]:
             return {
@@ -248,6 +253,26 @@ class PaperlessConnector(DocumentConnector):
         }
         response = await self._request("GET", "/api/workflows/?page_size=100")
         workflows = response.json().get("results", [])
+        automatic_tag_result: dict[str, object] | None = None
+        if automatic_trigger_mode == "tag_added":
+            automatic_tag_name = (automatic_trigger_tag_name or "").strip()
+            if not automatic_tag_name:
+                raise ValidationError("Automatic trigger tag must not be empty")
+            automatic_tag = await self._ensure_tag(automatic_tag_name)
+            automatic_tag_id = int(_path_id(automatic_tag["id"]))
+            automatic_payload["triggers"] = [
+                {"type": 3, "filter_has_all_tags": [automatic_tag_id]}
+            ]
+            automatic_payload["actions"] = [
+                webhook_action("tag-added"),
+                {"type": 2, "remove_tags": [automatic_tag_id]},
+            ]
+            automatic_tag_result = {
+                "tag_name": automatic_tag_name,
+                "tag_id": automatic_tag_id,
+            }
+        elif automatic_trigger_mode != "document_added":
+            raise ValidationError("Unknown automatic trigger mode")
         ocr_result: dict[str, object] | None = None
         if ocr_handoff_enabled:
             complete_name = ocr_complete_tag_name.strip()
@@ -257,6 +282,8 @@ class PaperlessConnector(DocumentConnector):
             request_name = (ocr_request_tag_name or "").strip()
             pending_name = ocr_pending_tag_name.strip()
             active_names = [complete_name, triggered_name]
+            if automatic_tag_result:
+                active_names.append(str(automatic_tag_result["tag_name"]))
             if request_name:
                 if not pending_name:
                     raise ValidationError("OCR pending tag must not be empty")
@@ -357,6 +384,7 @@ class PaperlessConnector(DocumentConnector):
             "workflow_id": automatic["workflow_id"],
             "workflow_name": _MANAGED_WORKFLOW_NAME,
             "ocr_trigger": ocr_result,
+            "automatic_tag_trigger": automatic_tag_result,
             "manual_trigger": None,
         }
         if manual_reprocess_enabled:

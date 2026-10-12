@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/webhooks/paperless", tags=["webhooks"])
 
-_WORKFLOW_TRIGGERS = {"document-added", "ocr-complete", "manual"}
+_WORKFLOW_TRIGGERS = {"document-added", "tag-added", "ocr-complete", "manual"}
 
 
 @router.post("", status_code=status.HTTP_202_ACCEPTED)
@@ -59,11 +59,6 @@ async def receive_paperless_webhook(
             db,
             connector=connector_name(instance.slug),
             source_prefix=str(instance.id),
-            delay_hours=(
-                instance.processing_delay_hours
-                if x_ezeus_workflow_trigger in (None, "document-added")
-                else 0
-            ),
         )
     if not verify_shared_secret(x_ezeus_webhook_secret, settings.paperless_webhook_secret):
         logger.warning("Webhook 401: invalid shared secret for legacy endpoint")
@@ -105,11 +100,6 @@ async def receive_instance_webhook(
         db,
         connector=connector_name(instance.slug),
         source_prefix=str(instance.id),
-        delay_hours=(
-            instance.processing_delay_hours
-            if x_ezeus_workflow_trigger in (None, "document-added")
-            else 0
-        ),
     )
 
 
@@ -128,7 +118,11 @@ async def _verify_instance_trigger(
     workflows.  Newly provisioned eZEUS workflows always send the header.
     """
 
-    if trigger is None or trigger == "document-added":
+    if trigger is None:
+        return
+    if trigger == "document-added":
+        if instance.automatic_trigger_mode != "document_added":
+            raise HTTPException(status_code=409, detail="Document-added trigger is disabled")
         return
     if trigger not in _WORKFLOW_TRIGGERS:
         raise HTTPException(status_code=400, detail="Unknown workflow trigger")
@@ -138,6 +132,13 @@ async def _verify_instance_trigger(
             raise HTTPException(status_code=409, detail="Manual reprocessing is disabled")
         required_tag_names = (instance.manual_reprocess_tag_name,)
         forbidden_tag_names: tuple[str, ...] = ()
+    elif trigger == "tag-added":
+        if instance.automatic_trigger_mode != "tag_added":
+            raise HTTPException(status_code=409, detail="Tag trigger is disabled")
+        if not instance.automatic_trigger_tag_name:
+            raise HTTPException(status_code=409, detail="Tag trigger is not configured")
+        required_tag_names = (instance.automatic_trigger_tag_name,)
+        forbidden_tag_names = ()
     else:
         if not instance.ocr_handoff_enabled:
             raise HTTPException(status_code=409, detail="OCR handoff is disabled")
@@ -184,7 +185,6 @@ def _accept_event(
     *,
     connector: str,
     source_prefix: str,
-    delay_hours: int = 0,
 ) -> dict[str, str | bool]:
     event = DocumentImportedEvent(
         connector=connector,
@@ -194,11 +194,7 @@ def _accept_event(
     )
     try:
         service = JobService(db)
-        job, created, outbox = service.create_from_event(
-            event,
-            priority=JobPriority.NORMAL,
-            delay_hours=delay_hours,
-        )
+        job, created, outbox = service.create_from_event(event, priority=JobPriority.NORMAL)
         if outbox is not None:
             publish_outbox_event(db, event_id=outbox.id)
         else:

@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Integer, String
+from sqlalchemy import Boolean, DateTime, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from core.db.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
@@ -18,7 +18,10 @@ class PaperlessInstance(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     verify_tls: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     allow_title_overwrite: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    processing_delay_hours: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    automatic_trigger_mode: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="document_added"
+    )
+    automatic_trigger_tag_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
     title_template: Mapped[str | None] = mapped_column(String(512), nullable=True)
     ocr_handoff_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     ocr_request_tag_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
