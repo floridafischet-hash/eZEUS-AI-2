@@ -12,7 +12,7 @@ und Gutschriften lesen. Konten des Kunden oder Zahlers werden nicht übernommen.
 - Pflichtfeld: Nein, nur bei fachlicher Notwendigkeit aktivieren
 - OCR: Ja
 - KI: optional als Fallback
-- Spezialregel: `IBAN (Rechnungssteller)`
+- Spezialregel: `IBAN`
 
 ## Kopierfertiger Extraktionshinweis
 

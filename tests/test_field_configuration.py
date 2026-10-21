@@ -728,5 +728,5 @@ def test_field_configuration_page_loads_and_labels_paperless_fields_automaticall
     assert "markEdited(field);" in response.text
     assert 'row.append(control("Spezialregel",profile));' in response.text
     assert "vehicle_identification_number_field_e" in response.text
-    assert '["iban","IBAN (Rechnungssteller)"]' in response.text
+    assert '["iban","IBAN"]' in response.text
     assert "  load();" in response.text

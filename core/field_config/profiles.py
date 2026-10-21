@@ -29,7 +29,7 @@ EXTRACTION_PROFILES: dict[str, ExtractionProfile] = {
         "validators": [{"type": "vehicle_identification_number"}],
     },
     IBAN: {
-        "label": "IBAN (Rechnungssteller)",
+        "label": "IBAN",
         "field_types": frozenset({"text"}),
         "patterns": [
             # Explicit IBAN labels, including common table headings. The bounded

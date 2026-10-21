@@ -179,7 +179,7 @@ def help_page() -> str:
     <h3>IBAN des Rechnungsstellers aktivieren</h3>
     <ol>
       <li>In Paperless ein Textfeld <code>IBAN</code> anlegen und die Feldseite in eZEUS neu laden.</li>
-      <li>Das importierte Feld aktivieren, <strong>OCR</strong> einschalten und die Spezialregel <strong>IBAN (Rechnungssteller)</strong> wählen.</li>
+      <li>Das importierte Feld aktivieren, <strong>OCR</strong> einschalten und die Spezialregel <strong>IBAN</strong> wählen.</li>
       <li>Die Paperless-ID kontrollieren, speichern und mit mehreren echten Rechnungen sowie einem Lastschrift-Gegenbeispiel testen.</li>
     </ol>
     <p>Gespeichert wird nur eine gültige, eindeutige Empfänger-IBAN ohne Leerzeichen. Bereits gefüllte Felder werden nicht überschrieben.</p>
