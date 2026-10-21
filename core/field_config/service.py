@@ -91,6 +91,8 @@ STANDARD_PATTERNS: dict[str, list[str]] = {
         # Explicit construction-site labels use five-digit identifiers from
         # 24000 through 99999.  Observed six-digit identifiers are accepted
         # when they begin with 24, 25 or 26 (for example 260012).
+        r"(?i)\bBestell(?:[\s.-]*(?:Nr|Nummer))\.?[\s.:-]*"
+        r"(2[4-9]\d{3}|[3-9]\d{4})(?!\d)",
         r"(?i)\bKST(?:[\s.-]*(?:Nr|Nummer))?[\s.:-]*"
         r"(2[456]\d{4}|2[4-9]\d{3}|[3-9]\d{4})(?!\d)",
         r"(?i)\bKostenstelle[\s.:-]*(2[456]\d{4}|2[4-9]\d{3}|[3-9]\d{4})(?!\d)",

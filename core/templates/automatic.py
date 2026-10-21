@@ -15,9 +15,12 @@ FIELD_DEFINITIONS: dict[str, dict[str, object]] = {
         "validators": [{"type": "not_empty"}, {"type": "length", "min": 1, "max": 100}],
         "selection_strategy": "first",
         "patterns": [
+            r"(?im)^\s*(?:KD-Nr\.?\s+)?Rechn\.?Nr\.?\s+Datum\s+Blatt\s*$"
+            r"\s*^\s*(?:\d{2,4}\s+)?\d{4,8}\s+"
+            r"(?=\d{5,12}\b)(\d{5,12})\s+\d{1,2}[./-]\d{1,2}[./-]\d{2,4}\s*$",
             r"(?im)^\s*Kundennummer\s+Belegnummer\s+Belegdatum"
             r"(?:\s+Seite\s+\d+)?\s*$"
-            r"\s*^\s*Rechnung\s+"
+            r"\s*^\s*(?:Rechnung\s+)?"
             r"[A-Z0-9][A-Z0-9./_-]*\s+"
             r"(?=[A-Z0-9./_-]*\d)([A-Z0-9][A-Z0-9./_-]*)\s+"
             r"\d{1,2}[./-]\d{1,2}[./-]\d{2,4}\s*$",
@@ -27,6 +30,8 @@ FIELD_DEFINITIONS: dict[str, dict[str, object]] = {
             r"\s*^\s*\d{1,2}\.\d{1,2}\.\d{4}\s+"
             r"([A-Z0-9][A-Z0-9./_-]*)\s+"
             r"[A-Z0-9][A-Z0-9./_-]*\s*$",
+            r"(?i)\bRe\s*-\s*Nr\.?\s*:\s*"
+            r"(?=[A-Z0-9./_-]*\d)([A-Z0-9][A-Z0-9./_-]*)",
             r"(?i)(?:Rechnungsnummer|Rechnung(?:s)?[\s.-]*(?:Nr|Nummer)\.?)"
             r"[ \t]*[:.]?[ \t]*"
             r"(?!Kunden(?:nummer|[\s.-]*(?:Nr|Nummer)\.?))"
@@ -40,11 +45,6 @@ FIELD_DEFINITIONS: dict[str, dict[str, object]] = {
             r"\s*[:.]?\s*"
             r"(?=[A-Z0-9./_-]*\d)"
             r"([A-Z0-9][A-Z0-9./_-]*)",
-            r"(?i)(?:"
-            r"BV(?:[\s.-]*(?:Nr|Nummer))?\.?|"
-            r"Baustellen?(?:[\s.-]*(?:Nr|Nummer))\.?"
-            r")"
-            r"\s*[:.]?[ \t]*(2[456]\d{3})(?!\d)",
         ],
     },
     "rechnungsbetrag": {
@@ -63,17 +63,16 @@ FIELD_DEFINITIONS: dict[str, dict[str, object]] = {
             r"(?im)^\s*Gesamt\s+"
             r"(?:[\d.,]+\d{2}\s*(?:EUR|€)?\s+)?"
             r"([\d.,]+\d{2})\s*(?:EUR|€)?\s*$",
-            r"(?im)^\s*Übertrag\s*:\s*"
-            r"(?:EUR|€)?\s*([\d.,]+\d{2})\s*(?:EUR|€|Euro)?\s*$",
+            r"(?im)^\s*Gesamt\s*:\s*(?:EUR|€)?\s*"
+            r"([\d.,]+\d{2})\s*(?:EUR|€)?\s*$",
             r"(?im)^\s*Fälligkeitsdatum\s*:\s*\d{1,2}[./-]\d{1,2}[./-]\d{2,4}"
             r"\s+Summe\s*:\s*(?:EUR|€)?\s*([\d.,]+\d{2})\s*(?:EUR|€)?\s*$",
             r"(?im)^\s*Artikel\s*:\s*\d+\s+Total\s*:\s*"
             r"(?:EUR|€)?\s*([\d.,]+\d{2})\s*(?:EUR|€)?\s*$",
-            r"(?i)(?<!Endsumme )(?<!Gesamtbetrag )\bBrutto\s*[:.]?\s*"
-            r"(?:EUR|€)?\s*([\d.,]+\d{2})\s*(?:EUR|€)?",
             r"(?i)(?:"
             r"Brutto[\s.-]*Rechnungsbetrag|"
             r"Bruttobetrag|"
+            r"Bruttosumme|"
             r"Endsumme\s+brutto|"
             r"Gesamtbetrag|"
             r"Gesamtbetrag\s+brutto|"
@@ -82,9 +81,7 @@ FIELD_DEFINITIONS: dict[str, dict[str, object]] = {
             r"Erstattungsbetrag|"
             r"Rechnungssumme|"
             r"Rechnungswert\s*\(\s*brutto\s*\)|"
-            r"Zahlbetrag|"
             r"Endbetrag|"
-            r"Zu\s+zahlen|"
             r"(?<!Netto[ -])(?<![\w-])Rechnungsbetrag"
             r")\s*(?:EUR|€)?\s*[:.]?\s*(?:EUR|€)?\s*([\d.,]+\d{2})\s*(?:EUR|€)?",
         ],

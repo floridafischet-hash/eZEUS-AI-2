@@ -82,7 +82,7 @@ async def test_customer_number_is_never_used_as_invoice_number() -> None:
 
 
 @pytest.mark.asyncio
-async def test_bv_number_is_used_when_customer_number_is_also_present() -> None:
+async def test_bv_number_is_not_used_as_invoice_number() -> None:
     config = config_from_custom_fields([ConnectorCustomField("93", "Rechnungsnummer", "string")])
     assert config is not None
     provider = config.fields["invoice_number"].providers[0]
@@ -92,7 +92,7 @@ async def test_bv_number_is_used_when_customer_number_is_also_present() -> None:
         provider.model_dump(exclude={"type"}),
     )
 
-    assert [candidate.value for candidate in candidates] == ["25142"]
+    assert candidates == []
 
 
 @pytest.mark.asyncio
@@ -100,7 +100,7 @@ async def test_bv_number_is_used_when_customer_number_is_also_present() -> None:
     "label",
     ["BV", "BV-Nr.", "BV Nummer", "Baustellen-Nr.", "Baustellennummer"],
 )
-async def test_bv_number_accepts_supported_labels(label: str) -> None:
+async def test_bv_labels_are_not_accepted_as_invoice_numbers(label: str) -> None:
     config = config_from_custom_fields([ConnectorCustomField("93", "Rechnungsnummer", "string")])
     assert config is not None
     provider = config.fields["invoice_number"].providers[0]
@@ -109,7 +109,7 @@ async def test_bv_number_accepts_supported_labels(label: str) -> None:
         f"{label}: 26123", provider.model_dump(exclude={"type"})
     )
 
-    assert [candidate.value for candidate in candidates] == ["26123"]
+    assert candidates == []
 
 
 @pytest.mark.asyncio
@@ -151,10 +151,7 @@ async def test_invoice_number_precedes_bv_while_customer_number_is_ignored() -> 
         provider.model_dump(exclude={"type"}),
     )
 
-    assert [candidate.value for candidate in candidates] == [
-        "RE-2026-19",
-        "24123",
-    ]
+    assert [candidate.value for candidate in candidates] == ["RE-2026-19"]
 
 
 @pytest.mark.asyncio
@@ -193,7 +190,7 @@ async def test_document_3555_prefers_invoice_number_and_never_customer_number() 
         text, provider.model_dump(exclude={"type"})
     )
 
-    assert [candidate.value for candidate in candidates] == ["5799588", "25164"]
+    assert [candidate.value for candidate in candidates] == ["5799588"]
     assert "2011452" not in [candidate.value for candidate in candidates]
     assert "Kunden-Nr." not in [candidate.value for candidate in candidates]
 
@@ -290,6 +287,8 @@ async def test_plain_invoice_heading_is_not_an_identifier() -> None:
 @pytest.mark.parametrize(
     ("text", "expected"),
     [
+        ("<td>Bruttosumme</td>\n<td>€ 1.482,74</td>", "1.482,74"),
+        ("Bruttosumme: 1.482,74 €", "1.482,74"),
         ("Nettosumme 1.357,00 €\nGesamtsumme 1.614,83 €", "1.614,83"),
         ("Nettosumme € 899,99\nGesamtsumme € 1.070,99", "1.070,99"),
         ("Rechnungswert (brutto) 1.233,88 €", "1.233,88"),
@@ -310,11 +309,6 @@ async def test_plain_invoice_heading_is_not_an_identifier() -> None:
         (
             "Gesamtnetto 97,45 €\nzzgl. 19 % MwSt 18,52 €\nGesamtrechnungsbetrag 115,97 €",
             "115,97",
-        ),
-        (
-            "Zahlungsbedingung Zahlbar sofort rein netto. Netto 320,70 €\n"
-            "Bindung Es gelten die AGB des Lieferanten Brutto 381,63 €",
-            "381,63",
         ),
         (
             "Total EUR exkl. MwSt. 20.457,15\n19% 3.886,86\nTotal EUR inkl. MwSt. 24.344,01",
@@ -342,6 +336,37 @@ async def test_invoice_amount_patterns_select_only_gross_total(text: str, expect
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("Bestell Nr - 24000", "24000"),
+        ("Bestell-Nr.: 26042", "26042"),
+        ("Bestell Nummer: 99999", "99999"),
+    ],
+)
+async def test_order_number_can_be_five_digit_construction_site_number(
+    text: str, expected: str
+) -> None:
+    candidates = await RegexExtractionProvider().extract(
+        text, {"patterns": STANDARD_PATTERNS["construction_site_number"]}
+    )
+
+    assert [candidate.value for candidate in candidates] == [expected]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("text", ["Bestell Nr - 23999", "Bestell Nr - 12345", "Bestell Nr - 240000"])
+async def test_order_number_outside_five_digit_construction_site_range_is_rejected(
+    text: str,
+) -> None:
+    candidates = await RegexExtractionProvider().extract(
+        text, {"patterns": STANDARD_PATTERNS["construction_site_number"]}
+    )
+
+    assert candidates == []
+
+
+@pytest.mark.asyncio
 async def test_invoice_amount_patterns_collect_totals_from_all_pages() -> None:
     config = config_from_custom_fields([ConnectorCustomField("95", "Rechnungsbetrag", "monetary")])
     assert config is not None
@@ -358,9 +383,108 @@ async def test_invoice_amount_patterns_collect_totals_from_all_pages() -> None:
 
     assert [candidate.value for candidate in candidates] == [
         "342,48",
-        "119,00",
-        "250,00",
     ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("**Rechnungssumme EUR:** 3.313,25", "3.313,25"),
+        ("<td>Endbetrag</td><td>EUR: 6.387,71</td>", "6.387,71"),
+        (
+            "<td>Rechnungsbetrag</td><td>EUR</td><td>1.288,77</td>",
+            "1.288,77",
+        ),
+        (
+            '<td colspan="3">Rechnungssumme EUR:</td><td>6.818,05</td>',
+            "6.818,05",
+        ),
+        ("Warenwert: 54,20 EUR\n19,00%MWST: 10,30 EUR\nGesamt: 64,50 EUR", "64,50"),
+    ],
+)
+async def test_ff_structured_gross_totals(text: str, expected: str) -> None:
+    config = config_from_custom_fields(
+        [ConnectorCustomField("95", "Rechnungsbetrag", "monetary")]
+    )
+    assert config is not None
+    provider = config.fields["invoice_amount"].providers[0]
+
+    candidates = await RegexExtractionProvider().extract(
+        text, provider.model_dump(exclude={"type"})
+    )
+
+    assert [candidate.value for candidate in candidates] == [expected]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("Re - Nr. : 91572442", "91572442"),
+        ("**Rechnungsnr.:** 5808485", "5808485"),
+        (
+            "<tr><th>Kundennummer</th><th>Belegnummer</th><th>Belegdatum</th></tr>"
+            "<tr><td>1900005</td><td>6061212</td><td>31.08.26</td></tr>",
+            "6061212",
+        ),
+        (
+            "<tr><th>KD-Nr.</th><th>Rechn.Nr.</th><th>Datum</th><th>Blatt</th></tr>"
+            "<tr><td>096</td><td>005095</td><td>339599</td><td>24.09.2026</td></tr>",
+            "339599",
+        ),
+    ],
+)
+async def test_ff_structured_invoice_numbers(text: str, expected: str) -> None:
+    config = config_from_custom_fields(
+        [ConnectorCustomField("93", "Rechnungsnummer", "string")]
+    )
+    assert config is not None
+    provider = config.fields["invoice_number"].providers[0]
+
+    candidates = await RegexExtractionProvider().extract(
+        text, provider.model_dump(exclude={"type"})
+    )
+
+    assert [candidate.value for candidate in candidates] == [expected]
+
+
+@pytest.mark.asyncio
+async def test_ff_invoice_number_never_falls_back_to_construction_site() -> None:
+    config = config_from_custom_fields(
+        [ConnectorCustomField("93", "Rechnungsnummer", "string")]
+    )
+    assert config is not None
+    provider = config.fields["invoice_number"].providers[0]
+
+    candidates = await RegexExtractionProvider().extract(
+        "BV: 26078", provider.model_dump(exclude={"type"})
+    )
+
+    assert candidates == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Übertrag: 1.749,05 EUR",
+        "Skonto 2% Brutto\n€ 4,61",
+        "Mit 2% Skonto zu zahlen: 704,91 EUR",
+    ],
+)
+async def test_ff_non_invoice_totals_are_rejected(text: str) -> None:
+    config = config_from_custom_fields(
+        [ConnectorCustomField("95", "Rechnungsbetrag", "monetary")]
+    )
+    assert config is not None
+    provider = config.fields["invoice_amount"].providers[0]
+
+    candidates = await RegexExtractionProvider().extract(
+        text, provider.model_dump(exclude={"type"})
+    )
+
+    assert candidates == []
 
 
 @pytest.mark.asyncio
