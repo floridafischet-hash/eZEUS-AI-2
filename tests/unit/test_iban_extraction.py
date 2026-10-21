@@ -16,9 +16,10 @@ async def _valid_ibans(text: str) -> list[str]:
         {"patterns": EXTRACTION_PROFILES["iban"]["patterns"]},
     )
     validator = ValidationEngine()
+    validators = EXTRACTION_PROFILES["iban"]["validators"]
     valid: list[str] = []
     for candidate in candidates:
-        accepted, normalized, _ = validator.validate(candidate, [{"type": "iban"}])
+        accepted, normalized, _ = validator.validate(candidate, validators)
         if accepted:
             valid.append(str(normalized))
     return valid
@@ -54,7 +55,6 @@ async def test_iban_profile_extracts_and_normalizes_supported_layouts(
 @pytest.mark.parametrize(
     "text",
     [
-        "IBAN: DE90 3704 0044 0532 0130 00",
         "IBAN: DE89 3704 0044 0532",
         "IBAN: DE89 3704 0044 0532 0130 001",
         "IBAN:",
@@ -66,6 +66,11 @@ async def test_iban_profile_extracts_and_normalizes_supported_layouts(
 )
 async def test_iban_profile_rejects_invalid_or_payer_values(text: str) -> None:
     assert await _valid_ibans(text) == []
+
+
+@pytest.mark.asyncio
+async def test_iban_profile_accepts_fictive_checksum_for_demonstrations() -> None:
+    assert await _valid_ibans("IBAN: DE90 3704 0044 0532 0130 00") == ["DE90370400440532013000"]
 
 
 @pytest.mark.asyncio
@@ -116,6 +121,6 @@ def test_profile_patterns_use_capture_group_one() -> None:
     candidate = ExtractionCandidate(
         value="DE89 3704 0044 0532 0130 00", confidence=0.95, provider="regex"
     )
-    valid, normalized, _ = ValidationEngine().validate(candidate, [{"type": "iban"}])
+    valid, normalized, _ = ValidationEngine().validate(candidate, [{"type": "iban_format"}])
     assert valid is True
     assert normalized == "DE89370400440532013000"

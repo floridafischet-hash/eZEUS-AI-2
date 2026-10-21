@@ -247,7 +247,7 @@ Bei der gewünschten Instanz **Felder** auswählen.
    entspricht, und die Konfiguration speichern.
 6. Mit mehreren echten Beispieldokumenten der Instanz testen: normale und
    mehrseitige Rechnungen, Tabellenlayout sowie ein Dokument mit Zahler-IBAN.
-   Im Ergebnis muss nur die gültige IBAN des Rechnungsstellers ohne Leerzeichen
+   Im Ergebnis muss nur die erkannte IBAN des Rechnungsstellers ohne Leerzeichen
    stehen; vorhandene Feldwerte werden nicht überschrieben.
 
 Die IBAN-Erkennung ist opt-in. Ohne ausgewählte Spezialregel bleibt das

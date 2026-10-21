@@ -48,7 +48,7 @@ class ValidationEngine:
             elif "," in normalized:
                 normalized = normalized.replace(".", "").replace(",", ".")
             return str(Decimal(normalized).quantize(Decimal("0.01")))
-        if kind == "iban":
+        if kind in {"iban", "iban_format"}:
             compact = re.sub(r"\s+", "", text).upper()
             if not re.fullmatch(r"[A-Z]{2}\d{2}[A-Z0-9]+", compact):
                 raise ValueError("Value is not a valid IBAN format")
@@ -56,6 +56,8 @@ class ValidationEngine:
             expected_length = known_lengths.get(compact[:2])
             if expected_length is not None and len(compact) != expected_length:
                 raise ValueError("Value has an invalid country-specific IBAN length")
+            if kind == "iban_format":
+                return compact
             rearranged = compact[4:] + compact[:4]
             numeric = "".join(
                 str(ord(char) - 55) if char.isalpha() else char for char in rearranged

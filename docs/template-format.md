@@ -22,6 +22,7 @@ Validatoren:
 - `date`
 - `monetary_amount`
 - `iban`
+- `iban_format` (Format und bekannte Länderlänge; fiktive Prüfziffern zulässig)
 - `allowed_values`
 - `length`
 - `numeric_range`
