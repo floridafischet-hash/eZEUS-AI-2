@@ -1,0 +1,105 @@
+name: Release
+
+# Tags every commit on main that passed CI with the next version, worked out
+# from the Conventional Commit types since the last tag:
+#
+#   feat!: / fix!: / "BREAKING CHANGE:" in the body  → major  (v2.0.0)
+#   feat:                                            → minor  (v1.3.0)
+#   anything else                                    → patch  (v1.2.1)
+#   only docs: / ci: / test: / style:                → no release
+#
+# The tag is the whole hand-off: GitLab's sync job carries it over, the tag
+# pipeline builds, scans and publishes the image as :vX.Y.Z, and Flux rolls out
+# minor and patch versions on its own. A new major is built too but not rolled
+# out until someone raises the range in the Flux repo's
+# apps/prod/eZEUS-AI-2/image-automation.yaml.
+#
+# Nothing to do by hand here. To release a specific version instead, push the
+# tag yourself (git tag v1.4.0 && git push origin v1.4.0) — the next run then
+# counts from there.
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+
+# One release at a time: two CI runs finishing close together would otherwise
+# both compute the same next version.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  tag:
+    # Only green CI on a push to main — not on pull requests, whose workflow
+    # runs can also carry head_branch main when they come from a fork's main.
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Create version tag
+        env:
+          SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -eu
+
+          # A later commit may already have been tagged by an earlier run of
+          # this workflow (CI runs can finish out of order). Never tag a
+          # commit that is older than the newest release.
+          LAST=$(git describe --tags --abbrev=0 --match 'v[0-9]*.[0-9]*.[0-9]*' "$SHA" 2>/dev/null || true)
+          NEWEST=$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -n1)
+          if [ -n "$NEWEST" ] && ! git merge-base --is-ancestor "$NEWEST" "$SHA"; then
+            echo "$NEWEST is not contained in $SHA — older commit, no release."
+            exit 0
+          fi
+          if git tag --points-at "$SHA" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "$SHA is already tagged."
+            exit 0
+          fi
+
+          RANGE="${LAST:+$LAST..}$SHA"
+          SUBJECTS=$(git log --format='%s' "$RANGE")
+          BODIES=$(git log --format='%b' "$RANGE")
+
+          if printf '%s\n' "$SUBJECTS" | grep -Eq '^[a-z]+(\([^)]*\))?!:' \
+             || printf '%s\n' "$BODIES" | grep -Eq '^BREAKING[ -]CHANGE:'; then
+            BUMP=major
+          elif printf '%s\n' "$SUBJECTS" | grep -Eq '^feat(\([^)]*\))?:'; then
+            BUMP=minor
+          elif printf '%s\n' "$SUBJECTS" | grep -Evq '^(docs|ci|test|style)(\([^)]*\))?:'; then
+            BUMP=patch
+          else
+            echo "Only docs/ci/test/style since ${LAST:-the beginning} — no release."
+            exit 0
+          fi
+
+          VERSION=${LAST#v}
+          MAJOR=${VERSION%%.*}; REST=${VERSION#*.}
+          MINOR=${REST%%.*};    PATCH=${REST#*.}
+          case "$BUMP" in
+            major) MAJOR=$((${MAJOR:-0} + 1)); MINOR=0; PATCH=0 ;;
+            minor) MINOR=$((${MINOR:-0} + 1)); PATCH=0 ;;
+            patch) PATCH=$((${PATCH:-0} + 1)) ;;
+          esac
+          [ -n "$LAST" ] || { MAJOR=1; MINOR=0; PATCH=0; }
+          NEXT="v$MAJOR.$MINOR.$PATCH"
+
+          git tag "$NEXT" "$SHA"
+          git push origin "refs/tags/$NEXT"
+          echo "### $NEXT ($BUMP) on $SHA" >> "$GITHUB_STEP_SUMMARY"
+          echo "Tagged $NEXT ($BUMP since ${LAST:-the beginning})."

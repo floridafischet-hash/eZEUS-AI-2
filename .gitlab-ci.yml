@@ -13,12 +13,19 @@
 #    on the schedule above — it would otherwise re-test and rebuild the same
 #    unchanged commit every time it fires — and `build`/`scan` additionally
 #    only run when the commit touched something the image is built from.
+#
+# 3. `release` runs only for version tags (vX.Y.Z). GitHub's release workflow
+#    creates them, the sync job carries them over, and once `scan` passed this
+#    job adds the version tag to the image. Flux image automation deploys the
+#    newest version tag on its own, so that tag must only ever appear on an
+#    image that was tested, built and scanned.
 
 stages:
   - sync
   - quality
   - build
   - scan
+  - release
 
 variables:
   # Pinned like every other image this project pulls (see Makefile). Renovating
@@ -26,6 +33,7 @@ variables:
   PYTHON_IMAGE: python:3.12-slim
   KANIKO_IMAGE: gcr.io/kaniko-project/executor:v1.23.2-debug
   TRIVY_IMAGE: aquasec/trivy:0.74.0
+  CRANE_IMAGE: gcr.io/go-containerregistry/crane/debug:v0.22.1
   POSTGRES_IMAGE: postgres:16.15-alpine
   PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
 
@@ -363,12 +371,11 @@ build:
     # Deliberately no `latest`. The four Deployments (api, worker, outbox,
     # sweeper) must run identical code — a moving tag lets a mid-rollout push
     # split them across two builds after one of them has already migrated the
-    # database. The commit SHA is also what the cluster convention uses
-    # (ollama-client :711f7768, paperless-orchestrator :bc093343), which makes
-    # bumping the tag in the Flux repo the explicit deploy decision.
+    # database.
     #
-    # A release tag additionally gets its own immutable tag, so a version can
-    # be named in the Flux repo instead of a SHA.
+    # Only the SHA tag is pushed here, also for release tags. The version tag
+    # is what Flux deploys automatically, so `release` adds it after `scan` —
+    # pushing it here would put an unscanned image in front of Flux.
     #
     # Skipped when image_check found the tag already in the registry: the tag
     # *is* the commit SHA, so an existing tag means identical sources. This
@@ -397,25 +404,18 @@ build:
         echo "FORCE_REBUILD=1 erzwingt einen Neubau."
         exit 0
       fi
-    - |
-      DESTINATIONS="--destination $IMAGE:$CI_COMMIT_SHORT_SHA"
-      if [ -n "$CI_COMMIT_TAG" ]; then
-        DESTINATIONS="$DESTINATIONS --destination $IMAGE:$CI_COMMIT_TAG"
-      fi
-      /kaniko/executor \
-        --context "$CI_PROJECT_DIR" \
-        --dockerfile "$CI_PROJECT_DIR/Dockerfile" \
-        $DESTINATIONS
-    - echo "Set image to $IMAGE:$CI_COMMIT_SHORT_SHA in flux/apps/prod/eZEUS-AI-2/deployment.yaml"
+    - /kaniko/executor
+      --context "$CI_PROJECT_DIR"
+      --dockerfile "$CI_PROJECT_DIR/Dockerfile"
+      --destination "$IMAGE:$CI_COMMIT_SHORT_SHA"
 
 # Scanned after the push rather than before it, which the dind job could do
 # because it had the image locally. Kaniko pushes straight from its build, so
 # the only place left to scan it is the registry.
 #
-# What makes that acceptable here: nothing deploys automatically. Flux pulls
-# the tag written in deployment.yaml, and that tag is edited by hand — so a
-# red scan means the SHA never gets entered, and the image sits in the
-# registry unreferenced.
+# What makes that acceptable here: Flux only deploys version tags, and those
+# are added by `release` after this job passed. A red scan therefore leaves the
+# image under its SHA tag only, unreferenced by anything Flux looks at.
 scan:
   extends: .image-rules
   stage: scan
@@ -451,3 +451,32 @@ scan:
     paths:
       - ezeus-ai-2.sbom.json
     expire_in: 30 days
+
+# Adds the version tag to the image `build` pushed and `scan` passed. This is
+# the deploy trigger: flux/apps/prod/eZEUS-AI-2/image-automation.yaml watches
+# for vX.Y.Z tags and rolls out the newest one within its semver range.
+#
+# `crane tag` only writes a new tag onto the existing manifest in the registry
+# — no layers are pulled or pushed, so the version tag points at exactly the
+# digest that was scanned.
+release:
+  stage: release
+  image:
+    name: $CRANE_IMAGE
+    entrypoint: [""]
+  tags:
+    - docker
+  timeout: 5m
+  needs:
+    - build
+    - scan
+  variables:
+    IMAGE: $CI_REGISTRY_IMAGE
+  script:
+    - crane auth login "$CI_REGISTRY" -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD"
+    - crane tag "$IMAGE:$CI_COMMIT_SHORT_SHA" "$CI_COMMIT_TAG"
+    - echo "Published $IMAGE:$CI_COMMIT_TAG — Flux will roll it out."
+  rules:
+    # Strict vX.Y.Z only: anything else (v1.2, v1.2.0-rc1) stays an ordinary
+    # tag build without a deployable version tag.
+    - if: $CI_COMMIT_TAG =~ /^v[0-9]+\.[0-9]+\.[0-9]+$/
