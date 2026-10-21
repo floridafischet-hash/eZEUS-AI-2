@@ -422,6 +422,10 @@ Die Standardregeln decken unter anderem folgende Schreibweisen ab:
   `Brutto-Rechnungsbetrag`, `Erstattungsbetrag`
 - Baustellennummer: numerische Werte nach `#`, `BV`, `BV-Nr.` oder
   `Baustellennummer` sowie bekannte Tabellenlayouts
+- IBAN des Rechnungsstellers: optionales Profil für Textfelder; erkennt
+  beschriftete Bankverbindungen, prüft die MOD-97-Prüfziffer und speichert den
+  Wert ohne Leerzeichen. Das Profil muss je Kundeninstanz bewusst ausgewählt
+  werden und erzeugt kein globales Standardfeld.
 
 Die Erkennung ist bewusst konservativ. Ein nicht eindeutig belegter Wert wird
 nicht geraten. Neue Lieferantenlayouts sollten mit anonymisierten

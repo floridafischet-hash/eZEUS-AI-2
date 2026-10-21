@@ -221,6 +221,7 @@ def field_configuration_page(instance_slug: str) -> str:
   const extractionProfiles=[
     ["","Keine Spezialregel"],
     ["vehicle_identification_number_field_e","Fahrzeug-ID (FIN/VIN) aus Feld E"],
+    ["iban","IBAN (Rechnungssteller)"],
   ];
   function authHeaders(json=true) {
     const username=document.getElementById("username").value;

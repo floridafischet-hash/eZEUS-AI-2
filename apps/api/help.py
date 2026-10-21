@@ -174,7 +174,15 @@ def help_page() -> str:
       <li><strong>Feldtyp:</strong> bestimmt, ob Text, Zahl, Geldbetrag, Datum, Ja/Nein oder eine Auswahl erwartet wird.</li>
       <li><strong>Paperless-ID:</strong> bestimmt das Zielfeld in Paperless und darf bei aktiven benutzerdefinierten Feldern nicht fehlen.</li>
       <li><strong>Extraktionshinweise:</strong> gelten nur für die KI und verändern keine feste Regex-Regel.</li>
+      <li><strong>Spezialregel:</strong> aktiviert eine fachliche Erkennung nur für dieses Feld und diese Kundeninstanz.</li>
     </ul>
+    <h3>IBAN des Rechnungsstellers aktivieren</h3>
+    <ol>
+      <li>In Paperless ein Textfeld <code>IBAN</code> anlegen und die Feldseite in eZEUS neu laden.</li>
+      <li>Das importierte Feld aktivieren, <strong>OCR</strong> einschalten und die Spezialregel <strong>IBAN (Rechnungssteller)</strong> wählen.</li>
+      <li>Die Paperless-ID kontrollieren, speichern und mit mehreren echten Rechnungen sowie einem Lastschrift-Gegenbeispiel testen.</li>
+    </ol>
+    <p>Gespeichert wird nur eine gültige, eindeutige Empfänger-IBAN ohne Leerzeichen. Bereits gefüllte Felder werden nicht überschrieben.</p>
     <p>Mit den Pfeilen lässt sich die Reihenfolge ändern. Die Vorschau zeigt das spätere Ergebnis. Erst <strong>Konfiguration speichern</strong> übernimmt die Änderungen.</p>
     <div class="notice"><strong>Schreibreihenfolge:</strong> Unabhängig von dieser Anzeige verarbeitet eZEUS zuerst den Korrespondenten, danach den Titel und anschließend jedes benutzerdefinierte Feld einzeln. Ein Fehler bei einem Wert stoppt die folgenden Versuche nicht.</div>
   </section>
