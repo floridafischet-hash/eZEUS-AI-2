@@ -81,8 +81,7 @@ async def test_automatic_trigger_can_wait_for_instance_specific_tag(monkeypatch)
                                     "type": 4,
                                     "webhook": {
                                         "url": (
-                                            "https://webhook.example.test/webhooks/"
-                                            "paperless/pilot"
+                                            "https://webhook.example.test/webhooks/paperless/pilot"
                                         )
                                     },
                                 }
@@ -136,10 +135,7 @@ async def test_automatic_trigger_can_wait_for_instance_specific_tag(monkeypatch)
     )
     payload = json.loads(workflow_request.content)
     assert payload["triggers"] == [{"type": 3, "filter_has_all_tags": [81]}]
-    assert (
-        payload["actions"][0]["webhook"]["headers"]["X-EZEUS-Workflow-Trigger"]
-        == "tag-added"
-    )
+    assert payload["actions"][0]["webhook"]["headers"]["X-EZEUS-Workflow-Trigger"] == "tag-added"
     assert len(payload["actions"]) == 1
 
 

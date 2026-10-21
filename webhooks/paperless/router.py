@@ -97,9 +97,7 @@ async def receive_instance_webhook(
             extra={"instance_slug": instance_slug},
         )
         raise HTTPException(status_code=401, detail="Invalid webhook secret")
-    consumed_tag_id = await _verify_instance_trigger(
-        instance, payload, x_ezeus_workflow_trigger
-    )
+    consumed_tag_id = await _verify_instance_trigger(instance, payload, x_ezeus_workflow_trigger)
     result = _accept_event(
         payload,
         response,

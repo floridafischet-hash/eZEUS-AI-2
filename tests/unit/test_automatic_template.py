@@ -355,7 +355,9 @@ async def test_order_number_can_be_five_digit_construction_site_number(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("text", ["Bestell Nr - 23999", "Bestell Nr - 12345", "Bestell Nr - 240000"])
+@pytest.mark.parametrize(
+    "text", ["Bestell Nr - 23999", "Bestell Nr - 12345", "Bestell Nr - 240000"]
+)
 async def test_order_number_outside_five_digit_construction_site_range_is_rejected(
     text: str,
 ) -> None:
@@ -404,9 +406,7 @@ async def test_invoice_amount_patterns_collect_totals_from_all_pages() -> None:
     ],
 )
 async def test_ff_structured_gross_totals(text: str, expected: str) -> None:
-    config = config_from_custom_fields(
-        [ConnectorCustomField("95", "Rechnungsbetrag", "monetary")]
-    )
+    config = config_from_custom_fields([ConnectorCustomField("95", "Rechnungsbetrag", "monetary")])
     assert config is not None
     provider = config.fields["invoice_amount"].providers[0]
 
@@ -436,9 +436,7 @@ async def test_ff_structured_gross_totals(text: str, expected: str) -> None:
     ],
 )
 async def test_ff_structured_invoice_numbers(text: str, expected: str) -> None:
-    config = config_from_custom_fields(
-        [ConnectorCustomField("93", "Rechnungsnummer", "string")]
-    )
+    config = config_from_custom_fields([ConnectorCustomField("93", "Rechnungsnummer", "string")])
     assert config is not None
     provider = config.fields["invoice_number"].providers[0]
 
@@ -451,9 +449,7 @@ async def test_ff_structured_invoice_numbers(text: str, expected: str) -> None:
 
 @pytest.mark.asyncio
 async def test_ff_invoice_number_never_falls_back_to_construction_site() -> None:
-    config = config_from_custom_fields(
-        [ConnectorCustomField("93", "Rechnungsnummer", "string")]
-    )
+    config = config_from_custom_fields([ConnectorCustomField("93", "Rechnungsnummer", "string")])
     assert config is not None
     provider = config.fields["invoice_number"].providers[0]
 
@@ -474,9 +470,7 @@ async def test_ff_invoice_number_never_falls_back_to_construction_site() -> None
     ],
 )
 async def test_ff_non_invoice_totals_are_rejected(text: str) -> None:
-    config = config_from_custom_fields(
-        [ConnectorCustomField("95", "Rechnungsbetrag", "monetary")]
-    )
+    config = config_from_custom_fields([ConnectorCustomField("95", "Rechnungsbetrag", "monetary")])
     assert config is not None
     provider = config.fields["invoice_amount"].providers[0]
 

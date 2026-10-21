@@ -260,9 +260,7 @@ class PaperlessConnector(DocumentConnector):
                 raise ValidationError("Automatic trigger tag must not be empty")
             automatic_tag = await self._ensure_tag(automatic_tag_name)
             automatic_tag_id = int(_path_id(automatic_tag["id"]))
-            automatic_payload["triggers"] = [
-                {"type": 3, "filter_has_all_tags": [automatic_tag_id]}
-            ]
+            automatic_payload["triggers"] = [{"type": 3, "filter_has_all_tags": [automatic_tag_id]}]
             automatic_payload["actions"] = [
                 webhook_action("tag-added"),
             ]

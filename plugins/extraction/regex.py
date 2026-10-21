@@ -26,9 +26,7 @@ class RegexExtractionProvider(ExtractionProvider):
             "\n",
             normalized,
         )
-        normalized = re.sub(
-            r"(?is)</(?:p|div|table|thead|tbody|h[1-6])>", "\n", normalized
-        )
+        normalized = re.sub(r"(?is)</(?:p|div|table|thead|tbody|h[1-6])>", "\n", normalized)
         normalized = re.sub(r"(?is)<[^>]+>", "", normalized)
         normalized = normalized.replace("**", "").replace("__", "")
         normalized = re.sub(r"[ \t]+", " ", normalized)
