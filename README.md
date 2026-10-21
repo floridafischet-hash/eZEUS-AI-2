@@ -423,9 +423,10 @@ Die Standardregeln decken unter anderem folgende Schreibweisen ab:
 - Baustellennummer: numerische Werte nach `#`, `BV`, `BV-Nr.` oder
   `Baustellennummer` sowie bekannte Tabellenlayouts
 - IBAN des Rechnungsstellers: optionales Profil für Textfelder; erkennt
-  beschriftete Bankverbindungen, prüft die MOD-97-Prüfziffer und speichert den
-  Wert ohne Leerzeichen. Das Profil muss je Kundeninstanz bewusst ausgewählt
-  werden und erzeugt kein globales Standardfeld.
+  beschriftete Bankverbindungen, prüft Format und landesspezifische Länge und
+  speichert den Wert ohne Leerzeichen. Fiktive IBANs mit formal passender Länge
+  sind für Test- und Vorführdokumente zulässig. Das Profil muss je
+  Kundeninstanz bewusst ausgewählt werden und erzeugt kein globales Standardfeld.
 
 Die Erkennung ist bewusst konservativ. Ein nicht eindeutig belegter Wert wird
 nicht geraten. Neue Lieferantenlayouts sollten mit anonymisierten

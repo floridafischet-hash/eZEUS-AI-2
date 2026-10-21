@@ -482,7 +482,7 @@ async def test_runtime_saves_iban_profile_and_builds_unique_validated_field(
         configured = runtime.template.fields[iban["field_key"]]
         assert configured.target_field_id == 106
         assert configured.selection_strategy == "unique"
-        assert [validator.type for validator in configured.validators] == ["iban"]
+        assert [validator.type for validator in configured.validators] == ["iban_format"]
         candidates = await RegexExtractionProvider().extract(
             "IBAN: DE89 3704 0044 0532 0130 00 BIC: COBADEFFXXX",
             configured.providers[0].model_dump(exclude={"type"}),

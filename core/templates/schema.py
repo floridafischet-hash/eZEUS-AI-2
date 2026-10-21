@@ -9,6 +9,7 @@ KNOWN_VALIDATORS = {
     "date",
     "monetary_amount",
     "iban",
+    "iban_format",
     "allowed_values",
     "length",
     "numeric_range",

@@ -20,9 +20,10 @@ und Gutschriften lesen. Konten des Kunden oder Zahlers werden nicht übernommen.
 > Zahlungsempfängers aus. Bevorzuge einen eindeutig beschrifteten Bankblock mit
 > „IBAN“, „IBAN-Nr.“, „IBAN/BIC“, „Kontonummer (IBAN)“ oder „Bankverbindung“.
 > Entferne Leerzeichen und gib Buchstaben großgeschrieben zurück. Die IBAN muss
-> mit einem zweibuchstabigen Ländercode und zwei Prüfziffern beginnen und die
-> MOD-97-10-Prüfung bestehen. Übernimm niemals BIC, SWIFT-Code oder Bankname als
-> Teil der IBAN. Ignoriere Konten des Zahlers in Zusammenhängen wie
+> mit einem zweibuchstabigen Ländercode und zwei Prüfziffern beginnen. Die
+> Prüfziffer darf bei Test- und Vorführdokumenten fiktiv sein. Übernimm niemals
+> BIC, SWIFT-Code oder Bankname als Teil der IBAN. Ignoriere Konten des Zahlers in
+> Zusammenhängen wie
 > „Lastschrift“, „abgebucht“, „von Ihrem Konto“ oder „Mandat“. Wenn keine
 > eindeutige gültige Empfänger-IBAN vorhanden ist oder mehrere verschiedene
 > gültige Empfänger-IBANs gleichwertig bleiben, gib keinen Wert zurück.
@@ -46,18 +47,19 @@ und Gutschriften lesen. Konten des Kunden oder Zahlers werden nicht übernommen.
 - Länge: allgemein 15 bis 34 Zeichen; zusätzlich DE 22, AT 20, CH/LI 21,
   NL 18 und GB 22 Zeichen
 - erlaubte Zeichen: `^[A-Z]{2}\d{2}[A-Z0-9]+$`
-- Wertebereich: Prüfziffer nach ISO 7064 MOD 97-10 muss gültig sein
+- Wertebereich: fiktive Prüfziffern sind zulässig; Format und Länge müssen
+  stimmen
 - Ausschlussregeln: BIC/Bankname abschneiden; Zahlerkontexte und mehrdeutige
   unterschiedliche gültige IBANs nicht übernehmen
 
-Grundlage sind ISO 13616 (Aufbau), ISO 7064 MOD 97-10 (Prüfziffer),
+Grundlage sind ISO 13616 (Aufbau),
 ISO 3166-1 alpha-2 (Ländercode) und ISO 9362 (BIC mit 8 oder 11 Zeichen).
 Quelle der verwendeten Längen ist die von SWIFT als ISO-Registrierungsstelle
 veröffentlichte [IBAN Registry](https://www.swift.com/standards/standards-resources),
 **Release 103, Stand 17. September 2026**. Das
 Profil prüft nur die oben aufgeführten, durch die Anforderung und öffentliche
 Beispiele belegten Länder längenspezifisch; andere Ländercodes erhalten weiter
-nur Format-, Gesamtlängen- und Prüfzifferprüfung.
+nur Format- und Gesamtlängenprüfung.
 
 ## Positive Testfälle
 
@@ -73,7 +75,7 @@ nur Format-, Gesamtlängen- und Prüfzifferprüfung.
 
 | OCR-Text | Erwartetes Ergebnis |
 | --- | --- |
-| `IBAN: DE90 3704 0044 0532 0130 00` | Kein Wert, Prüfziffer falsch |
+| `IBAN: DE90 3704 0044 0532 0130 00` | `DE90370400440532013000` (fiktive Prüfziffer zulässig) |
 | `IBAN:` | Kein Wert |
 | `Kontonummer: 370400440532013000` | Kein Wert |
 | `Lastschrift von Ihrem Konto, IBAN: DE89 ...` | Kein Wert |

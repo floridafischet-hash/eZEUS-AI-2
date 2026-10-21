@@ -55,7 +55,7 @@ EXTRACTION_PROFILES: dict[str, ExtractionProfile] = {
             r"(?:[ \t\u00a0\u202f]{0,4}[A-Z0-9]){11,30}?)"
             r"(?=[ \t\u00a0\u202f]*(?:\b(?:BIC|SWIFT|Bank(?:name)?)\b|[|;,]|$))",
         ],
-        "validators": [{"type": "iban"}],
+        "validators": [{"type": "iban_format"}],
         "selection_strategy": "unique",
     },
 }

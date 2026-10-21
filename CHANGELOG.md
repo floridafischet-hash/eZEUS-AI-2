@@ -5,9 +5,10 @@ Alle wesentlichen Änderungen an eZEUS-AI-2 werden in dieser Datei dokumentiert.
 ## Unveröffentlicht
 
 - Optionales IBAN-Extraktionsprofil pro Kundeninstanz ergänzt: Empfänger-IBANs
-  werden aus OCR- und Tabellenlayouts gelesen, normalisiert, per MOD 97-10 und
-  bekannten Länder-Längen geprüft; Zahlerkontexte und Mehrdeutigkeiten bleiben
-  ohne Rückschreibung.
+  werden aus OCR- und Tabellenlayouts gelesen sowie auf Format und bekannte
+  Länder-Längen geprüft. Fiktive Prüfziffern sind für Test- und
+  Vorführdokumente zulässig; Zahlerkontexte und Mehrdeutigkeiten bleiben ohne
+  Rückschreibung.
 - Eigene Trigger-Seite ergänzt: Pro Instanz startet die Verarbeitung entweder
   beim Hinzufügen oder erst nach einem frei konfigurierbaren Paperless-Tag.
 - Serverseitige Logsuche, manuelles Löschen und automatische Aufbewahrung von

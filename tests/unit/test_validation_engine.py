@@ -90,6 +90,13 @@ def test_iban_rejects_bad_checksum() -> None:
     assert error
 
 
+def test_iban_format_accepts_fictive_checksum_and_normalizes() -> None:
+    valid, value, error = _run("de90 3704 0044 0532 0130 00", [{"type": "iban_format"}])
+    assert valid is True
+    assert value == "DE90370400440532013000"
+    assert error is None
+
+
 def test_iban_rejects_too_short() -> None:
     valid, _, error = _run("DE8937040044", [{"type": "iban"}])
     assert valid is False
