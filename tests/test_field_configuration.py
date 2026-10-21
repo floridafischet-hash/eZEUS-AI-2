@@ -19,6 +19,7 @@ from core.models.audit import AuditEntry
 from core.models.instance_field_config import InstanceFieldConfig
 from core.models.paperless_instance import PaperlessInstance
 from core.security.passwords import hash_password
+from core.validation.engine import ValidationEngine
 from plugins.extraction.regex import RegexExtractionProvider
 
 
@@ -444,6 +445,55 @@ async def test_runtime_applies_selected_profile_only_to_configured_tenant_field(
         )
 
 
+@pytest.mark.asyncio
+async def test_runtime_saves_iban_profile_and_builds_unique_validated_field(
+    field_config_client,
+) -> None:
+    client, session_factory, connector = field_config_client
+    connector.fields.append(ConnectorCustomField("106", "IBAN", "string"))
+    instance_data = create_instance(client, "Kunde IBAN", "kunde-iban.example.test")
+    endpoint = f"/api/instances/{instance_data['slug']}/field-config"
+    fields = client.get(endpoint, headers=admin_headers()).json()["fields"]
+    iban = next(field for field in fields if field["label"] == "IBAN")
+    iban.update(
+        {
+            "enabled": True,
+            "required": False,
+            "ocr_enabled": True,
+            "extraction_profile": "iban",
+        }
+    )
+
+    saved = client.put(endpoint, headers=admin_headers(), json={"fields": fields})
+    assert saved.status_code == 200
+    assert (
+        next(field for field in saved.json()["fields"] if field["label"] == "IBAN")[
+            "extraction_profile"
+        ]
+        == "iban"
+    )
+
+    with session_factory() as db:
+        instance = db.scalar(
+            select(PaperlessInstance).where(PaperlessInstance.slug == instance_data["slug"])
+        )
+        assert instance is not None
+        runtime = FieldConfigurationService(db).runtime_config(instance, connector.fields)
+        configured = runtime.template.fields[iban["field_key"]]
+        assert configured.target_field_id == 106
+        assert configured.selection_strategy == "unique"
+        assert [validator.type for validator in configured.validators] == ["iban"]
+        candidates = await RegexExtractionProvider().extract(
+            "IBAN: DE89 3704 0044 0532 0130 00 BIC: COBADEFFXXX",
+            configured.providers[0].model_dump(exclude={"type"}),
+        )
+        accepted, normalized, _ = ValidationEngine().validate(
+            candidates[0], [item.model_dump() for item in configured.validators]
+        )
+        assert accepted is True
+        assert normalized == "DE89370400440532013000"
+
+
 def test_ollama_disabled_degrades_to_regex_only(
     field_config_client,
     monkeypatch,
@@ -678,4 +728,5 @@ def test_field_configuration_page_loads_and_labels_paperless_fields_automaticall
     assert "markEdited(field);" in response.text
     assert 'row.append(control("Spezialregel",profile));' in response.text
     assert "vehicle_identification_number_field_e" in response.text
+    assert '["iban","IBAN"]' in response.text
     assert "  load();" in response.text

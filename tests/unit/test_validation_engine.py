@@ -102,6 +102,21 @@ def test_iban_rejects_too_long() -> None:
     assert error
 
 
+@pytest.mark.parametrize(
+    "value", ["1E89370400440532013000", "DE8A370400440532013000", "DE89-370400440532013000"]
+)
+def test_iban_rejects_invalid_iso_format(value: str) -> None:
+    valid, _, error = _run(value, [{"type": "iban"}])
+    assert valid is False
+    assert error
+
+
+def test_iban_rejects_wrong_known_country_length_before_checksum() -> None:
+    valid, _, error = _run("DE8937040044053201300", [{"type": "iban"}])
+    assert valid is False
+    assert "country-specific" in str(error)
+
+
 # ---------------------------------------------------------------------------
 # vehicle_identification_number
 # ---------------------------------------------------------------------------

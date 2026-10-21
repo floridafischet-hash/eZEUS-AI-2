@@ -236,6 +236,23 @@ Bereits vorhandene Dokumente lösen **Dokument hinzugefügt** nicht nachträglic
 
 Bei der gewünschten Instanz **Felder** auswählen.
 
+### IBAN-Erkennung je Kundeninstanz aktivieren
+
+1. In Paperless ein benutzerdefiniertes Feld `IBAN` vom Typ **Text** anlegen.
+2. Die Feldseite der betreffenden Instanz in eZEUS neu laden, damit das Feld
+   aus Paperless importiert wird.
+3. Beim Feld `IBAN` **In eZEUS** und **OCR** aktivieren.
+4. Unter **Spezialregel** `IBAN` auswählen.
+5. Prüfen, dass die angezeigte Paperless-ID dem gerade angelegten Feld
+   entspricht, und die Konfiguration speichern.
+6. Mit mehreren echten Beispieldokumenten der Instanz testen: normale und
+   mehrseitige Rechnungen, Tabellenlayout sowie ein Dokument mit Zahler-IBAN.
+   Im Ergebnis muss nur die gültige IBAN des Rechnungsstellers ohne Leerzeichen
+   stehen; vorhandene Feldwerte werden nicht überschrieben.
+
+Die IBAN-Erkennung ist opt-in. Ohne ausgewählte Spezialregel bleibt das
+importierte Feld deaktiviert beziehungsweise verwendet keine IBAN-Regel.
+
 - **In eZEUS:** Dieses Feld wird für den Kunden verarbeitet. Aus Paperless neu
   geladene Felder sind zunächst ausgeschaltet.
 - **Pflichtfeld:** Fehlt ein gültiger Wert, zeigt der Job eine Warnung. Das

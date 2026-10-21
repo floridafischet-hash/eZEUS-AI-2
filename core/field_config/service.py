@@ -524,7 +524,11 @@ class FieldConfigurationService:
                 "providers": providers,
                 "validators": self._validators(field, profile),
                 "minimum_confidence": 0.55,
-                "selection_strategy": ("highest" if field.field_type == "money" else "first"),
+                "selection_strategy": (
+                    profile.get("selection_strategy", "first")
+                    if profile is not None
+                    else ("highest" if field.field_type == "money" else "first")
+                ),
                 "required": field.required,
                 "value_mapping": value_mapping,
             }
