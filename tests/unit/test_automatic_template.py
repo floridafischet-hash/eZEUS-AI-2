@@ -441,6 +441,14 @@ async def test_ff_structured_gross_totals(text: str, expected: str) -> None:
             "<tr><td>096</td><td>005095</td><td>339599</td><td>24.09.2026</td></tr>",
             "339599",
         ),
+        (
+            "Kundennr. Rechnungsnr. Datum Seite\n123456 87654321 22.10.2026 1. 1",
+            "87654321",
+        ),
+        (
+            "Kunde Seite Datum Lief.-Nr. Rechnung Nr.\n22.10.2026 1 21.10.2026 123 4567",
+            "4567",
+        ),
     ],
 )
 async def test_ff_structured_invoice_numbers(text: str, expected: str) -> None:
