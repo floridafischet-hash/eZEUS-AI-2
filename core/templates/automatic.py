@@ -83,7 +83,7 @@ FIELD_DEFINITIONS: dict[str, dict[str, object]] = {
             r"Rechnungswert\s*\(\s*brutto\s*\)|"
             r"Endbetrag|"
             r"(?<!Netto[ -])(?<![\w-])Rechnungsbetrag"
-            r")\s*(?:EUR|€)?\s*[:.]?\s*(?:EUR|€)?\s*([\d.,]+\d{2})\s*(?:EUR|€)?",
+            r")\s*(?:EUR|€)?\s*[:.=]?\s*(?:EUR|€)?\s*([\d.,]+\d{2})\s*(?:EUR|€)?",
         ],
     },
     "lieferscheinnummer": {
