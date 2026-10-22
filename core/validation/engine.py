@@ -47,6 +47,8 @@ class ValidationEngine:
                 )
             elif "," in normalized:
                 normalized = normalized.replace(".", "").replace(",", ".")
+            elif re.fullmatch(r"-?\d{1,3}(?:\.\d{3})+", normalized):
+                normalized = normalized.replace(".", "")
             return str(Decimal(normalized).quantize(Decimal("0.01")))
         if kind in {"iban", "iban_format"}:
             compact = re.sub(r"\s+", "", text).upper()

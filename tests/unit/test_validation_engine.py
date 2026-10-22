@@ -37,6 +37,10 @@ def test_monetary_amount_accepts_english_thousands_separator() -> None:
     assert _validate_amount("1,304.48") == "1304.48"
 
 
+def test_monetary_amount_accepts_german_integer_with_thousands_separator() -> None:
+    assert _validate_amount("35.000 €") == "35000.00"
+
+
 def test_monetary_amount_strips_currency_symbol_and_whitespace() -> None:
     assert _validate_amount("EUR 1.234,56") == "1234.56"
     assert _validate_amount("  99,00 €  ") == "99.00"

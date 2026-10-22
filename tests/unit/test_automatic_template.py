@@ -464,6 +464,87 @@ async def test_ff_structured_invoice_numbers(text: str, expected: str) -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("RECHNUNG 2606741 Seite: 1", "2606741"),
+        ("## Rechnung 4R-23119-26", "4R-23119-26"),
+        ("## Rechnung ARG26-49091 vom 20.10.2026", "ARG26-49091"),
+        ("Rechnung; 26120", "26120"),
+        ("RG.-NR. .562", "562"),
+        (
+            "KD-Nr. Rechn.Nr. Datum Blatt\n830 004031 4544644 20.10.2026 1",
+            "4544644",
+        ),
+        (
+            "KD-Nr. Rechn.Nr. Datum Blatt\n650 JACO04 3940826 20.10.2026",
+            "3940826",
+        ),
+    ],
+)
+async def test_ff_observed_invoice_number_layouts(text: str, expected: str) -> None:
+    config = config_from_custom_fields([ConnectorCustomField("93", "Rechnungsnummer", "string")])
+    assert config is not None
+    provider = config.fields["invoice_number"].providers[0]
+
+    candidates = await RegexExtractionProvider().extract(
+        text, provider.model_dump(exclude={"type"})
+    )
+
+    assert [candidate.value for candidate in candidates] == [expected]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("Summe 13.414,77€", "13.414,77"),
+        ("Zahlungsbetrag : 547,40 €", "547,40"),
+        ("Zahlbetrag Rechnung 26120 = 2.261,00 €", "2.261,00"),
+        ("Gesamtpreis (netto) 8.983,75 €\nGesamtpreis 10.690,66 €", "10.690,66"),
+        ("Gesamt Brutto: 4.200,00 €", "4.200,00"),
+        ("Gesamtbetrag in EUR inkl. MwSt. 357,00", "357,00"),
+        ("Rechnungssumme brutto 4.462,50 €", "4.462,50"),
+        ("30 Tage ohne Abzug bis 18.11.2026 506,26 €", "506,26"),
+        ("Verbleibende Restzahlung des 18. Abschlag. 35.000 €", "35.000"),
+        (
+            "Nettobetrag MwSt 19,00 % Zu zahlender Betrag\n502,10 EUR 95,40 EUR 597,50 EUR",
+            "597,50",
+        ),
+        (
+            "Steuernummer: 237/118/04188 Nettobetrag MwSt. 19 % Gesamtbetrag\n"
+            "USt.-Ident-Nr.: DE283740023 EUR 1.078,00 204,82 1.282,82",
+            "1.282,82",
+        ),
+    ],
+)
+async def test_ff_observed_invoice_amount_layouts(text: str, expected: str) -> None:
+    config = config_from_custom_fields([ConnectorCustomField("95", "Rechnungsbetrag", "monetary")])
+    assert config is not None
+    provider = config.fields["invoice_amount"].providers[0]
+
+    candidates = await RegexExtractionProvider().extract(
+        text, provider.model_dump(exclude={"type"})
+    )
+
+    assert [candidate.value for candidate in candidates] == [expected]
+
+
+@pytest.mark.asyncio
+async def test_ff_gross_total_does_not_select_explicit_net_total() -> None:
+    config = config_from_custom_fields([ConnectorCustomField("95", "Rechnungsbetrag", "monetary")])
+    assert config is not None
+    provider = config.fields["invoice_amount"].providers[0]
+
+    candidates = await RegexExtractionProvider().extract(
+        "Gesamtpreis (netto) 8.983,75 €",
+        provider.model_dump(exclude={"type"}),
+    )
+
+    assert candidates == []
+
+
+@pytest.mark.asyncio
 async def test_ff_invoice_number_never_falls_back_to_construction_site() -> None:
     config = config_from_custom_fields([ConnectorCustomField("93", "Rechnungsnummer", "string")])
     assert config is not None
