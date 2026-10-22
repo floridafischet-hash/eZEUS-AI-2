@@ -1,7 +1,5 @@
 # Extra Wünsche
 
-#PatStinkt<3
-
 Diese Bibliothek sammelt wiederverwendbare Kundenanforderungen für eZEUS.
 Sie verhindert, dass Extraktionshinweise, Prüfregeln und Testfälle bei jedem
 Kunden neu entwickelt werden müssen.
