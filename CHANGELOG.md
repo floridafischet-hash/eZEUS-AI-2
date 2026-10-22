@@ -4,6 +4,9 @@ Alle wesentlichen Änderungen an eZEUS-AI-2 werden in dieser Datei dokumentiert.
 
 ## Unveröffentlicht
 
+- Weitere eindeutig bezeichnete Bruttobeträge werden aus den Layouts
+  `Rechnungssumme brutto`, `Gesamtbetrag in EUR inkl. MwSt.` und
+  `Zahlbetrag` erkannt; Netto- und Exklusiv-MwSt.-Werte bleiben ausgeschlossen.
 - Strukturierte Folgezeilen für Rechnungsnummern sowie eindeutig bezeichnete
   Baustellen- und KST-Layouts werden konservativ erkannt; Postleitzahlen und
   Rechnungsnummern bleiben als Baustellennummer ausgeschlossen.

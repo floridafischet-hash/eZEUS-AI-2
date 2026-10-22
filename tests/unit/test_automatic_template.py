@@ -314,6 +314,9 @@ async def test_plain_invoice_heading_is_not_an_identifier() -> None:
         ("ZWISCHENSUMME netto 3.455,00 €\nENDSUMME brutto 4.111,45 €", "4.111,45"),
         ("ENDSUMME brutto\n3.867,50 €", "3.867,50"),
         ("Gesamtbetrag brutto: 28.441,00 EUR", "28.441,00"),
+        ("Rechnungssumme brutto 4.917,35 €", "4.917,35"),
+        ("Gesamtbetrag in EUR inkl. MwSt. 7.125,80", "7.125,80"),
+        ("Lieferdatum 22.10.2026, Zahlbetrag: 823,48 €", "823,48"),
         (
             "Gesamtnetto 97,45 €\nzzgl. 19 % MwSt 18,52 €\nGesamtrechnungsbetrag 115,97 €",
             "115,97",
@@ -341,6 +344,26 @@ async def test_invoice_amount_patterns_select_only_gross_total(text: str, expect
     )
 
     assert [candidate.value for candidate in candidates] == [expected]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Rechnungssumme netto 4.132,23 €",
+        "Gesamtbetrag in EUR ohne MwSt. 4.132,23",
+    ],
+)
+async def test_invoice_amount_patterns_reject_explicit_net_totals(text: str) -> None:
+    config = config_from_custom_fields([ConnectorCustomField("95", "Rechnungsbetrag", "monetary")])
+    assert config is not None
+    provider = config.fields["invoice_amount"].providers[0]
+
+    candidates = await RegexExtractionProvider().extract(
+        text, provider.model_dump(exclude={"type"})
+    )
+
+    assert candidates == []
 
 
 @pytest.mark.asyncio

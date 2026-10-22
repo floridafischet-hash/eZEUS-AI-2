@@ -90,11 +90,16 @@ FIELD_DEFINITIONS: dict[str, dict[str, object]] = {
             r"Gesamtsumme|"
             r"Gesamtrechnungsbetrag|"
             r"Erstattungsbetrag|"
+            r"Rechnungssumme\s+brutto|"
             r"Rechnungssumme|"
             r"Rechnungswert\s*\(\s*brutto\s*\)|"
+            r"Zahlbetrag|"
             r"Endbetrag|"
             r"(?<!Netto[ -])(?<![\w-])Rechnungsbetrag"
             r")\s*(?:EUR|€)?\s*[:.=]?\s*(?:EUR|€)?\s*([\d.,]+\d{2})\s*(?:EUR|€)?",
+            r"(?i)\bGesamtbetrag\s+in\s+(?:EUR|€)\s+"
+            r"inkl\.?\s*(?:MwSt|USt)\.?\s*[:.=]?\s*"
+            r"([\d.,]+\d{2})\s*(?:EUR|€)?",
         ],
     },
     "lieferscheinnummer": {
