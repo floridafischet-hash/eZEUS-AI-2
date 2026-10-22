@@ -135,12 +135,13 @@ verwendet vorhandene Custom-Field-Werte nicht als alleinige Wahrheitsquelle.
 - Bereits gefüllte Paperless-Felder werden nicht überschrieben.
 - Eine eindeutig erkannte Rechnungsnummer wird zusätzlich als Dokumenttitel
   gesetzt. Ein bereits identischer Titel verursacht keine Schreiboperation.
-- Für einen leeren Korrespondenten muss die Paperless-Matching-Regel
-  beziehungsweise ersatzweise der Korrespondentenname mindestens 60 Prozent
-  mit einer OCR-Zeile übereinstimmen. Der beste eindeutige Treffer gewinnt. Bei
-  Gleichstand oder ohne sicheren Treffer wird `(noch nicht angelegt)` verwendet
-  und bei Bedarf in Paperless angelegt. Bereits gesetzte Korrespondenten werden
-  nicht überschrieben.
+- Für einen leeren Korrespondenten muss eine explizite Paperless-Matching-Regel
+  mindestens 60 Prozent erreichen. Beim ersatzweise verwendeten
+  Korrespondentennamen gewinnen exakte Treffer; unscharfe Treffer benötigen
+  mindestens 85 Prozent und ein unterscheidendes Firmenwort. Bei Gleichstand
+  oder ohne sicheren Treffer wird ein vorhandenes `(noch nicht angelegt)` oder
+  `noch nicht angelegt` verwendet und der Standard bei Bedarf in Paperless
+  angelegt. Bereits gesetzte Korrespondenten werden nicht überschrieben.
 - Die Schreibreihenfolge lautet Korrespondent, Titel, benutzerdefinierte Felder.
   Fehler beim Setzen eines Wertes verhindern die nachfolgenden Schreibversuche
   nicht; Custom Fields werden dafür einzeln geschrieben.

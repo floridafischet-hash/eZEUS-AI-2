@@ -8,6 +8,30 @@ from connectors.base.interface import ConnectorCorrespondent
 from core.config.settings import get_settings
 
 DEFAULT_CORRESPONDENT_NAME = "(noch nicht angelegt)"
+DEFAULT_CORRESPONDENT_NAMES = (DEFAULT_CORRESPONDENT_NAME, "noch nicht angelegt")
+MINIMUM_NAME_SCORE = 0.85
+
+_NON_DISTINCTIVE_COMPANY_WORDS = {
+    "ag",
+    "beton",
+    "co",
+    "e",
+    "geb",  # OCR abbreviation for Gebrüder
+    "gebr",
+    "gebrueder",
+    "gesellschaft",
+    "gbr",
+    "gmbh",
+    "group",
+    "gruppe",
+    "holding",
+    "kg",
+    "kgaa",
+    "mbh",
+    "ohg",
+    "ug",
+    "v",
+}
 
 
 @dataclass(slots=True, frozen=True)
@@ -28,17 +52,29 @@ def _normalize(value: str) -> str:
     )
 
 
+def _is_default_correspondent_name(value: str) -> bool:
+    normalized_defaults = {_normalize(name) for name in DEFAULT_CORRESPONDENT_NAMES}
+    return _normalize(value) in normalized_defaults
+
+
 def default_correspondent(
     correspondents: list[ConnectorCorrespondent],
 ) -> ConnectorCorrespondent | None:
-    expected = _normalize(DEFAULT_CORRESPONDENT_NAME)
     return next(
-        (item for item in correspondents if _normalize(item.name) == expected),
+        (item for item in correspondents if _is_default_correspondent_name(item.name)),
         None,
     )
 
 
-def _line_score(rule: str, line: str) -> float:
+def _distinctive_words(value: str) -> set[str]:
+    return {
+        word
+        for word in _normalize(value).split()
+        if word not in _NON_DISTINCTIVE_COMPANY_WORDS and len(word) > 1
+    }
+
+
+def _line_score(rule: str, line: str, *, require_distinctive_word: bool = False) -> float:
     normalized_rule = _normalize(rule)
     normalized_line = _normalize(line)
     if not normalized_rule or not normalized_line:
@@ -46,6 +82,8 @@ def _line_score(rule: str, line: str) -> float:
     if normalized_rule in normalized_line:
         return 1.0
     if len(normalized_rule.split()) == 1:
+        return 0.0
+    if require_distinctive_word and not (_distinctive_words(rule) & set(normalized_line.split())):
         return 0.0
     return SequenceMatcher(None, normalized_rule, normalized_line).ratio()
 
@@ -94,7 +132,30 @@ def _score_rule(correspondent: ConnectorCorrespondent, text: str) -> tuple[float
         )
         return score, first, source
 
-    scored_lines = [(_line_score(rule, line), index) for index, line in enumerate(lines)]
+    if source == "correspondent_name":
+        normalized_rule = _normalize(rule)
+        if normalized_rule and normalized_rule in normalized_text:
+            first = min(
+                (
+                    index
+                    for index, line in enumerate(lines)
+                    if _distinctive_words(rule) & set(_normalize(line).split())
+                ),
+                default=2**31 - 1,
+            )
+            return 1.0, first, source
+
+    scored_lines = [
+        (
+            _line_score(
+                rule,
+                line,
+                require_distinctive_word=source == "correspondent_name",
+            ),
+            index,
+        )
+        for index, line in enumerate(lines)
+    ]
     return max(scored_lines, default=(0.0, 2**31 - 1), key=lambda item: (item[0], -item[1])) + (
         source,
     )
@@ -107,10 +168,15 @@ def match_correspondent(
 ) -> CorrespondentMatch | None:
     candidates: list[tuple[float, int, int, ConnectorCorrespondent, str]] = []
     for correspondent in correspondents:
-        if _normalize(correspondent.name) == _normalize(DEFAULT_CORRESPONDENT_NAME):
+        if _is_default_correspondent_name(correspondent.name):
             continue
         score, line_number, source = _score_rule(correspondent, text)
-        if score >= minimum_score:
+        required_score = (
+            max(minimum_score, MINIMUM_NAME_SCORE)
+            if source == "correspondent_name"
+            else minimum_score
+        )
+        if score >= required_score:
             specificity = len(_normalize(correspondent.match or correspondent.name))
             candidates.append((score, line_number, specificity, correspondent, source))
     if not candidates:

@@ -16,6 +16,8 @@ def test_help_page_contains_beginner_guide() -> None:
     assert "Korrespondent, Titel und benutzerdefinierte Felder" in response.text
     assert "(noch nicht angelegt)" in response.text
     assert "mindestens 60 Prozent" in response.text
+    assert "mindestens 85 Prozent" in response.text
+    assert "noch nicht angelegt</code>" in response.text
     assert "KI-Fallback" in response.text
     assert "Ein Fehler bei einem Wert stoppt die folgenden Versuche nicht" in response.text
     assert "Paperless-Webhook einrichten" in response.text

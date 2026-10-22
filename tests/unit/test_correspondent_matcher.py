@@ -103,3 +103,59 @@ def test_default_correspondent_is_only_used_as_explicit_fallback() -> None:
 
     assert default_correspondent([fallback]) == fallback
     assert match_correspondent("Status: noch nicht angelegt", [fallback]) is None
+
+
+def test_default_correspondent_without_parentheses_is_supported() -> None:
+    fallback = _correspondent("99", "noch nicht angelegt")
+
+    assert default_correspondent([fallback]) == fallback
+    assert match_correspondent("Status: (noch nicht angelegt)", [fallback]) is None
+
+
+def test_exact_name_split_across_ocr_lines_is_prioritized() -> None:
+    result = match_correspondent(
+        "Ernst Hasselbring\nGmbH & Co. KG\nRECHNUNG",
+        [
+            _correspondent("1", "Famo GmbH & Co.KG"),
+            _correspondent("2", "Ernst Hasselbring GmbH & Co. KG"),
+        ],
+    )
+
+    assert result is not None
+    assert result.correspondent_id == "2"
+    assert result.score == 1.0
+
+
+def test_implicit_name_match_requires_eighty_five_percent() -> None:
+    result = match_correspondent(
+        "Gebr. Meyer · Alter Postweg 8-10 · 21614 Buxtehude",
+        [_correspondent("1", "Gebr. Loesing GbR.")],
+    )
+
+    assert result is None
+
+
+def test_implicit_name_match_requires_a_distinctive_company_word() -> None:
+    result = match_correspondent(
+        "Wümme-Beton GmbH & Co. KG · Industriestr. 5 · 27383 Scheeßel",
+        [
+            _correspondent("1", "Famo GmbH & Co.KG"),
+            _correspondent("2", "OASE GmbH"),
+        ],
+    )
+
+    assert result is None
+
+
+def test_exact_existing_supplier_beats_unrelated_fuzzy_candidate() -> None:
+    result = match_correspondent(
+        "Mibau Stema Deutschland GmbH, Gewerbestraße 3, 21781 Cadenberge",
+        [
+            _correspondent("1", "Thomas Beton GmbH"),
+            _correspondent("2", "Mibau Stema Deutschland GmbH"),
+        ],
+    )
+
+    assert result is not None
+    assert result.correspondent_id == "2"
+    assert result.score == 1.0

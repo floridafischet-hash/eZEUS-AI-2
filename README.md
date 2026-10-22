@@ -451,13 +451,17 @@ in drei Stufen:
 
 1. Wenn **Paperless-Regeln** aktiviert sind, werden die hinterlegte
    Matching-Regel beziehungsweise ersatzweise der Korrespondentenname gegen den
-   OCR-Text geprüft. Ein Kandidat muss mindestens 60 Prozent erreichen; bei
-   einem nicht auflösbaren Gleichstand gibt es keinen Regel-Treffer.
+   OCR-Text geprüft. Explizite Matching-Regeln müssen mindestens 60 Prozent
+   erreichen. Beim Korrespondentennamen gewinnen exakte Treffer; unscharfe
+   Treffer benötigen mindestens 85 Prozent und ein unterscheidendes Firmenwort.
+   Bei einem nicht auflösbaren oder unsicheren Ergebnis gibt es keinen
+   Regel-Treffer.
 2. Nur ohne Regel-Treffer wird **KI-Fallback** verwendet, sofern der Schalter
    beim Korrespondenten und `OLLAMA_ENABLED=true` aktiv sind. Ollama darf nur
    eine bereits vorhandene Paperless-Korrespondenten-ID auswählen.
 3. Bleibt auch die KI ohne eindeutiges Ergebnis, wird
-   `(noch nicht angelegt)` verwendet.
+   `(noch nicht angelegt)` beziehungsweise ein vorhandenes
+   `noch nicht angelegt` verwendet.
 
 Danach wird der Titel versucht. Abschließend wird jedes aktivierte
 benutzerdefinierte Feld einzeln geschrieben. Ein Fehler bei einem dieser
