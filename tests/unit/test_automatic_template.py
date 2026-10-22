@@ -288,6 +288,14 @@ async def test_plain_invoice_heading_is_not_an_identifier() -> None:
     ("text", "expected"),
     [
         ("<td>Bruttosumme</td>\n<td>€ 1.482,74</td>", "1.482,74"),
+        (
+            "<table><tbody>"
+            '<tr><td colspan="3">Nettosumme</td><td>= EUR</td><td>1.658,32</td></tr>'
+            '<tr><td colspan="3">19,00% USt</td><td>+ EUR</td><td>315,08</td></tr>'
+            '<tr><td colspan="3">Bruttosumme</td><td>= EUR</td><td>1.973,40</td></tr>'
+            "</tbody></table>",
+            "1.973,40",
+        ),
         ("Bruttosumme: 1.482,74 €", "1.482,74"),
         ("Nettosumme 1.357,00 €\nGesamtsumme 1.614,83 €", "1.614,83"),
         ("Nettosumme € 899,99\nGesamtsumme € 1.070,99", "1.070,99"),
