@@ -33,6 +33,11 @@ async def _extract(text: str) -> list[object]:
         ("Baustelle: 26054", ["26054"]),
         ("Baustellennummer:# 26082, Selsingen", ["26082"]),
         ("Kundenauftragsnr. : 25139", ["25139"]),
+        (
+            "Bauvorhaben: Neubau Lagerhalle – 1.BA / Baust.Nr. 25164",
+            ["25164"],
+        ),
+        ("Bestell Nr.: Kst.AB.: 260012", ["260012"]),
         ("Lieferanschrift: Grundschule\n# 26054\nHauptstraße 1", ["26054"]),
         (
             "Kunden-Nr.: 1000101\n"
@@ -76,6 +81,9 @@ async def test_construction_site_patterns_extract_supported_layouts(
         "8 Stunden 26054",
         "Artikel-Nr. 26054",
         "Auftrags-Nr. 260541234",
+        "Bauvorhaben: Neubau Lagerhalle – Rechnungs-Nr. 25164",
+        "Bestell Nr.: Kst.AB.: 23999",
+        "Kastanienstraße 1, 21682 Stade",
     ],
 )
 async def test_construction_site_patterns_reject_names(text: str) -> None:

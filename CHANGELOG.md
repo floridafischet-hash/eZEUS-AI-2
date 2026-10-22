@@ -4,6 +4,9 @@ Alle wesentlichen Änderungen an eZEUS-AI-2 werden in dieser Datei dokumentiert.
 
 ## Unveröffentlicht
 
+- Strukturierte Folgezeilen für Rechnungsnummern sowie eindeutig bezeichnete
+  Baustellen- und KST-Layouts werden konservativ erkannt; Postleitzahlen und
+  Rechnungsnummern bleiben als Baustellennummer ausgeschlossen.
 - Optionales IBAN-Extraktionsprofil pro Kundeninstanz ergänzt: Empfänger-IBANs
   werden aus OCR- und Tabellenlayouts gelesen sowie auf Format und bekannte
   Länder-Längen geprüft. Fiktive Prüfziffern sind für Test- und

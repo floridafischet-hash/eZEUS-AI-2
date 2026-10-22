@@ -15,6 +15,17 @@ FIELD_DEFINITIONS: dict[str, dict[str, object]] = {
         "validators": [{"type": "not_empty"}, {"type": "length", "min": 1, "max": 100}],
         "selection_strategy": "first",
         "patterns": [
+            r"(?im)^\s*[^\n]{0,80}\bRechnungsnr\.?\s+Datum\s+Seite\s*$"
+            r"\s*^\s*[A-Z0-9][A-Z0-9./_-]*\s+"
+            r"(?=[A-Z0-9./_-]*\d)([A-Z0-9][A-Z0-9./_-]*)\s+"
+            r"\d{1,2}[./-]\d{1,2}[./-]\d{2,4}\s+\d{1,3}\.?\s+\d{1,3}\s*$",
+            r"(?im)^\s*[^\n]{0,40}\s+Seite\s+Datum\s+"
+            r"[A-ZÄÖÜ][A-ZÄÖÜa-zäöüß]*[\s.-]*(?:Nr|Nummer)\.?\s+"
+            r"Rechnung\s+(?:Nr|Nummer)\.?\s*$"
+            r"\s*^\s*\d{1,2}[./-]\d{1,2}[./-]\d{2,4}\s+\d{1,3}\s+"
+            r"\d{1,2}[./-]\d{1,2}[./-]\d{2,4}\s+"
+            r"[A-Z0-9][A-Z0-9./_-]*\s+"
+            r"(?=[A-Z0-9./_-]*\d)([A-Z0-9][A-Z0-9./_-]*)\s*$",
             r"(?im)^\s*(?:KD-Nr\.?\s+)?Rechn\.?Nr\.?\s+Datum\s+Blatt\s*$"
             r"\s*^\s*(?:\d{2,4}\s+)?\d{4,8}\s+"
             r"(?=\d{5,12}\b)(\d{5,12})\s+\d{1,2}[./-]\d{1,2}[./-]\d{2,4}\s*$",
