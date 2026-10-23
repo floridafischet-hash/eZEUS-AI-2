@@ -182,7 +182,7 @@ async def _verify_instance_trigger(
             extra={"instance_slug": instance.slug, "trigger": trigger},
         )
         raise HTTPException(status_code=409, detail="Workflow trigger condition is not satisfied")
-    return next(iter(required_ids)) if trigger == "tag-added" else None
+    return next(iter(required_ids)) if trigger in {"tag-added", "manual"} else None
 
 
 async def _consume_tag_trigger(

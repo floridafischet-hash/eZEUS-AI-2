@@ -62,7 +62,10 @@ async def test_manual_trigger_requires_configured_tag_on_document(monkeypatch) -
         "webhooks.paperless.router.connector_for_instance", _connector_factory(connector)
     )
 
-    await _verify_instance_trigger(_instance(), PaperlessWebhookPayload(document_id=257), "manual")
+    consumed_tag_id = await _verify_instance_trigger(
+        _instance(), PaperlessWebhookPayload(document_id=257), "manual"
+    )
+    assert consumed_tag_id == "55"
 
     connector.document_tags.clear()
     with pytest.raises(HTTPException) as exc_info:

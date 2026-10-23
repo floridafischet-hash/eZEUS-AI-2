@@ -437,10 +437,10 @@ class PaperlessConnector(DocumentConnector):
                 "order": 10,
                 "enabled": True,
                 "triggers": [{"type": 3, "filter_has_all_tags": [manual_tag_id]}],
-                "actions": [
-                    webhook_action("manual"),
-                    {"type": 2, "remove_tags": [manual_tag_id]},
-                ],
+                # The webhook is executed asynchronously by Paperless.  eZEUS
+                # removes the one-shot tag only after accepting the event, so
+                # the trigger guard cannot race a following removal action.
+                "actions": [webhook_action("manual")],
             }
             manual = await self._upsert_workflow(
                 workflows,
