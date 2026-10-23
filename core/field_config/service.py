@@ -73,7 +73,13 @@ STANDARD_FIELDS: tuple[dict[str, object], ...] = (
 STANDARD_PATTERNS: dict[str, list[str]] = {
     "invoice_number": cast(list[str], FIELD_DEFINITIONS["rechnungsnummer"]["patterns"]),
     "invoice_amount": cast(list[str], FIELD_DEFINITIONS["rechnungsbetrag"]["patterns"]),
-    "invoice_date": [r"(?i)(?:Rechnungsdatum|Datum)\s*[:.]?\s*(\d{1,2}[./-]\d{1,2}[./-]\d{2,4})"],
+    "invoice_date": [
+        r"(?im)^\s*Kunden[\s.-]*(?:Nr|Nummer)\.?\s+Rechnung\s+Datum\s*$"
+        r"\s*^\s*[A-Z0-9][A-Z0-9./_-]*\s+"
+        r"[A-Z0-9][A-Z0-9./_-]*\s+"
+        r"(\d{1,2}[./-]\d{1,2}[./-]\d{2,4})\s*$",
+        r"(?i)(?:Rechnungsdatum|Datum)\s*[:.]?\s*(\d{1,2}[./-]\d{1,2}[./-]\d{2,4})",
+    ],
     "customer_number": [
         r"(?im)^\s*Kundennummer\s+Belegnummer\s+Belegdatum"
         r"(?:\s+Seite\s+\d+)?\s*$"
