@@ -202,7 +202,7 @@ async def test_manual_trigger_is_independent_when_ocr_handoff_is_disabled(monkey
     manual = updates["/api/workflows/76/"]
     assert manual["triggers"] == [{"type": 3, "filter_has_all_tags": [55]}]
     assert manual["actions"][0]["webhook"]["headers"]["X-EZEUS-Workflow-Trigger"] == "manual"
-    assert manual["actions"][1] == {"type": 2, "remove_tags": [55]}
+    assert len(manual["actions"]) == 1
 
 
 @pytest.mark.asyncio
@@ -356,7 +356,7 @@ async def test_ezeus_workflow_is_created_with_safe_public_webhook(monkeypatch) -
     assert (
         manual_payload["actions"][0]["webhook"]["headers"]["X-EZEUS-Workflow-Trigger"] == "manual"
     )
-    assert manual_payload["actions"][1] == {"type": 2, "remove_tags": [54]}
+    assert len(manual_payload["actions"]) == 1
 
 
 @pytest.mark.asyncio
