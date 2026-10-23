@@ -444,6 +444,9 @@ async def test_ff_structured_gross_totals(text: str, expected: str) -> None:
             "Bindung Es gelten die AGB Brutto 67,96 €",
             "67,96",
         ),
+        ("Brutto in Euro 542,76", "542,76"),
+        ("BRUTTO IN EUR 1.234,56", "1.234,56"),
+        ("<td>Brutto in Euro</td><td>67,96</td>", "67,96"),
         (
             '<td colspan="5">Gutschriftsbetrag</td>\n<td>3.280,97 EUR</td>',
             "3.280,97",
