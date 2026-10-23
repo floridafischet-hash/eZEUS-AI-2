@@ -76,7 +76,7 @@ FIELD_DEFINITIONS: dict[str, dict[str, object]] = {
             r"\s*^\s*[^\n]{0,200}\b(?:EUR|€)\s+"
             r"(-?\d[\d.,'’\u00a0 ]*[.,]\d{2})\s*$",
             r"(?im)^(?![^\n]{0,240}(?:Skonto|Rabatt|Einzelpreis))"
-            r"[^\n]{0,240}\bBrutto\s+"
+            r"[^\n]{0,240}\bBrutto(?:\s+in\s+(?:EUR|Euro|€))?\s+"
             r"(-?\d[\d.,'’\u00a0 ]*[.,]\d{2})\s*(?:EUR|Euro|€)?\s*$",
             # Paperless may preserve a total as adjacent HTML cells.  The
             # regex provider flattens cells within one row, so anchor short
