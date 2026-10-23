@@ -519,6 +519,14 @@ async def test_ff_observed_invoice_number_layouts(text: str, expected: str) -> N
             "USt.-Ident-Nr.: DE283740023 EUR 1.078,00 204,82 1.282,82",
             "1.282,82",
         ),
+        (
+            "Netto MwSt. 19,00% Gesamtbetrag\n"
+            "106,30 20,20 EUR 126,50\n\n"
+            "Zahlungsbedingungen: Zahlung innerhalb 14 Tagen abzgl. 2 % Skonto oder\n"
+            "innerhalb 30 Tagen ohne Abzug\n"
+            "Zahlbar bis zum 06.11.2026 EUR 123,97",
+            "126,50",
+        ),
     ],
 )
 async def test_ff_observed_invoice_amount_layouts(text: str, expected: str) -> None:

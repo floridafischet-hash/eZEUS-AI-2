@@ -71,6 +71,10 @@ FIELD_DEFINITIONS: dict[str, dict[str, object]] = {
         "validators": [{"type": "not_empty"}, {"type": "monetary_amount"}],
         "selection_strategy": "highest",
         "patterns": [
+            r"(?im)^\s*Netto\s+MwSt\.?\s+\d{1,2}(?:[.,]\d{2})?\s*%\s+"
+            r"Gesamtbetrag\s*$"
+            r"\s*^\s*[\d.,]+\d{2}\s+[\d.,]+\d{2}\s+"
+            r"(?:EUR|€)\s+([\d.,]+\d{2})\s*$",
             r"(?im)^\s*Nettowarenwert\s+MwSt\s+MwSt\s+Betrag\s+"
             r"Total\s+inkl\.?\s*MwSt\.?\s*$"
             r"\s*^\s*[\d.,]+\d{2}\s+"
