@@ -4,6 +4,9 @@ Alle wesentlichen Änderungen an eZEUS-AI-2 werden in dieser Datei dokumentiert.
 
 ## Unveröffentlicht
 
+- FF-Rechnungslayouts `Endsumme EUR`, `Summe Brutto Euro` und der Tabellenkopf
+  `Kunden-Nr Rechnung Datum` werden für Betrag, Rechnungsnummer und Datum
+  zuverlässig ausgewertet.
 - Strukturierte Folgezeilen für Rechnungsnummern sowie eindeutig bezeichnete
   Baustellen- und KST-Layouts werden konservativ erkannt; Postleitzahlen und
   Rechnungsnummern bleiben als Baustellennummer ausgeschlossen.

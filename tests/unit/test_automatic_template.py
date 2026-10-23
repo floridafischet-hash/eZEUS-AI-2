@@ -449,6 +449,7 @@ async def test_ff_structured_gross_totals(text: str, expected: str) -> None:
             "Kunde Seite Datum Lief.-Nr. Rechnung Nr.\n22.10.2026 1 21.10.2026 123 4567",
             "4567",
         ),
+        ("Kunden-Nr Rechnung Datum\n102006 R483383 23.10.2026", "R483383"),
     ],
 )
 async def test_ff_structured_invoice_numbers(text: str, expected: str) -> None:
@@ -503,6 +504,8 @@ async def test_ff_observed_invoice_number_layouts(text: str, expected: str) -> N
         ("Zahlbetrag Rechnung 26120 = 2.261,00 €", "2.261,00"),
         ("Gesamtpreis (netto) 8.983,75 €\nGesamtpreis 10.690,66 €", "10.690,66"),
         ("Gesamt Brutto: 4.200,00 €", "4.200,00"),
+        ("Endsumme EUR 160,65", "160,65"),
+        ("Summe Brutto Euro 687,52", "687,52"),
         ("Gesamtbetrag in EUR inkl. MwSt. 357,00", "357,00"),
         ("Rechnungssumme brutto 4.462,50 €", "4.462,50"),
         ("30 Tage ohne Abzug bis 18.11.2026 506,26 €", "506,26"),
@@ -542,6 +545,16 @@ async def test_ff_gross_total_does_not_select_explicit_net_total() -> None:
     )
 
     assert candidates == []
+
+
+@pytest.mark.asyncio
+async def test_ff_customer_invoice_date_table_extracts_invoice_date() -> None:
+    candidates = await RegexExtractionProvider().extract(
+        "Kunden-Nr Rechnung Datum\n102006 R483383 23.10.2026",
+        {"patterns": STANDARD_PATTERNS["invoice_date"]},
+    )
+
+    assert [candidate.value for candidate in candidates] == ["23.10.2026"]
 
 
 @pytest.mark.asyncio
