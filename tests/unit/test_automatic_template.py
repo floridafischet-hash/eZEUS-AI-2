@@ -429,6 +429,74 @@ async def test_ff_structured_gross_totals(text: str, expected: str) -> None:
 @pytest.mark.parametrize(
     ("text", "expected"),
     [
+        ("<th>Gesamtbetrag</th>\n<td>EUR 642,17</td>", "642,17"),
+        (
+            "Netto Verpackung Fracht Netto Gesamt MwSt. 19,00% Gesamtbetrag\n"
+            "500,00 4,00 7,00 511,00 97,09 EUR 608,09",
+            "608,09",
+        ),
+        (
+            "<td><strong>Brutto</strong></td>\n<td><strong>67,96 &euro;</strong></td>",
+            "67,96",
+        ),
+        (
+            "Lieferbedingung Lieferung nach Aufwand MwSt 19,0 % 10,85 € "
+            "Bindung Es gelten die AGB Brutto 67,96 €",
+            "67,96",
+        ),
+        (
+            '<td colspan="5">Gutschriftsbetrag</td>\n<td>3.280,97 EUR</td>',
+            "3.280,97",
+        ),
+        ("Gutschriftbetrag: EUR 1,234.56", "1,234.56"),
+        ("Gutschriftssumme\n1 234,56 Euro", "1 234,56"),
+        ("Gutschriftswert: -1'234.56", "-1'234.56"),
+    ],
+)
+async def test_structured_invoice_totals_with_short_labels(text: str, expected: str) -> None:
+    config = config_from_custom_fields([ConnectorCustomField("95", "Rechnungsbetrag", "monetary")])
+    assert config is not None
+    provider = config.fields["invoice_amount"].providers[0]
+
+    candidates = await RegexExtractionProvider().extract(
+        text, provider.model_dump(exclude={"type"})
+    )
+
+    assert [candidate.value for candidate in candidates] == [expected]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Die Belastung des Rechnungsbetrages erfolgt, sobald die Ware versandt wurde.",
+        "Skonto 2 % Brutto 4,61 EUR",
+        "<td>Skonto 2 % Brutto</td><td>4,61 EUR</td>",
+        "Zahlungsziel 8 Tage Skonto Brutto 4,61 EUR",
+        "Positionsrabatt Brutto 9,99 EUR",
+        "Einzelpreis Brutto 67,96 EUR",
+        "<tr><th>Netto</th><th>Brutto</th></tr><tr><td>57,11 EUR</td><td>67,96 EUR</td></tr>",
+        "Brutto 19 %",
+        "Brutto\nArtikelpreis 67,96 EUR",
+        "Gutschriftsbetrag ohne Wert",
+    ],
+)
+async def test_short_amount_labels_reject_unsafe_context(text: str) -> None:
+    config = config_from_custom_fields([ConnectorCustomField("95", "Rechnungsbetrag", "monetary")])
+    assert config is not None
+    provider = config.fields["invoice_amount"].providers[0]
+
+    candidates = await RegexExtractionProvider().extract(
+        text, provider.model_dump(exclude={"type"})
+    )
+
+    assert candidates == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
         ("Re - Nr. : 91572442", "91572442"),
         ("**Rechnungsnr.:** 5808485", "5808485"),
         (

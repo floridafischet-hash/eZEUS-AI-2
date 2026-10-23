@@ -1,5 +1,19 @@
 # Deployment
 
+## Verbindliche Versionierung
+
+Jeder Commit, der `main` erreicht und dessen CI erfolgreich abgeschlossen ist,
+erhält automatisch genau einen Tag im Format `vMAJOR.MINOR.PATCH`. Ein Push mit
+mehreren neuen Commits erzeugt für jeden dieser Commits einen eigenen Tag in
+chronologischer Reihenfolge. `feat!` beziehungsweise `BREAKING CHANGE` erhöht
+Major, `feat` erhöht Minor; alle anderen Committypen einschließlich `docs`,
+`ci`, `test` und `style` erhöhen Patch.
+
+Der Workflow `.github/workflows/release.yml` ist die einzige Stelle, die diese
+automatischen Tags erzeugt. Ein ungetaggter Commit gilt nicht als
+veröffentlichbare Version. Tags werden erst nach erfolgreicher CI geschrieben
+und niemals überschrieben.
+
 ## Docker Compose
 
 `docker compose up --build` erstellt API, Worker, Outbox-Dispatcher, Sweeper,

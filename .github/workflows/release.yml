@@ -1,12 +1,16 @@
 name: Release
 
-# Tags every commit on main that passed CI with the next version, worked out
-# from the Conventional Commit types since the last tag:
+# Tags every previously untagged commit on main after the pushed head passed
+# CI. This also covers a push containing more than one commit. The next
+# version is worked out from each commit's Conventional Commit type:
 #
 #   feat!: / fix!: / "BREAKING CHANGE:" in the body  → major  (v2.0.0)
 #   feat:                                            → minor  (v1.3.0)
 #   anything else                                    → patch  (v1.2.1)
-#   only docs: / ci: / test: / style:                → no release
+#
+# There are no unversioned exceptions: docs:, ci:, test: and style: commits
+# receive a patch version too. Every commit that reaches main must have one
+# exact vMAJOR.MINOR.PATCH tag before it can become a deployable artifact.
 #
 # The tag is the whole hand-off: GitLab's sync job carries it over, the tag
 # pipeline builds, scans and publishes the image as :vX.Y.Z, and Flux rolls out
@@ -56,50 +60,63 @@ jobs:
         env:
           SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
-          set -eu
+          set -euo pipefail
 
-          # A later commit may already have been tagged by an earlier run of
-          # this workflow (CI runs can finish out of order). Never tag a
-          # commit that is older than the newest release.
-          LAST=$(git describe --tags --abbrev=0 --match 'v[0-9]*.[0-9]*.[0-9]*' "$SHA" 2>/dev/null || true)
-          NEWEST=$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -n1)
+          semver_tags() {
+            git tag --list | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' || true
+          }
+
+          # CI runs can finish out of order. If the globally newest release is
+          # not contained in this SHA, a newer main commit was already tagged.
+          NEWEST=$(semver_tags | sort -V | tail -n1)
           if [ -n "$NEWEST" ] && ! git merge-base --is-ancestor "$NEWEST" "$SHA"; then
             echo "$NEWEST is not contained in $SHA — older commit, no release."
             exit 0
           fi
-          if git tag --points-at "$SHA" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
-            echo "$SHA is already tagged."
-            exit 0
-          fi
 
-          RANGE="${LAST:+$LAST..}$SHA"
-          SUBJECTS=$(git log --format='%s' "$RANGE")
-          BODIES=$(git log --format='%b' "$RANGE")
-
-          if printf '%s\n' "$SUBJECTS" | grep -Eq '^[a-z]+(\([^)]*\))?!:' \
-             || printf '%s\n' "$BODIES" | grep -Eq '^BREAKING[ -]CHANGE:'; then
-            BUMP=major
-          elif printf '%s\n' "$SUBJECTS" | grep -Eq '^feat(\([^)]*\))?:'; then
-            BUMP=minor
-          elif printf '%s\n' "$SUBJECTS" | grep -Evq '^(docs|ci|test|style)(\([^)]*\))?:'; then
-            BUMP=patch
-          else
-            echo "Only docs/ci/test/style since ${LAST:-the beginning} — no release."
-            exit 0
-          fi
-
+          LAST=$(git tag --merged "$SHA" --list \
+            | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' \
+            | sort -V | tail -n1 || true)
           VERSION=${LAST#v}
           MAJOR=${VERSION%%.*}; REST=${VERSION#*.}
           MINOR=${REST%%.*};    PATCH=${REST#*.}
-          case "$BUMP" in
-            major) MAJOR=$((${MAJOR:-0} + 1)); MINOR=0; PATCH=0 ;;
-            minor) MINOR=$((${MINOR:-0} + 1)); PATCH=0 ;;
-            patch) PATCH=$((${PATCH:-0} + 1)) ;;
-          esac
-          [ -n "$LAST" ] || { MAJOR=1; MINOR=0; PATCH=0; }
-          NEXT="v$MAJOR.$MINOR.$PATCH"
+          [ -n "$LAST" ] || { MAJOR=0; MINOR=0; PATCH=0; }
 
-          git tag "$NEXT" "$SHA"
-          git push origin "refs/tags/$NEXT"
-          echo "### $NEXT ($BUMP) on $SHA" >> "$GITHUB_STEP_SUMMARY"
-          echo "Tagged $NEXT ($BUMP since ${LAST:-the beginning})."
+          RANGE="${LAST:+$LAST..}$SHA"
+          mapfile -t COMMITS < <(git rev-list --reverse "$RANGE")
+          TAG_REFS=()
+          for COMMIT in "${COMMITS[@]}"; do
+            if git tag --points-at "$COMMIT" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+              echo "$COMMIT is already versioned."
+              continue
+            fi
+
+            SUBJECT=$(git log -1 --format='%s' "$COMMIT")
+            BODY=$(git log -1 --format='%b' "$COMMIT")
+            if printf '%s\n' "$SUBJECT" | grep -Eq '^[a-z]+(\([^)]*\))?!:' \
+               || printf '%s\n' "$BODY" | grep -Eq '^BREAKING[ -]CHANGE:'; then
+              BUMP=major
+              MAJOR=$((MAJOR + 1)); MINOR=0; PATCH=0
+            elif printf '%s\n' "$SUBJECT" | grep -Eq '^feat(\([^)]*\))?:'; then
+              BUMP=minor
+              MINOR=$((MINOR + 1)); PATCH=0
+            else
+              BUMP=patch
+              PATCH=$((PATCH + 1))
+            fi
+
+            NEXT="v$MAJOR.$MINOR.$PATCH"
+            if git rev-parse -q --verify "refs/tags/$NEXT" >/dev/null; then
+              echo "Refusing to overwrite existing tag $NEXT."
+              exit 1
+            fi
+            git -c tag.gpgSign=false tag "$NEXT" "$COMMIT"
+            TAG_REFS+=("refs/tags/$NEXT")
+            echo "### $NEXT ($BUMP) on $COMMIT" >> "$GITHUB_STEP_SUMMARY"
+          done
+
+          if [ "${#TAG_REFS[@]}" -eq 0 ]; then
+            echo "All commits through $SHA are already versioned."
+            exit 0
+          fi
+          git push origin "${TAG_REFS[@]}"

@@ -71,6 +71,19 @@ FIELD_DEFINITIONS: dict[str, dict[str, object]] = {
         "validators": [{"type": "not_empty"}, {"type": "monetary_amount"}],
         "selection_strategy": "highest",
         "patterns": [
+            r"(?im)^\s*[^\n]{0,160}\bNetto\b[^\n]{0,160}\bMwSt\.?\s*"
+            r"\d{1,2}(?:[.,]\d{2})?\s*%\s+Gesamtbetrag\s*$"
+            r"\s*^\s*[^\n]{0,200}\b(?:EUR|€)\s+"
+            r"(-?\d[\d.,'’\u00a0 ]*[.,]\d{2})\s*$",
+            r"(?im)^(?![^\n]{0,240}(?:Skonto|Rabatt|Einzelpreis))"
+            r"[^\n]{0,240}\bBrutto\s+"
+            r"(-?\d[\d.,'’\u00a0 ]*[.,]\d{2})\s*(?:EUR|Euro|€)?\s*$",
+            # Paperless may preserve a total as adjacent HTML cells.  The
+            # regex provider flattens cells within one row, so anchor short
+            # credit labels to the whole row.
+            r"(?im)^\s*Gutschrift(?:s)?(?:betrag|summe|wert)\s*"
+            r"(?:EUR|Euro|€)?\s*[:.=]?\s*(?:EUR|Euro|€)?\s*"
+            r"(-?\d[\d.,'’\u00a0 ]*[.,]\d{2})\s*(?:EUR|Euro|€)?\s*$",
             r"(?im)^\s*Netto\s+MwSt\.?\s+\d{1,2}(?:[.,]\d{2})?\s*%\s+"
             r"Gesamtbetrag\s*$"
             r"\s*^\s*[\d.,]+\d{2}\s+[\d.,]+\d{2}\s+"
