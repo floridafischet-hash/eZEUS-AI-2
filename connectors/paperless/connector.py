@@ -228,11 +228,13 @@ class PaperlessConnector(DocumentConnector):
                     "url": webhook_url,
                     "use_params": True,
                     "as_json": True,
-                    # Paperless 2.20.x documents ``doc_id`` but does not
-                    # expose it to the workflow template context.  The
-                    # stable document URL does contain the same id.
+                    # Paperless 3.x exposes ``doc_id`` directly.  Older
+                    # releases only expose the stable document URL, so keep
+                    # that as a backwards-compatible fallback.
                     "params": {
-                        "document_id": '{{ doc_url.split("/")[-2] }}',
+                        "document_id": (
+                            '{{ doc_id if doc_id is defined else doc_url.split("/")[-2] }}'
+                        ),
                     },
                     "body": None,
                     "headers": {
