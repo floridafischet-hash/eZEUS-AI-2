@@ -197,8 +197,8 @@ migrations:
 postgres:
   enabled: true
   image:
-    repository: postgres
-    tag: "16.15-alpine"
+    repository: ghcr.io/floridafischet-hash/ezeus-ai-2-postgres
+    tag: "16.15-gosu1.20-go1.26.10-r1"
     pullPolicy: IfNotPresent
   auth:
     database: ezeus

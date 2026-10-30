@@ -107,7 +107,10 @@ services:
     cpus: 0.5
 
   postgres:
-    image: postgres:16.15-alpine
+    image: ezeus-postgres:16.15-gosu1.20-go1.26.10-r1
+    build:
+      context: .
+      dockerfile: docker/postgres/Dockerfile
     environment:
       POSTGRES_DB: ezeus
       POSTGRES_USER: ezeus

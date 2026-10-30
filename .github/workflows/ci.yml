@@ -97,6 +97,9 @@ jobs:
   container:
     runs-on: ubuntu-24.04
     timeout-minutes: 25
+    permissions:
+      contents: read
+      packages: write
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -104,6 +107,10 @@ jobs:
           persist-credentials: false
       - name: Build application image
         run: docker build --tag ezeus-ai-2:ci .
+      - name: Build patched PostgreSQL image
+        run: >-
+          docker build --tag ezeus-postgres:16.15-gosu1.20-go1.26.10-r1
+          --file docker/postgres/Dockerfile .
       - name: Scan repository secrets
         run: >-
           docker run --rm -v "$PWD:/repo" -w /repo
@@ -114,6 +121,11 @@ jobs:
           docker run --rm -v /var/run/docker.sock:/var/run/docker.sock
           aquasec/trivy:0.74.0 image --scanners vuln --exit-code 1 --ignore-unfixed
           --severity HIGH,CRITICAL ezeus-ai-2:ci
+      - name: Scan PostgreSQL image vulnerabilities
+        run: >-
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock
+          aquasec/trivy:0.74.0 image --scanners vuln --exit-code 1 --ignore-unfixed
+          --severity HIGH,CRITICAL ezeus-postgres:16.15-gosu1.20-go1.26.10-r1
       - name: Generate CycloneDX SBOM
         run: >-
           docker run --rm -v /var/run/docker.sock:/var/run/docker.sock
@@ -131,3 +143,17 @@ jobs:
       - name: Clean up integration stack
         if: always()
         run: make smoke-down
+      - name: Log in to GitHub Container Registry
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: docker/login-action@9780b0c442fbb1117ed29e0efdff1e18412f7567 # v3.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish patched PostgreSQL image
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          docker tag ezeus-postgres:16.15-gosu1.20-go1.26.10-r1 \
+            ghcr.io/floridafischet-hash/ezeus-ai-2-postgres:16.15-gosu1.20-go1.26.10-r1
+          docker push \
+            ghcr.io/floridafischet-hash/ezeus-ai-2-postgres:16.15-gosu1.20-go1.26.10-r1
