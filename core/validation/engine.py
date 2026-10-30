@@ -38,6 +38,8 @@ class ValidationEngine:
                     continue
             raise ValueError("Value is not a supported date")
         if kind == "monetary_amount":
+            text = text.replace("−", "-").replace("–", "-")
+            parenthesized_negative = text.startswith("(") and text.endswith(")")
             normalized = re.sub(r"[^\d,.-]", "", text)
             if "," in normalized and "." in normalized:
                 decimal_separator = "," if normalized.rfind(",") > normalized.rfind(".") else "."
@@ -49,6 +51,8 @@ class ValidationEngine:
                 normalized = normalized.replace(".", "").replace(",", ".")
             elif re.fullmatch(r"-?\d{1,3}(?:\.\d{3})+", normalized):
                 normalized = normalized.replace(".", "")
+            if parenthesized_negative and not normalized.startswith("-"):
+                normalized = f"-{normalized}"
             return str(Decimal(normalized).quantize(Decimal("0.01")))
         if kind in {"iban", "iban_format"}:
             compact = re.sub(r"\s+", "", text).upper()

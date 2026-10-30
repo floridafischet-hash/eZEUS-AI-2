@@ -292,6 +292,33 @@ class Orchestrator:
                     for _, _, result in valid:
                         if result is not winner[2]:
                             result.reason = "Lower validated total candidate"
+                elif valid and field.selection_strategy == "pattern_priority_highest":
+                    priorities = [
+                        int(str(result.metadata_json.get("pattern_index", 2**31)))
+                        for _, _, result in valid
+                    ]
+                    highest_priority = min(priorities)
+                    prioritized = [
+                        item
+                        for item in valid
+                        if int(str(item[2].metadata_json.get("pattern_index", 2**31)))
+                        == highest_priority
+                    ]
+                    winner = max(
+                        prioritized,
+                        key=lambda item: (
+                            abs(Decimal(str(item[1]))),
+                            item[0],
+                        ),
+                    )
+                    winner[2].accepted = True
+                    output_value = field.value_mapping.get(str(winner[1]), winner[1])
+                    extracted_by_key[field_key] = output_value
+                    if field.target_field_id is not None:
+                        extracted_values[str(field.target_field_id)] = output_value
+                    for _, _, result in valid:
+                        if result is not winner[2]:
+                            result.reason = "Lower-priority invoice-total candidate"
                 elif valid and len(distinct) == 1:
                     winner = max(valid, key=lambda item: item[0])
                     winner[2].accepted = True

@@ -494,6 +494,51 @@ async def test_runtime_saves_iban_profile_and_builds_unique_validated_field(
         assert normalized == "DE89370400440532013000"
 
 
+@pytest.mark.asyncio
+async def test_runtime_saves_invoice_gross_amount_profile_without_changing_other_tenant(
+    field_config_client,
+) -> None:
+    client, session_factory, connector = field_config_client
+    first = create_instance(client, "Kunde Betrag A", "kunde-betrag-a.example.test")
+    second = create_instance(client, "Kunde Betrag B", "kunde-betrag-b.example.test")
+    endpoint = f"/api/instances/{first['slug']}/field-config"
+    fields = client.get(endpoint, headers=admin_headers()).json()["fields"]
+    invoice_amount = next(field for field in fields if field["field_key"] == "invoice_amount")
+    invoice_amount["extraction_profile"] = "invoice_gross_amount"
+
+    saved = client.put(endpoint, headers=admin_headers(), json={"fields": fields})
+    assert saved.status_code == 200
+
+    with session_factory() as db:
+        first_instance = db.scalar(
+            select(PaperlessInstance).where(PaperlessInstance.slug == first["slug"])
+        )
+        second_instance = db.scalar(
+            select(PaperlessInstance).where(PaperlessInstance.slug == second["slug"])
+        )
+        assert first_instance is not None
+        assert second_instance is not None
+        first_runtime = FieldConfigurationService(db).runtime_config(
+            first_instance, connector.fields
+        )
+        second_runtime = FieldConfigurationService(db).runtime_config(
+            second_instance, connector.fields
+        )
+        configured = first_runtime.template.fields["invoice_amount"]
+        provider = configured.providers[0].model_dump(exclude={"type"})
+        assert configured.selection_strategy == "pattern_priority_highest"
+        assert provider["negate_on_negative_context"] is True
+        assert provider["negative_context_patterns"]
+        candidates = await RegexExtractionProvider().extract(
+            "Gutschrift\nErstattungsbetrag 2.002,77 EUR",
+            provider,
+        )
+        assert [candidate.value for candidate in candidates] == ["-2.002,77"]
+
+        other_provider = second_runtime.template.fields["invoice_amount"].providers[0]
+        assert "negate_on_negative_context" not in other_provider.model_dump(exclude={"type"})
+
+
 def test_ollama_disabled_degrades_to_regex_only(
     field_config_client,
     monkeypatch,

@@ -45,23 +45,51 @@ class RegexExtractionProvider(ExtractionProvider):
         hard_timeout = get_settings().regex_hard_timeout_seconds
         pattern_timeout = min(max(timeout_ms / 1000, 0.001), hard_timeout)
         started = monotonic()
+        negative_context = False
+        configured_negative_patterns = config.get("negative_context_patterns", [])
+        negative_patterns = (
+            configured_negative_patterns if isinstance(configured_negative_patterns, list) else []
+        )
+        for negative_pattern in negative_patterns:
+            remaining = hard_timeout - (monotonic() - started)
+            if remaining <= 0:
+                raise TimeoutError("Regex extraction hard time limit exceeded")
+            try:
+                compiled_negative = regex.compile(str(negative_pattern), flags=regex.MULTILINE)
+                if compiled_negative.search(text, timeout=min(pattern_timeout, remaining)):
+                    negative_context = True
+                    break
+            except regex.error as exc:
+                raise ValueError(f"Invalid negative-context pattern: {exc}") from exc
+            except TimeoutError as exc:
+                raise TimeoutError("Regex extraction hard time limit exceeded") from exc
         candidates: list[ExtractionCandidate] = []
         seen: set[tuple[str, int]] = set()
-        for pattern in patterns:
+        for pattern_index, pattern in enumerate(patterns):
+            remaining = hard_timeout - (monotonic() - started)
+            if remaining <= 0:
+                raise TimeoutError("Regex extraction hard time limit exceeded")
             try:
                 compiled = regex.compile(str(pattern), flags=regex.MULTILINE)
             except regex.error as exc:
                 raise ValueError(f"Invalid extraction pattern: {exc}") from exc
             try:
-                for match in compiled.finditer(text, timeout=pattern_timeout):
+                for match in compiled.finditer(text, timeout=min(pattern_timeout, remaining)):
                     if monotonic() - started > hard_timeout:
                         raise TimeoutError("Regex extraction time limit exceeded")
-                    value = (
-                        match.group(group)
-                        if match.lastindex and group <= match.lastindex
-                        else match.group(0)
-                    )
+                    if not match.lastindex or group < 1 or group > match.lastindex:
+                        raise ValueError(
+                            f"Extraction group {group} is unavailable for pattern {pattern_index}"
+                        )
+                    value = match.group(group)
                     cleaned_value = value.strip()
+                    cleaned_value = cleaned_value.replace("−", "-").replace("–", "-")
+                    if (
+                        negative_context
+                        and bool(config.get("negate_on_negative_context"))
+                        and not cleaned_value.startswith("-")
+                    ):
+                        cleaned_value = f"-{cleaned_value}"
                     candidate_key = (cleaned_value, match.start())
                     if candidate_key in seen:
                         continue
@@ -71,7 +99,11 @@ class RegexExtractionProvider(ExtractionProvider):
                             value=cleaned_value,
                             confidence=0.95 if match.lastindex else 0.85,
                             provider=self.id,
-                            metadata={"pattern": str(pattern), "offset": match.start()},
+                            metadata={
+                                "pattern": str(pattern),
+                                "pattern_index": pattern_index,
+                                "offset": match.start(),
+                            },
                         )
                     )
             except TimeoutError as exc:
