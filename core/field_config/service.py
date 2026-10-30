@@ -521,7 +521,15 @@ class FieldConfigurationService:
                     escaped = re.escape(field.label)
                     patterns = [rf"(?im)^\s*{escaped}\s*[:.]?\s*(.+?)\s*$"]
 
-                providers.append({"type": "regex", "patterns": patterns})
+                regex_provider: dict[str, object] = {"type": "regex", "patterns": patterns}
+                if profile is not None:
+                    if profile.get("negative_context_patterns"):
+                        regex_provider["negative_context_patterns"] = profile[
+                            "negative_context_patterns"
+                        ]
+                    if profile.get("negate_on_negative_context"):
+                        regex_provider["negate_on_negative_context"] = True
+                providers.append(regex_provider)
             if field.ai_enabled and get_settings().ollama_enabled:
                 providers.append(
                     {

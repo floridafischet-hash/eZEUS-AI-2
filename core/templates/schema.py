@@ -46,7 +46,7 @@ class FieldConfig(BaseModel):
     providers: list[ProviderConfig] = Field(default_factory=list)
     validators: list[ValidatorConfig] = Field(default_factory=list)
     minimum_confidence: float = Field(default=0.8, ge=0, le=1)
-    selection_strategy: Literal["unique", "first", "highest"] = "unique"
+    selection_strategy: Literal["unique", "first", "highest", "pattern_priority_highest"] = "unique"
     required: bool = True
     value_mapping: dict[str, object] = Field(default_factory=dict)
 
