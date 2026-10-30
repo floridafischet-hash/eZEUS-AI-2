@@ -4,6 +4,15 @@ Alle wesentlichen Änderungen an eZEUS-AI-2 werden in dieser Datei dokumentiert.
 
 ## Unveröffentlicht
 
+- Verarbeitungsprotokoll mit seitenweiter und filterweiter Auswahl, gebündeltem
+  auditierbarem Löschen, echter 50er-Seitennavigation sowie Schutz aktiver
+  Aufträge überarbeitet.
+- Instanzfilter wird lokal gemerkt und bei entfernten Instanzen kontrolliert auf
+  die Gesamtansicht zurückgesetzt.
+- Deutsche Status-/Phasenbezeichnungen, strukturierte redigierte
+  Fehlererklärungen und deutschsprachige Container-Logmeldungen ergänzt.
+- `COMPLETED_WITH_WARNINGS` und `CANCELLED` in manuelle und automatische
+  Log-Aufräumvorgänge aufgenommen.
 - FF-Rechnungslayouts `Endsumme EUR`, `Summe Brutto Euro` und der Tabellenkopf
   `Kunden-Nr Rechnung Datum` werden für Betrag, Rechnungsnummer und Datum
   zuverlässig ausgewertet.

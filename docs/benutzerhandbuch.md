@@ -326,10 +326,20 @@ ausgelöst werden.
 
 Auf der **Übersicht** zeigt das Verarbeitungsprotokoll den Zustand der Dokumente.
 Instanzfilter und die serverseitige Suche helfen auch über die ersten 50 Einträge
-hinaus beim Auffinden eines Dokuments. Abgeschlossene Einträge können einzeln
-oder als geladene Auswahl gelöscht werden. Laufende und wartende Aufträge sind
-gegen versehentliches Löschen geschützt. Abgeschlossene Logs werden spätestens
-nach 20 Tagen automatisch entfernt.
+hinaus beim Auffinden eines Dokuments. Der Browser merkt sich die gewählte
+Instanz. Status, Schritte und Fehlererklärungen werden auf Deutsch angezeigt;
+technische Werte bleiben unverändert und sensible Inhalte werden ausgeblendet.
+
+Es werden höchstens 50 Einträge gleichzeitig angezeigt. Mit **Vorherige Seite**
+und **Nächste Seite** wird zwischen den Seiten gewechselt; die alten Zeilen
+werden dabei ersetzt. Über die Auswahlboxen lassen sich einzelne Einträge oder
+genau die aktuelle Seite markieren. Danach bietet die Oberfläche weiterhin an,
+alle Treffer des aktuellen Instanz- und Suchfilters auszuwählen. Vor dem Löschen werden
+Anzahl und Instanzfilter bestätigt. Die Statuszeile meldet anschließend
+**N gelöscht, M übersprungen**. Laufende und wartende Aufträge sind deaktiviert
+und werden immer übersprungen. Abgeschlossene, mit Hinweisen abgeschlossene,
+fehlgeschlagene und abgebrochene Logs werden spätestens nach 20 Tagen
+automatisch entfernt.
 
 Unter **Trigger** wird für jede Instanz separat gewählt:
 

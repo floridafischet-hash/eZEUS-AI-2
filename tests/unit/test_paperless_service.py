@@ -51,7 +51,10 @@ def test_corrupt_webhook_credential_does_not_hide_valid_instance(
 
             assert result is not None
             assert result.slug == "valid-instance"
-            warning_message = "Skipping Paperless instance with unreadable webhook credential"
+            warning_message = (
+                "Paperless-Instanz übersprungen: Webhook-Zugangsdaten nicht lesbar; "
+                "Secret-Prüfung ist für diese Instanz nicht möglich"
+            )
             warning = next(record for record in caplog.records if record.message == warning_message)
             assert warning.__dict__["instance_slug"] == "corrupt-instance"
     finally:

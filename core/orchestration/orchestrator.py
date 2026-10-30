@@ -73,7 +73,11 @@ class Orchestrator:
         )
         self.db.add(entry)
         self.db.commit()
-        logger.info("Phase started: %s", phase.value, extra=self._log_extra(job, phase.value))
+        logger.info(
+            "Verarbeitungsschritt gestartet: %s",
+            phase.value,
+            extra=self._log_extra(job, phase.value),
+        )
         return entry
 
     def _finish_phase(
@@ -94,9 +98,14 @@ class Orchestrator:
         job = self.db.get(Job, entry.job_id)
         extra = self._log_extra(job, entry.phase.value) if job else {"phase": entry.phase.value}
         if error:
-            logger.warning("Phase failed: %s — %s", entry.phase.value, error, extra=extra)
+            logger.warning(
+                "Verarbeitungsschritt fehlgeschlagen: %s; Ursache=%s; Auftrag wird beendet",
+                entry.phase.value,
+                error,
+                extra=extra,
+            )
         else:
-            logger.info("Phase completed: %s", entry.phase.value, extra=extra)
+            logger.info("Verarbeitungsschritt abgeschlossen: %s", entry.phase.value, extra=extra)
 
     async def process(self, job_id: UUID) -> None:
         job = self.db.get(Job, job_id)
@@ -108,7 +117,7 @@ class Orchestrator:
         job.error_type = None
         job.error_message = None
         self.db.commit()
-        logger.info("Job started", extra=self._log_extra(job))
+        logger.info("Dokumentenauftrag gestartet", extra=self._log_extra(job))
 
         active_phase: JobPhaseEntry | None = None
         try:
@@ -326,7 +335,8 @@ class Orchestrator:
                     correspondents = await connector.list_correspondents()
                 except Exception as exc:  # noqa: BLE001 -- continue with remaining metadata
                     logger.warning(
-                        "correspondent_list.failed",
+                        "Korrespondentenliste konnte nicht geladen werden; "
+                        "Zuordnung wird übersprungen",
                         extra={
                             "instance": instance.slug if instance is not None else None,
                             "error_type": type(exc).__name__,
@@ -343,7 +353,8 @@ class Orchestrator:
                         correspondent_match = match_correspondent(extraction_text, correspondents)
                     except Exception as exc:  # noqa: BLE001 -- use fallback and continue
                         logger.warning(
-                            "correspondent_match.failed",
+                            "Korrespondent konnte nicht zugeordnet werden; "
+                            "Ersatzverfahren wird geprüft",
                             extra={
                                 "instance": instance.slug if instance is not None else None,
                                 "error_type": type(exc).__name__,
@@ -368,7 +379,8 @@ class Orchestrator:
                         )
                     except Exception as exc:
                         logger.warning(
-                            "correspondent_generation.failed",
+                            "KI-Korrespondentenvorschlag fehlgeschlagen; "
+                            "regelbasierter Ersatz wird verwendet",
                             extra={
                                 "instance": instance.slug if instance is not None else None,
                                 "error_type": type(exc).__name__,
@@ -393,7 +405,8 @@ class Orchestrator:
                             )
                         except Exception as exc:  # noqa: BLE001 -- title and fields must still run
                             logger.warning(
-                                "correspondent_fallback.failed",
+                                "Regelbasierte Korrespondentenzuordnung fehlgeschlagen; "
+                                "Feld bleibt unverändert",
                                 extra={
                                     "instance": instance.slug if instance is not None else None,
                                     "error_type": type(exc).__name__,
@@ -415,7 +428,8 @@ class Orchestrator:
                         )
                     except Exception as exc:  # noqa: BLE001 -- title and fields must still run
                         logger.warning(
-                            "correspondent_write.failed",
+                            "Korrespondent konnte nicht geschrieben werden; "
+                            "übrige Metadaten werden fortgesetzt",
                             extra={
                                 "instance": instance.slug if instance is not None else None,
                                 "error_type": type(exc).__name__,
@@ -444,7 +458,8 @@ class Orchestrator:
                                 )
                             except Exception as fallback_exc:  # noqa: BLE001
                                 logger.warning(
-                                    "correspondent_fallback_write.failed",
+                                    "Ersatz-Korrespondent konnte nicht geschrieben werden; "
+                                    "Feld bleibt unverändert",
                                     extra={
                                         "instance": (
                                             instance.slug if instance is not None else None
@@ -475,7 +490,7 @@ class Orchestrator:
                     )
                 except Exception as exc:
                     logger.warning(
-                        "title_generation.failed",
+                        "KI-Titelerzeugung fehlgeschlagen; Titelregel wird als Ersatz geprüft",
                         extra={
                             "instance": instance.slug if instance is not None else None,
                             "error_type": type(exc).__name__,
@@ -490,7 +505,7 @@ class Orchestrator:
                     new_title = render_title(title_template, context)
                 except Exception as exc:  # noqa: BLE001 -- custom fields must still run
                     logger.warning(
-                        "title_template.invalid",
+                        "Titelvorlage ist ungültig; Rechnungsnummer wird ersatzweise verwendet",
                         extra={
                             "instance": instance.slug if instance is not None else None,
                             "placeholder": getattr(exc, "name", None),
@@ -509,7 +524,8 @@ class Orchestrator:
                     title_written = await connector.write_title(before_write, new_title)
                 except Exception as exc:  # noqa: BLE001 -- custom fields must still run
                     logger.warning(
-                        "title_write.failed",
+                        "Dokumenttitel konnte nicht geschrieben werden; "
+                        "benutzerdefinierte Felder laufen weiter",
                         extra={
                             "instance": instance.slug if instance is not None else None,
                             "error_type": type(exc).__name__,
@@ -533,7 +549,8 @@ class Orchestrator:
                     )
                 except Exception as exc:  # noqa: BLE001 -- try every remaining field
                     logger.warning(
-                        "custom_field_write.failed",
+                        "Benutzerdefiniertes Feld konnte nicht geschrieben werden; "
+                        "weitere Felder laufen weiter",
                         extra={
                             "instance": instance.slug if instance is not None else None,
                             "field_id": field_id,
@@ -589,7 +606,9 @@ class Orchestrator:
             self._finish_phase(active_phase)
             slug = instance_slug_from_connector(job.document.connector) or ""
             JOBS_TOTAL.labels(status=job.status.value, instance_slug=slug).inc()
-            logger.info("Job completed: %s", job.status.value, extra=self._log_extra(job))
+            logger.info(
+                "Dokumentenauftrag abgeschlossen: %s", job.status.value, extra=self._log_extra(job)
+            )
         except Exception as exc:
             if active_phase and active_phase.status == PhaseStatus.RUNNING:
                 self._finish_phase(active_phase, error=type(exc).__name__)
@@ -601,7 +620,10 @@ class Orchestrator:
             slug = instance_slug_from_connector(job.document.connector) or ""
             JOBS_TOTAL.labels(status=JobStatus.FAILED.value, instance_slug=slug).inc()
             logger.error(
-                "Job failed: %s", type(exc).__name__, exc_info=exc, extra=self._log_extra(job)
+                "Dokumentenauftrag fehlgeschlagen: %s; Verarbeitung wurde beendet",
+                type(exc).__name__,
+                exc_info=exc,
+                extra=self._log_extra(job),
             )
             raise
         finally:

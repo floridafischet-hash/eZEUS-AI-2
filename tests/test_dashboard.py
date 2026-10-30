@@ -4,18 +4,21 @@ from uuid import UUID
 
 from fastapi.testclient import TestClient
 from pytest import MonkeyPatch
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from apps.api.dashboard import PHASE_LABELS, STATUS_LABELS, explain_error
 from apps.api.main import app
 from core.config.settings import get_settings
 from core.db.base import Base
 from core.db.session import get_db
 from core.models.admin_user import AdminUser
+from core.models.audit import AuditEntry
 from core.models.document import Document
-from core.models.enums import JobStatus
+from core.models.enums import JobPhase, JobStatus, PhaseStatus
 from core.models.job import Job
+from core.models.job_phase import JobPhaseEntry
 from core.models.paperless_instance import PaperlessInstance
 from core.security.passwords import hash_password
 
@@ -55,11 +58,19 @@ def test_dashboard_is_available() -> None:
     assert "qwen3:4b" in response.text
     assert "const expandedJobIds = new Set();" in response.text
     assert "expandedJobIds.add(entry.job_id);" in response.text
-    assert "Was ist passiert?" in response.text
-    assert "Vollständiger Jobfehler" in response.text
+    assert "Was ist passiert" in response.text
+    assert "Technische Details" in response.text
+    assert "const selectedJobIds = new Set();" in response.text
+    assert "Alle ${totalMatches} Treffer auswählen" in response.text
+    assert "localStorage.getItem(instanceStorageKey)" in response.text
+    assert '.join("\\n");' in response.text
     assert 'id="log-instance"' in response.text
     assert 'new URLSearchParams({limit: "50"})' in response.text
-    assert 'btn.textContent = "Mehr laden"' in response.text
+    assert 'id="previous-page"' in response.text
+    assert 'id="next-page"' in response.text
+    assert "Seite ${currentPage + 1}" in response.text
+    assert "logEntries = logEntries.concat" not in response.text
+    assert 'button.textContent = "Mehr laden"' not in response.text
     assert 'id="log-limit"' not in response.text
     assert "Dokument-ID, Dateiname, Status oder Job-ID" in response.text
 
@@ -288,3 +299,158 @@ def test_processing_logs_reject_invalid_cursor() -> None:
         assert response.status_code == 422
     finally:
         app.dependency_overrides.clear()
+
+
+def test_bulk_delete_skips_active_jobs_and_writes_one_audit_entry() -> None:
+    database_generator = populated_log_db()
+    session = next(database_generator)
+
+    def database() -> Generator[Session, None, None]:
+        yield session
+
+    jobs = list(session.scalars(select(Job).order_by(Job.id)).all())
+    jobs[0].status = JobStatus.COMPLETED_WITH_WARNINGS
+    jobs[0].finished_at = datetime.now(UTC)
+    session.commit()
+    app.dependency_overrides[get_db] = database
+    try:
+        client = TestClient(app)
+        assert (
+            client.post(
+                "/api/logs/delete", json={"job_ids": [str(job.id) for job in jobs]}
+            ).status_code
+            == 401
+        )
+        response = client.post(
+            "/api/logs/delete",
+            json={"job_ids": [str(job.id) for job in jobs]},
+            headers=ADMIN_HEADERS,
+        )
+        assert response.status_code == 200
+        assert response.json() == {"deleted": 1, "skipped": 1}
+        assert session.get(Job, jobs[0].id) is None
+        assert session.get(Job, jobs[1].id) is not None
+        audits = list(
+            session.scalars(
+                select(AuditEntry).where(AuditEntry.action == "DELETE_PROCESSING_LOGS")
+            ).all()
+        )
+        assert len(audits) == 1
+        assert audits[0].actor == "admin"
+        assert audits[0].details["deleted"] == 1
+    finally:
+        app.dependency_overrides.clear()
+        database_generator.close()
+
+
+def test_delete_matching_respects_instance_and_removes_orphan_document() -> None:
+    database_generator = populated_log_db()
+    session = next(database_generator)
+
+    def database() -> Generator[Session, None, None]:
+        yield session
+
+    jobs = list(session.scalars(select(Job).join(Document).order_by(Document.connector)).all())
+    for job in jobs:
+        job.status = JobStatus.CANCELLED
+        job.finished_at = datetime.now(UTC)
+    removed_document_id = jobs[0].document_id
+    kept_document_id = jobs[1].document_id
+    session.commit()
+    app.dependency_overrides[get_db] = database
+    try:
+        response = TestClient(app).post(
+            "/api/logs/delete-matching",
+            json={"instance_slug": "kunde-a", "q": None},
+            headers=ADMIN_HEADERS,
+        )
+        assert response.status_code == 200
+        assert response.json() == {"deleted": 1, "skipped": 0}
+        assert session.get(Document, removed_document_id) is None
+        assert session.get(Document, kept_document_id) is not None
+        assert session.get(Job, jobs[1].id) is not None
+        audit = session.scalar(
+            select(AuditEntry).where(AuditEntry.action == "DELETE_MATCHING_PROCESSING_LOGS")
+        )
+        assert audit is not None
+        assert audit.details["filters"]["instance_slug"] == "kunde-a"
+    finally:
+        app.dependency_overrides.clear()
+        database_generator.close()
+
+
+def test_german_status_and_phase_labels_are_searchable() -> None:
+    database_generator = populated_log_db()
+    session = next(database_generator)
+
+    def database() -> Generator[Session, None, None]:
+        yield session
+
+    job = session.scalar(
+        select(Job).join(Document).where(Document.connector == "paperless:kunde-a")
+    )
+    assert job is not None
+    job.status = JobStatus.COMPLETED_WITH_WARNINGS
+    phase = JobPhaseEntry(
+        job_id=job.id,
+        phase=JobPhase.WRITE_METADATA,
+        status=PhaseStatus.COMPLETED,
+        started_at=datetime.now(UTC),
+        finished_at=datetime.now(UTC),
+    )
+    session.add(phase)
+    session.commit()
+    app.dependency_overrides[get_db] = database
+    try:
+        client = TestClient(app)
+        status_response = client.get(
+            "/api/logs", params={"q": "mit Hinweisen"}, headers=ADMIN_HEADERS
+        )
+        assert [item["job_id"] for item in status_response.json()["entries"]] == [str(job.id)]
+        phase_response = client.get(
+            "/api/logs", params={"q": "Metadaten schreiben"}, headers=ADMIN_HEADERS
+        )
+        assert [item["job_id"] for item in phase_response.json()["entries"]] == [str(job.id)]
+        entry = status_response.json()["entries"][0]
+        assert entry["status_label"] == "Abgeschlossen mit Hinweisen"
+        assert entry["deletable"] is True
+    finally:
+        app.dependency_overrides.clear()
+        database_generator.close()
+
+
+def test_error_explanations_cover_known_classes_and_redact_secrets() -> None:
+    error_types = [
+        "AuthenticationError",
+        "AuthorizationError",
+        "NotFoundError",
+        "RateLimitError",
+        "TimeoutError",
+        "ConnectionError",
+        "ConflictError",
+        "ValidationError",
+        "RetryableEmptyTextError",
+        "OllamaResponseError",
+        "StalledJob",
+        "FieldConfigurationError",
+        "CandidateConflict",
+        "FieldWriteError",
+        "SomethingUnknown",
+    ]
+    for error_type in error_types:
+        explanation = explain_error(
+            error_type,
+            "Authorization: Bearer secret-token OCR: vertraulicher Inhalt",
+            "WRITE_METADATA",
+            document_id="123",
+            field="invoice_number",
+        )
+        assert set(explanation) == {"was", "warum", "empfehlung", "technisch"}
+        assert all(explanation.values())
+        rendered = " ".join(explanation.values())
+        assert "secret-token" not in rendered
+        assert "vertraulicher Inhalt" not in rendered
+        assert "Dokument 123" in explanation["was"]
+        assert "invoice_number" in explanation["was"]
+    assert STATUS_LABELS[JobStatus.RUNNING] == "In Bearbeitung"
+    assert PHASE_LABELS["WRITE_METADATA"] == "Metadaten schreiben"

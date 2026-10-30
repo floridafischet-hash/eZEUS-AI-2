@@ -10,11 +10,36 @@ bereitgestellt.
 - `Logs`: aktuelle Phasen der Dokumentenverarbeitung
 - `API`: FastAPI-/OpenAPI-Dokumentation unter `/docs`
 
+## Verarbeitungsprotokoll
+
+Das Protokoll zeigt höchstens 50 Einträge pro Seite. **Vorherige Seite** und
+**Nächste Seite** ersetzen die sichtbaren Zeilen, statt weitere Einträge unter
+die bestehende Tabelle zu hängen. Die Seitenanzeige nennt den sichtbaren
+Bereich und die Gesamtzahl der Treffer. Instanz und Suchtext bilden gemeinsam
+den aktiven Filter. Die gewählte Instanz wird im Browser gespeichert und schon
+beim ersten Abruf verwendet. Existiert sie später nicht mehr, fällt die Ansicht
+mit einem Hinweis auf **Alle Instanzen** zurück.
+
+Jede Zeile besitzt eine Auswahlbox. Die Kopfauswahl markiert ausschließlich die
+aktuelle Seite mit höchstens 50 Einträgen;
+anschließend kann die Auswahl auf alle Treffer des aktiven Filters erweitert
+werden, auch wenn diese noch nicht nachgeladen wurden. Laufende oder wartende
+Aufträge bleiben deaktiviert. Nach dem Löschen nennt die Statuszeile die Zahl
+der gelöschten und übersprungenen Einträge. Auswahl und aufgeklappte Details
+bleiben bei automatischer Aktualisierung erhalten; ein Seiten- oder
+Filterwechsel leert die Seitenauswahl.
+
+Status und Verarbeitungsschritte erscheinen mit festen deutschen Bezeichnungen.
+Fehler werden zur Anzeigezeit in **Was ist passiert**, **Warum**, **Was tun**
+und einklappbare technische Details gegliedert. Diese Erklärungen gelten damit
+auch für ältere Aufträge. Dokumentinhalt und Zugangsdaten werden ausgeblendet.
+
 ## Log-API
 
 `GET /api/logs` liefert die neuesten Phasenereignisse aus der eZEUS-Datenbank.
-Der Parameter `limit` akzeptiert Werte zwischen `1` und `250`; Standard ist
-`100`.
+Der Parameter `limit` akzeptiert Werte zwischen `1` und `500`; Standard ist
+`50`. `instance_slug` und `q` filtern serverseitig; deutsche Status- und
+Phasenbezeichnungen sind ebenfalls suchbar.
 
 Beispiel:
 
@@ -27,7 +52,7 @@ Ein Eintrag enthält nur:
 - Job-ID
 - externe Dokument-ID
 - Dateiname
-- Phase und Status
+- Phase und Status mit deutschen Anzeigebezeichnungen
 - Start- und Endzeit
 - berechnete Laufzeit
 - Fehlerklasse, falls eine Phase fehlgeschlagen ist
@@ -37,15 +62,21 @@ Nicht ausgegeben werden:
 - Dokumentinhalt oder OCR-Text
 - extrahierte Geschäftsdaten
 - Tokens, Passwörter oder Webhook-Secrets
-- interne Phase-Metadaten
-- vollständige Fehlertexte oder Stacktraces
+- OCR- oder sonstige Dokumentinhalte in Phase-Metadaten
+- unbereinigte Fehlertexte oder Stacktraces
 
 Die Browseroberfläche erzeugt Tabellenzellen ausschließlich über `textContent`.
 Werte aus Dateinamen oder Datenbankfeldern werden nicht als HTML interpretiert.
 
-## Zugriffsschutz
+## Löschen und Zugriffsschutz
 
-Das Betriebsdashboard selbst enthält keine administrativen Schreibfunktionen.
+`POST /api/logs/delete` akzeptiert bis zu 500 Job-IDs. Mit
+`POST /api/logs/delete-matching` werden alle Treffer des angegebenen Instanz-
+und Suchfilters erfasst. Beide Endpunkte benötigen Administratorrechte,
+schreiben genau einen Audit-Eintrag pro Aufruf und löschen nur Endstatus. Die
+Antwort enthält `deleted` und `skipped`. Der ältere Einzelendpunkt
+`DELETE /api/logs/{job_id}` bleibt verfügbar.
+
 Geschützte Verwaltungsbereiche verwenden die persönlichen eZEUS-Konten mit
 rollenbasierter Berechtigung. Der Reverse-Proxy terminiert TLS, darf aber keine
 zusätzliche HTTP-Basic-Authentication vor die Browseroberfläche schalten. So

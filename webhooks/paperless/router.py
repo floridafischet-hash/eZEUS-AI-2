@@ -43,7 +43,9 @@ async def receive_paperless_webhook(
     try:
         instance = find_enabled_instance_by_webhook_secret(db, x_ezeus_webhook_secret)
     except AmbiguousWebhookSecretError as exc:
-        logger.warning("Webhook 409: ambiguous secret matches multiple instances")
+        logger.warning(
+            "Webhook 409: Secret ist mehreren Instanzen zugeordnet; Ereignis wird abgelehnt"
+        )
         raise HTTPException(
             status_code=409,
             detail=(
@@ -65,7 +67,7 @@ async def receive_paperless_webhook(
         await _consume_tag_trigger(instance, payload, consumed_tag_id)
         return result
     if not verify_shared_secret(x_ezeus_webhook_secret, settings.paperless_webhook_secret):
-        logger.warning("Webhook 401: invalid shared secret for legacy endpoint")
+        logger.warning("Webhook 401: Legacy-Secret ungültig; Ereignis wird abgelehnt")
         raise HTTPException(status_code=401, detail="Invalid webhook secret")
     return _accept_event(payload, response, db, connector="paperless", source_prefix="legacy")
 
@@ -81,18 +83,23 @@ async def receive_instance_webhook(
 ) -> dict[str, str | bool]:
     instance = get_enabled_instance(db, instance_slug)
     if instance is None:
-        logger.warning("Webhook 404: instance not found: %s", instance_slug)
+        logger.warning(
+            "Webhook 404: Instanz %s nicht gefunden; Ereignis wird abgelehnt", instance_slug
+        )
         raise HTTPException(status_code=404, detail="Paperless instance not found")
     try:
         expected_secret = decrypt_credential(instance.webhook_secret_encrypted)
     except CredentialEncryptionError as exc:
         logger.error(
-            "Webhook 503: credential decryption failed for instance %s", instance_slug, exc_info=exc
+            "Webhook 503: Zugangsdaten der Instanz %s konnten nicht entschlüsselt werden; "
+            "Ereignis wird nicht verarbeitet",
+            instance_slug,
+            exc_info=exc,
         )
         raise HTTPException(status_code=503, detail="Credential service unavailable") from exc
     if not verify_shared_secret(x_ezeus_webhook_secret, expected_secret):
         logger.warning(
-            "Webhook 401: invalid secret for instance %s",
+            "Webhook 401: Secret für Instanz %s ungültig; Ereignis wird abgelehnt",
             instance_slug,
             extra={"instance_slug": instance_slug},
         )
@@ -158,7 +165,8 @@ async def _verify_instance_trigger(
             forbidden_tags = [await connector.find_tag(name) for name in forbidden_tag_names]
     except (ConnectorError, CredentialEncryptionError) as exc:
         logger.error(
-            "Webhook 503: unable to verify managed workflow trigger",
+            "Webhook 503: verwalteter Workflow-Auslöser kann nicht geprüft werden; "
+            "Ereignis wird vorübergehend abgelehnt",
             extra={"instance_slug": instance.slug, "trigger": trigger},
             exc_info=exc,
         )
@@ -178,7 +186,8 @@ async def _verify_instance_trigger(
     )
     if not valid:
         logger.warning(
-            "Webhook 409: managed workflow trigger condition is not satisfied",
+            "Webhook 409: Bedingung des verwalteten Workflow-Auslösers ist nicht erfüllt; "
+            "Ereignis wird nicht angenommen",
             extra={"instance_slug": instance.slug, "trigger": trigger},
         )
         raise HTTPException(status_code=409, detail="Workflow trigger condition is not satisfied")
@@ -197,7 +206,8 @@ async def _consume_tag_trigger(
             await connector.remove_document_tag(payload.document_id, tag_id)
     except (ConnectorError, CredentialEncryptionError) as exc:
         logger.warning(
-            "Accepted tag trigger but could not remove one-shot tag",
+            "Tag-Auslöser angenommen, aber Einmal-Tag konnte nicht entfernt werden; "
+            "eine spätere Änderung kann erneut auslösen",
             extra={"instance_slug": instance.slug},
             exc_info=exc,
         )
@@ -232,5 +242,8 @@ def _accept_event(
         }
     except SQLAlchemyError as exc:
         db.rollback()
-        logger.error("Webhook 503: job service unavailable", exc_info=exc)
+        logger.error(
+            "Webhook 503: Auftragsdienst nicht verfügbar; Ereignis wurde nicht gespeichert",
+            exc_info=exc,
+        )
         raise HTTPException(status_code=503, detail="Job service unavailable") from exc

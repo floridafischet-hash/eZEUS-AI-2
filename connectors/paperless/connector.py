@@ -113,36 +113,64 @@ class PaperlessConnector(DocumentConnector):
                 self._client(), method, request_url, max_bytes=max_bytes, **kwargs
             )
         except httpx.TimeoutException as exc:
-            logger.error("Paperless request timeout: %s %s", method, request_url, exc_info=exc)
+            logger.error(
+                "Paperless-Anfrage wegen Zeitüberschreitung fehlgeschlagen: %s %s; "
+                "der Verarbeitungsschritt wird abgebrochen",
+                method,
+                request_url,
+                exc_info=exc,
+            )
             raise TimeoutError(str(exc)) from exc
         except DownloadTooLargeError as exc:
-            logger.error("Paperless response too large: %s %s", method, request_url, exc_info=exc)
+            logger.error(
+                "Paperless-Antwort überschreitet die Größenbegrenzung: %s %s; "
+                "die Antwort wird verworfen",
+                method,
+                request_url,
+                exc_info=exc,
+            )
             raise ValidationError(str(exc)) from exc
         except httpx.RequestError as exc:
-            logger.error("Paperless connection error: %s %s", method, request_url, exc_info=exc)
+            logger.error(
+                "Paperless-Verbindung fehlgeschlagen: %s %s; Anfrage bleibt unbeantwortet",
+                method,
+                request_url,
+                exc_info=exc,
+            )
             raise ConnectionError(str(exc)) from exc
         del body
         request_url = str(response.request.url)
         if response.status_code == 401:
-            logger.warning("Paperless auth failed: HTTP 401 from %s", request_url)
+            logger.warning(
+                "Paperless-Anmeldung abgelehnt: HTTP 401 von %s; Zugriff beendet", request_url
+            )
             raise AuthenticationError(
                 f"Paperless authentication failed: HTTP 401 from {request_url}"
             )
         if response.status_code == 403:
-            logger.warning("Paperless authorization failed: HTTP 403 from %s", request_url)
+            logger.warning(
+                "Paperless-Berechtigung fehlt: HTTP 403 von %s; Zugriff beendet", request_url
+            )
             raise AuthorizationError(f"Paperless authorization failed: HTTP 403 from {request_url}")
         if response.status_code == 404:
-            logger.warning("Paperless resource not found: HTTP 404 from %s", request_url)
+            logger.warning(
+                "Paperless-Ressource fehlt: HTTP 404 von %s; Schritt abgebrochen", request_url
+            )
             raise NotFoundError(f"Paperless resource not found: HTTP 404 from {request_url}")
         if response.status_code == 409:
-            logger.warning("Paperless conflict: %s", request_url)
+            logger.warning(
+                "Paperless meldet einen Zustandskonflikt: %s; Änderung nicht übernommen",
+                request_url,
+            )
             raise ConflictError("Paperless reported a conflict")
         if response.status_code == 429:
-            logger.warning("Paperless rate limit exceeded: %s", request_url)
+            logger.warning(
+                "Paperless-Anfragelimit erreicht: %s; Auftrag wird später wiederholt", request_url
+            )
             raise RateLimitError("Paperless rate limit exceeded")
         if response.status_code in {400, 422}:
             logger.warning(
-                "Paperless rejected request: HTTP %d from %s",
+                "Paperless hat die Anfrage abgelehnt: HTTP %d von %s; Eingaben werden verworfen",
                 response.status_code,
                 request_url,
             )
@@ -151,7 +179,9 @@ class PaperlessConnector(DocumentConnector):
             )
         if response.status_code >= 500:
             logger.error(
-                "Paperless server error: HTTP %d from %s", response.status_code, request_url
+                "Paperless-Serverfehler: HTTP %d von %s; Verarbeitung wird unterbrochen",
+                response.status_code,
+                request_url,
             )
             raise ConnectionError(f"Paperless server error: HTTP {response.status_code}")
         try:

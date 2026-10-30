@@ -59,7 +59,8 @@ def _queue_priority(db: Session, job: Job, settings: Settings) -> JobPriority:
     if int(in_flight or 0) < settings.max_concurrent_jobs_per_instance:
         return job.priority
     logger.info(
-        "Routing job to low-priority queue because instance is at its in-flight limit",
+        "Auftrag in Warteschlange mit niedriger Priorität verschoben: "
+        "Instanz hat ihr Parallelitätslimit erreicht",
         extra={
             "job_id": str(job.id),
             "instance_slug": connector.removeprefix("paperless:"),
@@ -140,7 +141,12 @@ def publish_outbox_event(
         delay = min(2 ** min(event.attempts, 16), runtime.outbox_max_backoff_seconds)
         event.available_at = datetime.now(UTC) + timedelta(seconds=delay)
         db.commit()
-        logger.warning("Queue outbox publish failed for event %s: %s", event.id, event.last_error)
+        logger.warning(
+            "Veröffentlichung des Warteschlangenereignisses %s fehlgeschlagen: %s; "
+            "erneuter Versuch wurde geplant",
+            event.id,
+            event.last_error,
+        )
         OUTBOX_EVENTS_TOTAL.labels(outcome="failed").inc()
         return DispatchResult(failed=1)
     event.status = PUBLISHED
@@ -182,14 +188,17 @@ def run_dispatcher() -> None:
 
     signal.signal(signal.SIGTERM, request_stop)
     signal.signal(signal.SIGINT, request_stop)
-    logger.info("Queue outbox dispatcher started")
+    logger.info("Warteschlangenverteiler gestartet")
     while not stop.is_set():
         try:
             dispatch_pending(settings=runtime)
         except Exception:
-            logger.exception("Queue outbox dispatcher iteration failed")
+            logger.exception(
+                "Lauf des Warteschlangenverteilers fehlgeschlagen; "
+                "offene Ereignisse bleiben erhalten"
+            )
         stop.wait(runtime.outbox_poll_seconds)
-    logger.info("Queue outbox dispatcher stopped")
+    logger.info("Warteschlangenverteiler beendet")
 
 
 if __name__ == "__main__":

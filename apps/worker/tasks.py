@@ -47,7 +47,7 @@ def process_document_job(self: Task, job_id: str) -> None:
     parsed_job_id = UUID(job_id)
     worker_id = str(self.request.hostname)
     extra = {"job_id": job_id, "worker_id": worker_id}
-    logger.info("Task received", extra=extra)
+    logger.info("Verarbeitungsauftrag empfangen", extra=extra)
     try:
         with SessionLocal() as db:
             delivery_info = self.request.delivery_info or {}
@@ -57,24 +57,27 @@ def process_document_job(self: Task, job_id: str) -> None:
                 worker_id,
                 redelivered=bool(delivery_info.get("redelivered")),
             ):
-                logger.info("Task skipped (not claimable)", extra=extra)
+                logger.info("Auftrag übersprungen: Status erlaubt keine Übernahme", extra=extra)
                 return
-            logger.info("Task claimed, starting processing", extra=extra)
+            logger.info("Auftrag übernommen; Dokumentverarbeitung startet", extra=extra)
             asyncio.run(Orchestrator(db).process(parsed_job_id))
-        logger.info("Task completed", extra=extra)
+        logger.info("Verarbeitungsauftrag abgeschlossen", extra=extra)
     except ConnectorError as exc:
         if not exc.retryable or self.request.retries >= settings.job_max_retries:
             logger.error(
-                "Task failed (not retryable): %s", type(exc).__name__, exc_info=exc, extra=extra
+                "Auftrag endgültig fehlgeschlagen: %s; keine automatische Wiederholung",
+                type(exc).__name__,
+                exc_info=exc,
+                extra=extra,
             )
             raise
         delay_index = min(self.request.retries, len(settings.job_retry_delays_seconds) - 1)
         retry_delay = settings.job_retry_delays_seconds[delay_index]
         logger.warning(
-            "Task retrying in %ds (attempt %d): %s",
+            "Auftrag fehlgeschlagen: %s; Wiederholung in %d s (Versuch %d)",
+            type(exc).__name__,
             retry_delay,
             self.request.retries + 1,
-            type(exc).__name__,
             extra=extra,
         )
         with SessionLocal() as db:

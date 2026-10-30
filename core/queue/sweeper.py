@@ -61,7 +61,9 @@ def sweep_stale_jobs(
             db.commit()
             publish_outbox_event(db, event_id=outbox.id)
             requeued += 1
-            logger.info("Requeued stale job %s (was %s)", job.id, job.status.value)
+            logger.info(
+                "Stillstehenden Auftrag %s erneut eingeplant (vorher %s)", job.id, job.status.value
+            )
         else:
             job.status = JobStatus.FAILED
             job.finished_at = datetime.now(UTC)
@@ -72,7 +74,10 @@ def sweep_stale_jobs(
             )
             db.commit()
             failed += 1
-            logger.info("Failed stale job %s (max retries exhausted)", job.id)
+            logger.info(
+                "Stillstehenden Auftrag %s endgültig beendet: maximale Wiederholungen erreicht",
+                job.id,
+            )
     return SweepResult(requeued=requeued, failed=failed)
 
 
@@ -89,7 +94,7 @@ def run_sweeper() -> None:
     signal.signal(signal.SIGTERM, request_stop)
     signal.signal(signal.SIGINT, request_stop)
     logger.info(
-        "Job sweeper started (interval=%.0fs, threshold=%ds)",
+        "Auftragsüberwachung gestartet (Intervall=%.0fs, Stillstandsgrenze=%ds)",
         runtime.sweeper_interval_seconds,
         runtime.sweeper_stale_threshold_seconds,
     )
@@ -99,13 +104,20 @@ def run_sweeper() -> None:
                 result = sweep_stale_jobs(db, settings=runtime)
                 purged = purge_expired_logs(db, retention_days=runtime.log_retention_days)
             if result.requeued or result.failed:
-                logger.info("Sweep: requeued=%d failed=%d", result.requeued, result.failed)
+                logger.info(
+                    "Überwachungslauf abgeschlossen: erneut_eingeplant=%d fehlgeschlagen=%d",
+                    result.requeued,
+                    result.failed,
+                )
             if purged:
-                logger.info("Deleted %d processing logs past retention", purged)
+                logger.info("%d abgelaufene Verarbeitungsprotokolle gelöscht", purged)
         except Exception:
-            logger.exception("Job sweeper iteration failed")
+            logger.exception(
+                "Auftragsüberwachung fehlgeschlagen; Stillstandsprüfung wird im nächsten "
+                "Lauf wiederholt"
+            )
         stop.wait(runtime.sweeper_interval_seconds)
-    logger.info("Job sweeper stopped")
+    logger.info("Auftragsüberwachung beendet")
 
 
 if __name__ == "__main__":

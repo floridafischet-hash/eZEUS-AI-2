@@ -4,6 +4,8 @@ import sys
 from datetime import UTC, datetime
 from typing import Any
 
+from core.security.redaction import redact_sensitive_text
+
 
 class JSONFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
@@ -11,7 +13,7 @@ class JSONFormatter(logging.Formatter):
             "timestamp": datetime.now(UTC).isoformat(),
             "level": record.levelname,
             "logger": record.name,
-            "message": record.getMessage(),
+            "message": redact_sensitive_text(record.getMessage()),
         }
         for key in ("job_id", "instance_slug", "phase", "worker_id", "document_id"):
             value = getattr(record, key, None)
@@ -19,7 +21,7 @@ class JSONFormatter(logging.Formatter):
                 entry[key] = value
         if record.exc_info and record.exc_info[1] is not None:
             entry["exception_type"] = type(record.exc_info[1]).__name__
-            entry["exception"] = str(record.exc_info[1])
+            entry["exception"] = redact_sensitive_text(record.exc_info[1])
         return json.dumps(entry, default=str, ensure_ascii=False)
 
 

@@ -57,7 +57,8 @@ def find_enabled_instance_by_webhook_secret(
             expected_secret = decrypt_credential(instance.webhook_secret_encrypted)
         except CredentialEncryptionError:
             logger.warning(
-                "Skipping Paperless instance with unreadable webhook credential",
+                "Paperless-Instanz übersprungen: Webhook-Zugangsdaten nicht lesbar; "
+                "Secret-Prüfung ist für diese Instanz nicht möglich",
                 extra={"instance_slug": instance.slug},
             )
             continue

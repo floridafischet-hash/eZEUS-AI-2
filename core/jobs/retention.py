@@ -12,7 +12,14 @@ from core.models.job import Job
 from core.models.job_phase import JobPhaseEntry
 from core.models.queue_outbox import QueueOutbox
 
-TERMINAL_STATUSES = (JobStatus.COMPLETED, JobStatus.FAILED)
+TERMINAL_STATUSES = frozenset(
+    {
+        JobStatus.COMPLETED,
+        JobStatus.COMPLETED_WITH_WARNINGS,
+        JobStatus.FAILED,
+        JobStatus.CANCELLED,
+    }
+)
 
 
 def delete_jobs(db: Session, job_ids: list[UUID]) -> int:

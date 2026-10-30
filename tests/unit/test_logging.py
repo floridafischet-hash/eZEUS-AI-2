@@ -25,3 +25,23 @@ def test_json_formatter_emits_structured_job_context() -> None:
     assert payload["job_id"] == "job-123"
     assert payload["instance_slug"] == "tenant-a"
     assert payload["phase"] == "LOAD_DOCUMENT"
+
+
+def test_json_formatter_redacts_secrets_from_message_and_exception() -> None:
+    try:
+        raise RuntimeError("Authorization: Bearer top-secret-token")
+    except RuntimeError as exc:
+        record = logging.LogRecord(
+            name="core.test",
+            level=logging.ERROR,
+            pathname=__file__,
+            lineno=30,
+            msg="Anfrage fehlgeschlagen: token=top-secret-token",
+            args=(),
+            exc_info=(type(exc), exc, exc.__traceback__),
+        )
+
+    payload = json.loads(JSONFormatter().format(record))
+    rendered = json.dumps(payload)
+    assert "top-secret-token" not in rendered
+    assert "[REDACTED]" in rendered
