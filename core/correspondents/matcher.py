@@ -170,15 +170,40 @@ def match_correspondent(
     for correspondent in correspondents:
         if _is_default_correspondent_name(correspondent.name):
             continue
-        score, line_number, source = _score_rule(correspondent, text)
-        required_score = (
-            max(minimum_score, MINIMUM_NAME_SCORE)
-            if source == "correspondent_name"
-            else minimum_score
-        )
-        if score >= required_score:
-            specificity = len(_normalize(correspondent.match or correspondent.name))
-            candidates.append((score, line_number, specificity, correspondent, source))
+        evaluated_rules = [_score_rule(correspondent, text)]
+        if correspondent.match.strip():
+            evaluated_rules.append(
+                _score_rule(
+                    ConnectorCorrespondent(
+                        external_id=correspondent.external_id,
+                        name=correspondent.name,
+                        match="",
+                        matching_algorithm=0,
+                        is_insensitive=correspondent.is_insensitive,
+                    ),
+                    text,
+                )
+            )
+
+        accepted_rules: list[tuple[float, int, int, str]] = []
+        for score, line_number, source in evaluated_rules:
+            required_score = (
+                max(minimum_score, MINIMUM_NAME_SCORE)
+                if source == "correspondent_name"
+                else minimum_score
+            )
+            if score >= required_score:
+                value = (
+                    correspondent.name if source == "correspondent_name" else correspondent.match
+                )
+                accepted_rules.append((score, line_number, len(_normalize(value)), source))
+
+        if accepted_rules:
+            best_rule = min(
+                accepted_rules,
+                key=lambda item: (-item[0], item[1], -item[2], item[3]),
+            )
+            candidates.append((*best_rule[:3], correspondent, best_rule[3]))
     if not candidates:
         return None
     candidates.sort(key=lambda item: (-item[0], item[1], -item[2], item[3].external_id))

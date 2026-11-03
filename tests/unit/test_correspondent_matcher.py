@@ -98,6 +98,30 @@ def test_explicit_any_word_rule_accepts_sixty_percent_boundary() -> None:
     assert result.score == 0.6
 
 
+def test_correspondent_name_is_checked_when_explicit_rule_does_not_match() -> None:
+    result = match_correspondent(
+        "Invoice issued by Alpha Service GmbH",
+        [_correspondent("1", "Alpha Service GmbH", "missing.example", 3)],
+    )
+
+    assert result is not None
+    assert result.correspondent_id == "1"
+    assert result.score == 1.0
+    assert result.source == "correspondent_name"
+
+
+def test_stronger_name_match_wins_over_explicit_rule_for_same_correspondent() -> None:
+    result = match_correspondent(
+        "Alpha Service GmbH\nContact: service@example.invalid",
+        [_correspondent("1", "Alpha Service GmbH", "service example missing", 1)],
+    )
+
+    assert result is not None
+    assert result.correspondent_id == "1"
+    assert result.score == 1.0
+    assert result.source == "correspondent_name"
+
+
 def test_default_correspondent_is_only_used_as_explicit_fallback() -> None:
     fallback = _correspondent("99", DEFAULT_CORRESPONDENT_NAME)
 
