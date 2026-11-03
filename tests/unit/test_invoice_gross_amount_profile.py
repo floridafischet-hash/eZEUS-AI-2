@@ -55,6 +55,14 @@ async def _selected_amount(text: str) -> str | None:
             "Nettobetrag MwSt. 19 % Zu zahlender Betrag\nEUR 1.000,00 EUR 190,00 EUR 1.190,00 EUR",
             "1190.00",
         ),
+        (
+            "Warenwert MwSt. 19,00 % Gesamtbetrag\n1.000,00 190,00 EUR 1.190,00 EUR",
+            "1190.00",
+        ),
+        ("Gesamtbetrag\nWährung EUR\n1.190,00", "1190.00"),
+        ("Hinweis Total EUR inkl. MwSt. 1.304,48", "1304.48"),
+        ("Positionen 12 Gesamt 1.234,56 EUR", "1234.56"),
+        ("Zu zahlen 987,65 EUR innerhalb 14 Tagen Gesamtbetrag laut Rechnung", "987.65"),
     ],
 )
 async def test_invoice_gross_amount_profile_prefers_gross_total(
@@ -87,6 +95,8 @@ async def test_invoice_gross_amount_profile_preserves_credit_sign(text: str, exp
         "Verbleibende Restzahlung 900,00 EUR",
         "2 % Skonto 67,26 EUR",
         "Rechnungsbetrag 31 10 2026 2,00 EUR",
+        "Netto Gesamt 500,00 EUR",
+        "Zwischensumme Gesamt 500,00 EUR",
     ],
 )
 async def test_invoice_gross_amount_profile_rejects_non_gross_amounts(text: str) -> None:

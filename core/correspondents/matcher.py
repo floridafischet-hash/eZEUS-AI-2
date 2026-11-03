@@ -24,10 +24,42 @@ _REFERENCE_CONTEXT_MARKERS = (
     "eingetragen beim",
     "gerichtsstand",
     "handelsregister",
+    "hra",
+    "hrb",
     "registergericht",
     "rechtsbehelfsbelehrung",
     "zustaendiges gericht",
 )
+
+_LEGAL_ENTITY_CONTEXT_MARKERS = (
+    "geschaftsfuhrer",
+    "hra",
+    "hrb",
+    "sitz der gesellschaft",
+    "ust id",
+    "ustid",
+)
+
+_AUTHORITY_WORDS = {
+    "amtsgericht",
+    "finanzamt",
+    "gericht",
+    "landgericht",
+    "registergericht",
+}
+
+_COMPANY_FORM_WORDS = {
+    "ag",
+    "eg",
+    "gbr",
+    "gmbh",
+    "kg",
+    "kgaa",
+    "mbh",
+    "ohg",
+    "se",
+    "ug",
+}
 
 _NON_DISTINCTIVE_COMPANY_WORDS = {
     "ag",
@@ -92,6 +124,33 @@ def _distinctive_words(value: str) -> set[str]:
     }
 
 
+def _match_name(value: str) -> str:
+    """Remove a separated internal number from an otherwise clear company name."""
+
+    words = value.split()
+    if len(words) < 2:
+        return value
+    candidate = words
+    if regex.fullmatch(r"\d{4,6}", words[0]):
+        candidate = words[1:]
+    elif regex.fullmatch(r"\d{4,6}", words[-1]):
+        candidate = words[:-1]
+    if candidate is words:
+        return value
+    normalized_candidate = set(_normalize(" ".join(candidate)).split())
+    if not normalized_candidate & _COMPANY_FORM_WORDS:
+        return value
+    return " ".join(candidate)
+
+
+def _has_company_form(value: str) -> bool:
+    return bool(set(_normalize(value).split()) & _COMPANY_FORM_WORDS)
+
+
+def _is_authority_name(value: str) -> bool:
+    return bool(set(_normalize(value).split()) & _AUTHORITY_WORDS)
+
+
 def _line_score(rule: str, line: str, *, require_distinctive_word: bool = False) -> float:
     normalized_rule = _normalize(rule)
     normalized_line = _normalize(line)
@@ -118,16 +177,27 @@ def _name_context(rule: str, lines: list[str]) -> tuple[int, int]:
     occurrences: list[tuple[int, int]] = []
     for start in range(len(lines)):
         for width in range(1, min(3, len(lines) - start) + 1):
-            window = _normalize(" ".join(lines[start : start + width]))
-            if normalized_rule not in window:
+            occurrence = _normalize(" ".join(lines[start : start + width]))
+            if normalized_rule not in occurrence:
                 continue
-            if any(marker in window for marker in _REFERENCE_CONTEXT_MARKERS):
-                priority = 0
-            elif any(marker in window for marker in _SENDER_CONTEXT_MARKERS):
+            context_start = max(0, start - 1)
+            context_end = min(len(lines), start + width + 1)
+            context = _normalize(" ".join(lines[context_start:context_end]))
+            legal_entity_context = any(
+                marker in context for marker in _LEGAL_ENTITY_CONTEXT_MARKERS
+            )
+            if any(marker in context for marker in _SENDER_CONTEXT_MARKERS) or (
+                _has_company_form(rule) and legal_entity_context
+            ):
                 priority = 2
+            elif any(marker in context for marker in _REFERENCE_CONTEXT_MARKERS) or (
+                _is_authority_name(rule) and legal_entity_context
+            ):
+                priority = 0
             else:
                 priority = 1
             occurrences.append((priority, start))
+            break
 
     if not occurrences:
         return 1, 2**31 - 1
@@ -135,8 +205,12 @@ def _name_context(rule: str, lines: list[str]) -> tuple[int, int]:
 
 
 def _score_rule(correspondent: ConnectorCorrespondent, text: str) -> tuple[float, int, int, str]:
-    rule = correspondent.match.strip() or correspondent.name.strip()
     source = "matching_rule" if correspondent.match.strip() else "correspondent_name"
+    rule = (
+        correspondent.match.strip()
+        if source == "matching_rule"
+        else _match_name(correspondent.name.strip())
+    )
     if not rule:
         return 0.0, 1, 2**31 - 1, source
     lines = [line.strip() for line in text.splitlines() if line.strip()]
@@ -238,7 +312,9 @@ def match_correspondent(
                 source == "correspondent_name" and context_priority == 0
             ):
                 value = (
-                    correspondent.name if source == "correspondent_name" else correspondent.match
+                    _match_name(correspondent.name)
+                    if source == "correspondent_name"
+                    else correspondent.match
                 )
                 accepted_rules.append(
                     (score, context_priority, line_number, len(_normalize(value)), source)

@@ -5,8 +5,12 @@ Alle wesentlichen Änderungen an eZEUS-AI-2 werden in dieser Datei dokumentiert.
 ## Unveröffentlicht
 
 - Korrespondenten-Matching berücksichtigt den Absenderkontext vollständiger
-  Namensfunde und verwirft Namen, die ausschließlich in Register-, Gerichts-
-  oder Aktenzeichenhinweisen vorkommen.
+  Namensfunde, trennt interne vier- bis sechsstellige Verwaltungsnummern vom
+  Matchnamen und unterscheidet Unternehmen in rechtlichen Fußzeilen von dort
+  lediglich genannten Gerichten.
+- Das optionale Bruttobetragsprofil unterstützt zusätzliche zusammengeführte
+  Tabellenzeilen sowie Werte in der nächsten oder übernächsten OCR-Zeile;
+  Netto-, Rabatt- und Zwischensummenkontexte bleiben ausgeschlossen.
 - Verarbeitungsprotokoll mit seitenweiter und filterweiter Auswahl, gebündeltem
   auditierbarem Löschen, echter 50er-Seitennavigation sowie Schutz aktiver
   Aufträge überarbeitet.
