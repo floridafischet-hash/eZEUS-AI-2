@@ -183,3 +183,50 @@ def test_exact_existing_supplier_beats_unrelated_fuzzy_candidate() -> None:
     assert result is not None
     assert result.correspondent_id == "2"
     assert result.score == 1.0
+
+
+def test_sender_name_beats_court_mentioned_only_as_register_reference() -> None:
+    result = match_correspondent(
+        "Example Service GmbH\nMusterweg 12\nRECHNUNG\nRegistergericht: Amtsgericht Beispielstadt",
+        [
+            _correspondent("1", "Amtsgericht Beispielstadt"),
+            _correspondent("2", "Example Service GmbH"),
+        ],
+    )
+
+    assert result is not None
+    assert result.correspondent_id == "2"
+    assert result.score == 1.0
+
+
+def test_name_mentioned_only_as_register_court_is_not_selected() -> None:
+    result = match_correspondent(
+        "Example Service GmbH\nHandelsregister: Amtsgericht Beispielstadt HRB 12345",
+        [_correspondent("1", "Amtsgericht Beispielstadt")],
+    )
+
+    assert result is None
+
+
+def test_actual_court_sender_is_selected_despite_later_register_reference() -> None:
+    result = match_correspondent(
+        "Amtsgericht Beispielstadt\nGerichtsstraße 1\nBESCHLUSS\n"
+        "Registergericht: Amtsgericht Beispielstadt",
+        [_correspondent("1", "Amtsgericht Beispielstadt")],
+    )
+
+    assert result is not None
+    assert result.correspondent_id == "1"
+
+
+def test_sender_context_wins_when_two_exact_names_are_present() -> None:
+    result = match_correspondent(
+        "Empfänger AG\nAbsender: Example Service GmbH\nRECHNUNG",
+        [
+            _correspondent("1", "Empfänger AG"),
+            _correspondent("2", "Example Service GmbH"),
+        ],
+    )
+
+    assert result is not None
+    assert result.correspondent_id == "2"
