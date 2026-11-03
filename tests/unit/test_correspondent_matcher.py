@@ -230,3 +230,81 @@ def test_sender_context_wins_when_two_exact_names_are_present() -> None:
 
     assert result is not None
     assert result.correspondent_id == "2"
+
+
+def test_reference_marker_on_adjacent_line_rejects_court_name() -> None:
+    result = match_correspondent(
+        "Example Service GmbH\nMusterweg 12\nGeschäftsführer: Erika Beispiel\n"
+        "HRB 12345\nAmtsgericht Beispielstadt",
+        [
+            _correspondent("1", "Amtsgericht Beispielstadt"),
+            _correspondent("2", "Example Service GmbH"),
+        ],
+    )
+
+    assert result is not None
+    assert result.correspondent_id == "2"
+
+
+def test_reference_only_name_with_adjacent_vat_marker_is_rejected() -> None:
+    result = match_correspondent(
+        "USt-ID: DE123456789\nAmtsgericht Beispielstadt",
+        [_correspondent("1", "Amtsgericht Beispielstadt")],
+    )
+
+    assert result is None
+
+
+def test_company_in_legal_footer_beats_referenced_court() -> None:
+    result = match_correspondent(
+        "Example Handel KG\nUSt-ID: DE123456789\nHRB 12345\nAmtsgericht Beispielstadt",
+        [
+            _correspondent("1", "70247 Example Handel KG"),
+            _correspondent("2", "Amtsgericht Beispielstadt"),
+        ],
+    )
+
+    assert result is not None
+    assert result.correspondent_id == "1"
+
+
+def test_internal_numeric_suffix_is_ignored_for_company_name_match() -> None:
+    result = match_correspondent(
+        "Example Parts GmbH\nMusterweg 12\nRECHNUNG",
+        [_correspondent("1", "Example Parts GmbH 70364")],
+    )
+
+    assert result is not None
+    assert result.correspondent_id == "1"
+    assert result.name == "Example Parts GmbH 70364"
+
+
+def test_internal_numeric_prefix_is_ignored_for_company_name_match() -> None:
+    result = match_correspondent(
+        "Example Handel KG\nMusterweg 12\nRECHNUNG",
+        [_correspondent("1", "70247 Example Handel KG")],
+    )
+
+    assert result is not None
+    assert result.correspondent_id == "1"
+    assert result.name == "70247 Example Handel KG"
+
+
+def test_legitimate_number_without_company_form_is_not_removed() -> None:
+    result = match_correspondent(
+        "Studio Example\nMusterweg 12",
+        [_correspondent("1", "Studio Example 2024")],
+    )
+
+    assert result is None
+
+
+def test_explicit_matching_rule_keeps_numeric_tokens() -> None:
+    result = match_correspondent(
+        "Kundencode 70364",
+        [_correspondent("1", "Example Parts GmbH 70364", "Kundencode 70364", 3)],
+    )
+
+    assert result is not None
+    assert result.correspondent_id == "1"
+    assert result.source == "matching_rule"

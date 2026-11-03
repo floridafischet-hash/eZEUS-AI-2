@@ -54,12 +54,35 @@ EXTRACTION_PROFILES: dict[str, ExtractionProfile] = {
             r"\s*^\s*(?:EUR|Euro|€|CHF|USD)?\s*"
             r"([-−]?\s*(?:\d{1,3}(?:[.,'’\u00a0 ]\d{3})+|\d+)[.,]\d{2})"
             r"\s*(?:EUR|Euro|€|CHF|USD)?\s*$",
+            # Some OCR tables keep the tax/total headings on one row and put
+            # net, tax and gross values on the next row. Capture only the last
+            # value when tax and Gesamtbetrag occur in the same heading row.
+            r"(?im)^[^\n]{0,200}\b(?:MwSt|USt|VAT)\b[^\n]{0,100}"
+            r"\bGesamtbetrag\b[^\n]*$"
+            r"\s*^\s*(?:[^\n]*?\b(?:EUR|Euro|€|CHF|USD)\b\s+)?"
+            r"[-−]?\s*\d[\d.,'’\u00a0 ]*[.,]\d{2}\s+"
+            r"[-−]?\s*\d[\d.,'’\u00a0 ]*[.,]\d{2}"
+            r"[^\d\n]{0,24}"
+            r"([-−]?\s*\d[\d.,'’\u00a0 ]*[.,]\d{2})"
+            r"\s*(?:EUR|Euro|€|CHF|USD)?\s*$",
+            # A currency-only bridge line is a common result of vertical OCR
+            # tables. Do not skip arbitrary content between label and value.
+            r"(?im)^\s*(?:Gesamtbetrag|Gesamtsumme|Rechnungssumme|Endbetrag)\s*$"
+            r"\s*^\s*(?:Währung\s+)?(?:EUR|Euro|€|CHF|USD)\s*$"
+            r"\s*^\s*"
+            r"([-−]?\s*(?:\d{1,3}(?:[.,'’\u00a0 ]\d{3})+|\d+)[.,]\d{2})"
+            r"\s*(?:EUR|Euro|€|CHF|USD)?\s*$",
             # Explicit tax-inclusive totals are safe even when the word
             # "Total" is otherwise used for positions or subtotals.
-            r"(?im)^\s*Total\s+(?:EUR|Euro|€|CHF|USD)\s+"
+            r"(?im)^[^\n]{0,160}\bTotal\s+(?:EUR|Euro|€|CHF|USD)\s+"
             r"(?:inkl\.?|incl\.?)\s*(?:MwSt|USt|VAT)\.?\s*[:.]?\s*"
             r"([-−]?\s*(?:\d{1,3}(?:[.,'’\u00a0 ]\d{3})+|\d+)[.,]\d{2})"
             r"\s*(?:EUR|Euro|€|CHF|USD)?\s*$",
+            # Payment rows sometimes put the amount before a repeated total
+            # label. "Zu zahlen" is required to keep the context unambiguous.
+            r"(?im)^[^\n]{0,160}\bZu\s+zahlen\b[^\n]{0,80}?"
+            r"([-−]?\s*(?:\d{1,3}(?:[.,'’\u00a0 ]\d{3})+|\d+)[.,]\d{2})"
+            r"\s*(?:EUR|Euro|€|CHF|USD)\b[^\n]{0,100}\bGesamtbetrag\b[^\n]*$",
             # Structured net/tax/gross table: capture only the final gross
             # column rather than the net or tax amount.
             r"(?im)^\s*[^\n]{0,160}\bNetto\b[^\n]{0,160}\b(?:MwSt|USt|VAT)\b"
@@ -113,6 +136,13 @@ EXTRACTION_PROFILES: dict[str, ExtractionProfile] = {
             r"(?:EUR|Euro|€|CHF|USD)?[ \t]*"
             r"([-−]?\s*\d[\d.,'’\u00a0]*[.,]\d{2})"
             r"[ \t]*(?:EUR|Euro|€|CHF|USD)?",
+            # Plain "Gesamt" is weaker than the labels above and therefore
+            # remains near the compatibility fallback. It must be followed
+            # directly by a monetary value and stay outside net/discount rows.
+            r"(?im)^(?![^\n]{0,160}\b(?:Netto|Skonto|Rabatt|Zwischensumme|"
+            r"Einzelpreis)\b)[^\n]{0,160}\bGesamt[ \t]+"
+            r"([-−]?\s*(?:\d{1,3}(?:[.,'’\u00a0 ]\d{3})+|\d+)[.,]\d{2})"
+            r"[ \t]*(?:EUR|Euro|€|CHF|USD)?[^\n]{0,40}$",
             # Conservative fallback for layouts that only expose "Summe" or
             # "Gesamtpreis". Strong labels above always win by priority.
             r"(?im)^\s*(?![^\n]{0,80}\b(?:Netto|Skonto|Rabatt|Zwischensumme|"
