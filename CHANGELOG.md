@@ -4,6 +4,9 @@ Alle wesentlichen Änderungen an eZEUS-AI-2 werden in dieser Datei dokumentiert.
 
 ## Unveröffentlicht
 
+- Korrespondenten-Matching berücksichtigt den Absenderkontext vollständiger
+  Namensfunde und verwirft Namen, die ausschließlich in Register-, Gerichts-
+  oder Aktenzeichenhinweisen vorkommen.
 - Verarbeitungsprotokoll mit seitenweiter und filterweiter Auswahl, gebündeltem
   auditierbarem Löschen, echter 50er-Seitennavigation sowie Schutz aktiver
   Aufträge überarbeitet.

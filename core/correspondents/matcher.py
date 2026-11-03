@@ -11,6 +11,24 @@ DEFAULT_CORRESPONDENT_NAME = "(noch nicht angelegt)"
 DEFAULT_CORRESPONDENT_NAMES = (DEFAULT_CORRESPONDENT_NAME, "noch nicht angelegt")
 MINIMUM_NAME_SCORE = 0.85
 
+_SENDER_CONTEXT_MARKERS = (
+    "absender",
+    "aussteller",
+    "herausgeber",
+    "rechnung von",
+    "angebot von",
+    "mit freundlichen gruessen",
+)
+_REFERENCE_CONTEXT_MARKERS = (
+    "aktenzeichen",
+    "eingetragen beim",
+    "gerichtsstand",
+    "handelsregister",
+    "registergericht",
+    "rechtsbehelfsbelehrung",
+    "zustaendiges gericht",
+)
+
 _NON_DISTINCTIVE_COMPANY_WORDS = {
     "ag",
     "beton",
@@ -88,11 +106,39 @@ def _line_score(rule: str, line: str, *, require_distinctive_word: bool = False)
     return SequenceMatcher(None, normalized_rule, normalized_line).ratio()
 
 
-def _score_rule(correspondent: ConnectorCorrespondent, text: str) -> tuple[float, int, str]:
+def _name_context(rule: str, lines: list[str]) -> tuple[int, int]:
+    """Return sender-context priority and first exact occurrence for a name.
+
+    A name that occurs only as part of a register, court or case reference must not
+    become the correspondent merely because the spelling is exact.  Windows allow
+    company names split over adjacent OCR lines to retain their exact-name match.
+    """
+
+    normalized_rule = _normalize(rule)
+    occurrences: list[tuple[int, int]] = []
+    for start in range(len(lines)):
+        for width in range(1, min(3, len(lines) - start) + 1):
+            window = _normalize(" ".join(lines[start : start + width]))
+            if normalized_rule not in window:
+                continue
+            if any(marker in window for marker in _REFERENCE_CONTEXT_MARKERS):
+                priority = 0
+            elif any(marker in window for marker in _SENDER_CONTEXT_MARKERS):
+                priority = 2
+            else:
+                priority = 1
+            occurrences.append((priority, start))
+
+    if not occurrences:
+        return 1, 2**31 - 1
+    return min(occurrences, key=lambda item: (-item[0], item[1]))
+
+
+def _score_rule(correspondent: ConnectorCorrespondent, text: str) -> tuple[float, int, int, str]:
     rule = correspondent.match.strip() or correspondent.name.strip()
     source = "matching_rule" if correspondent.match.strip() else "correspondent_name"
     if not rule:
-        return 0.0, 2**31 - 1, source
+        return 0.0, 1, 2**31 - 1, source
     lines = [line.strip() for line in text.splitlines() if line.strip()]
     algorithm = correspondent.matching_algorithm
     if algorithm == 4 and correspondent.match.strip():
@@ -105,11 +151,11 @@ def _score_rule(correspondent: ConnectorCorrespondent, text: str) -> tuple[float
                 timeout=get_settings().regex_hard_timeout_seconds,
             )
         except (regex.error, TimeoutError):
-            return 0.0, 2**31 - 1, source
+            return 0.0, 1, 2**31 - 1, source
         if match is None:
-            return 0.0, 2**31 - 1, source
+            return 0.0, 1, 2**31 - 1, source
         line_number = text[: match.start()].count("\n")
-        return 1.0, line_number, source
+        return 1.0, 1, line_number, source
 
     normalized_text = _normalize(text)
     words = [_normalize(word) for word in regex.split(r"[\s,;|]+", rule) if _normalize(word)]
@@ -130,20 +176,13 @@ def _score_rule(correspondent: ConnectorCorrespondent, text: str) -> tuple[float
             ),
             default=2**31 - 1,
         )
-        return score, first, source
+        return score, 1, first, source
 
     if source == "correspondent_name":
         normalized_rule = _normalize(rule)
         if normalized_rule and normalized_rule in normalized_text:
-            first = min(
-                (
-                    index
-                    for index, line in enumerate(lines)
-                    if _distinctive_words(rule) & set(_normalize(line).split())
-                ),
-                default=2**31 - 1,
-            )
-            return 1.0, first, source
+            context_priority, first = _name_context(rule, lines)
+            return 1.0, context_priority, first, source
 
     scored_lines = [
         (
@@ -156,9 +195,12 @@ def _score_rule(correspondent: ConnectorCorrespondent, text: str) -> tuple[float
         )
         for index, line in enumerate(lines)
     ]
-    return max(scored_lines, default=(0.0, 2**31 - 1), key=lambda item: (item[0], -item[1])) + (
-        source,
+    score, line_number = max(
+        scored_lines,
+        default=(0.0, 2**31 - 1),
+        key=lambda item: (item[0], -item[1]),
     )
+    return score, 1, line_number, source
 
 
 def match_correspondent(
@@ -166,7 +208,7 @@ def match_correspondent(
     correspondents: list[ConnectorCorrespondent],
     minimum_score: float = 0.60,
 ) -> CorrespondentMatch | None:
-    candidates: list[tuple[float, int, int, ConnectorCorrespondent, str]] = []
+    candidates: list[tuple[float, int, int, int, ConnectorCorrespondent, str]] = []
     for correspondent in correspondents:
         if _is_default_correspondent_name(correspondent.name):
             continue
@@ -185,35 +227,39 @@ def match_correspondent(
                 )
             )
 
-        accepted_rules: list[tuple[float, int, int, str]] = []
-        for score, line_number, source in evaluated_rules:
+        accepted_rules: list[tuple[float, int, int, int, str]] = []
+        for score, context_priority, line_number, source in evaluated_rules:
             required_score = (
                 max(minimum_score, MINIMUM_NAME_SCORE)
                 if source == "correspondent_name"
                 else minimum_score
             )
-            if score >= required_score:
+            if score >= required_score and not (
+                source == "correspondent_name" and context_priority == 0
+            ):
                 value = (
                     correspondent.name if source == "correspondent_name" else correspondent.match
                 )
-                accepted_rules.append((score, line_number, len(_normalize(value)), source))
+                accepted_rules.append(
+                    (score, context_priority, line_number, len(_normalize(value)), source)
+                )
 
         if accepted_rules:
             best_rule = min(
                 accepted_rules,
-                key=lambda item: (-item[0], item[1], -item[2], item[3]),
+                key=lambda item: (-item[0], -item[1], item[2], -item[3], item[4]),
             )
-            candidates.append((*best_rule[:3], correspondent, best_rule[3]))
+            candidates.append((*best_rule[:4], correspondent, best_rule[4]))
     if not candidates:
         return None
-    candidates.sort(key=lambda item: (-item[0], item[1], -item[2], item[3].external_id))
+    candidates.sort(key=lambda item: (-item[0], -item[1], item[2], -item[3], item[4].external_id))
     winner = candidates[0]
-    if len(candidates) > 1 and winner[:3] == candidates[1][:3]:
+    if len(candidates) > 1 and winner[:4] == candidates[1][:4]:
         return None
     return CorrespondentMatch(
-        correspondent_id=winner[3].external_id,
-        name=winner[3].name,
+        correspondent_id=winner[4].external_id,
+        name=winner[4].name,
         score=winner[0],
-        source=winner[4],
-        line_number=winner[1],
+        source=winner[5],
+        line_number=winner[2],
     )
