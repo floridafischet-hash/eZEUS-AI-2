@@ -41,7 +41,8 @@ wurden. Die anfängerfreundliche Schritt-für-Schritt-Anleitung steht im
 2. Workflow automatisch einrichten und Verbindung testen.
 3. Feldseite laden, benötigte Felder aktivieren und Paperless-IDs prüfen.
 4. Mindestens eine normale Rechnung, eine mehrseitige Rechnung und – falls
-   verwendet – eine Gutschrift sowie ein Dokument mit Baustellennummer testen.
+   verwendet – eine Gutschrift, einen Lieferschein sowie ein Dokument mit
+   Baustellennummer testen.
 5. Im Jobprotokoll kontrollieren, welche Werte gefunden, akzeptiert und
    geschrieben wurden.
 6. Erst nach erfolgreichem Dokumenttest den Kundenbetrieb freigeben.
@@ -418,6 +419,9 @@ Die Standardregeln decken unter anderem folgende Schreibweisen ab:
 
 - Rechnungsnummer: `Rechnungsnummer`, `Rechnung-Nr.`, `Belegnummer`,
   tabellarische Rechnungsköpfe
+- Lieferscheinnummer: optionales Profil für Textfelder; erkennt unter anderem
+  `Lieferscheinnummer`, `Lieferschein-Nr.`, `Lieferungsnummer`, beschriftete
+  `LI-...`-Nummern und bekannte tabellarische Lieferscheinlayouts
 - Rechnungsbetrag: `Gesamtbetrag`, `Rechnungssumme`, `Zahlbetrag`,
   `Brutto-Rechnungsbetrag`, `Erstattungsbetrag`
 - Baustellennummer: numerische Werte nach `#`, `BV`, `BV-Nr.` oder
@@ -431,6 +435,92 @@ Die Standardregeln decken unter anderem folgende Schreibweisen ab:
 Die Erkennung ist bewusst konservativ. Ein nicht eindeutig belegter Wert wird
 nicht geraten. Neue Lieferantenlayouts sollten mit anonymisierten
 Regressionstests ergänzt werden.
+
+### Dokumenttypabhängige Rechnungs- und Lieferscheintitel
+
+Rechnungs- und Lieferscheinnummern können parallel in derselben Instanz
+verwendet werden. Die Verarbeitung ist nach dem Paperless-Dokumenttyp
+getrennt:
+
+- Für den Dokumenttyp `Eingangsrechnung` verarbeitet eZEUS die Felder
+  `invoice_number`, `invoice_date` und `invoice_amount`.
+- Für den Dokumenttyp `Lieferschein` verarbeitet eZEUS das Feld, dem das
+  Extraktionsprofil `delivery_note_number` zugeordnet ist. Die
+  rechnungsspezifischen Felder werden dort übersprungen.
+- Ein auf einer Rechnung vorkommender Lieferscheinverweis wird dadurch nicht
+  als Lieferscheinnummer der Rechnung gespeichert. Umgekehrt wird eine
+  zufällige Rechnungsnummer auf einem Lieferschein nicht in das Feld
+  `Rechnungsnummer` geschrieben.
+- Pflichtfelder eines anderen Dokumenttyps erzeugen keine Warnung. Eine
+  verpflichtende Rechnungsnummer blockiert daher keinen Lieferschein.
+
+Die Namen `Eingangsrechnung` und `Lieferschein` werden mit den Namen der
+Paperless-Dokumenttypen verglichen. Abweichende Namen müssen entweder in
+Paperless angeglichen oder in der Feldprofil-Konfiguration ergänzt werden.
+
+#### Einrichtung in Paperless und eZEUS
+
+1. In Paperless einen Dokumenttyp `Lieferschein` anlegen beziehungsweise den
+   vorhandenen Typ exakt so benennen.
+2. In der eZEUS-Feldkonfiguration der Instanz die Paperless-Felder neu laden.
+3. Ein Textfeld mit der Bezeichnung `Lieferscheinnummer` anlegen oder
+   aktivieren. Beim Speichern kann eZEUS das fehlende Paperless-Custom-Field
+   automatisch als Feldtyp `string` erzeugen und dessen externe ID verknüpfen.
+4. Für dieses Feld **In eZEUS** und **OCR** aktivieren, **KI** normalerweise
+   deaktiviert lassen und das Extraktionsprofil `delivery_note_number`
+   auswählen.
+5. **Pflichtfeld** nur aktivieren, wenn jeder Lieferschein zuverlässig eine
+   maschinenlesbare Nummer besitzt. Ohne Pflichtfeld bleibt ein nicht
+   eindeutiger Treffer leer, ohne den gesamten Job mit einer Warnung zu
+   beenden.
+6. Als Titelvorlage beispielsweise folgende Vorlage speichern:
+
+   ```text
+   {document_type}, {invoice_number}, {delivery_note_number}
+   ```
+
+7. `allow_title_overwrite` ausgeschaltet lassen, sofern vorhandene manuelle
+   Titel geschützt bleiben sollen.
+
+Die Platzhalter werden nur mit Werten des aktuellen Dokuments befüllt. Leere
+Bestandteile und überflüssige Trennzeichen werden beim Rendern entfernt. Mit
+der obigen Vorlage entstehen beispielsweise:
+
+```text
+Eingangsrechnung, RE-2026-4711
+Lieferschein, LI-483920
+```
+
+Das Lieferscheinprofil arbeitet in Prioritätsstufen. Explizite Beschriftungen
+und bekannte Tabellenköpfe werden vor schwächeren Kurzformen ausgewertet. Ein
+Wert wird nur übernommen, wenn die früheste passende Prioritätsstufe genau
+einen gültigen Kandidaten liefert. Mehrere widersprüchliche Kandidaten bleiben
+bewusst leer; eZEUS rät in diesem Fall keine Nummer.
+
+Die Konfigurationsänderung wirkt für neue oder erneut verarbeitete Dokumente.
+Sie startet keine automatische Massenverarbeitung bestehender Dokumente. Auch
+bei einer erneuten Verarbeitung bleiben bereits befüllte Custom-Fields und
+manuell gesetzte Titel durch den normalen Schreibschutz erhalten.
+
+#### Prüfung und Fehleranalyse
+
+Für die fachliche Abnahme sollten mehrere reale, datensparsam ausgewertete
+Lieferscheinlayouts geprüft werden. Dabei sind insbesondere folgende Punkte zu
+kontrollieren:
+
+- Der Paperless-Dokumenttyp ist wirklich `Lieferschein`.
+- Das Feld `Lieferscheinnummer` ist aktiv, verwendet den Feldtyp `text`, hat
+  eine externe Paperless-ID und das Profil `delivery_note_number`.
+- Im Jobprotokoll wurde genau ein Kandidat akzeptiert.
+- Das Paperless-Custom-Field war vor dem Schreibversuch leer.
+- Der Titel war leer, entsprach noch dem ursprünglichen Dateinamen oder
+  `allow_title_overwrite` wurde bewusst aktiviert.
+
+Wird keine Nummer gesetzt, obwohl der OCR-Text eine Nummer enthält, sollte das
+Layout anonymisiert als Regressionstest ergänzt werden. Die Regex-Regeln
+sollten nicht direkt in der Instanz nachgebaut werden; das zentrale Profil
+hält Erkennung, Validierung, Prioritäten und Dokumenttypgrenze gemeinsam
+versioniert.
 
 ### Geschützte Schreiboperationen
 

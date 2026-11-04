@@ -24,8 +24,8 @@ Der Ablauf besteht aus drei getrennten Teilen:
 2. **Der Workflow meldet das Dokument.** Paperless sendet die Dokument-ID an
    eZEUS.
 3. **eZEUS liest die Werte aus.** eZEUS sucht beispielsweise
-   Rechnungsnummer, Rechnungsbetrag und Baustellennummer und schreibt sichere
-   Treffer zurück nach Paperless.
+   Rechnungsnummer, Lieferscheinnummer, Rechnungsbetrag und Baustellennummer
+   und schreibt sichere Treffer zurück nach Paperless.
 
 Dadurch kann der Workflow korrekt funktionieren, obwohl ein Feld leer bleibt.
 In diesem Fall ist nicht die Verbindung kaputt, sondern das konkrete
@@ -255,28 +255,38 @@ importierte Feld deaktiviert beziehungsweise verwendet keine IBAN-Regel.
 
 ### Lieferscheinnummer und Lieferscheintitel aktivieren
 
-1. Ein Textfeld `Lieferscheinnummer` hinzufügen oder das gleichnamige
-   Paperless-Feld importieren.
-2. **In eZEUS** und **OCR** aktivieren, **Pflichtfeld** bei gemischten
-   Dokumenttypen ausgeschaltet lassen.
-3. Unter **Spezialregel** `Lieferscheinnummer (inklusive LI-Tabellenlayout)`
+1. In Paperless prüfen, dass die Dokumenttypen exakt `Eingangsrechnung` und
+   `Lieferschein` heißen. Die Trennung der Nummern richtet sich nach diesen
+   Namen.
+2. Ein Paperless-Custom-Field `Lieferscheinnummer` vom Typ **Text** anlegen und
+   anschließend die Feldseite in eZEUS neu laden. Alternativ kann das Feld
+   direkt in eZEUS hinzugefügt werden.
+3. **In eZEUS** und **OCR** aktivieren. **KI** zunächst ausgeschaltet lassen.
+   **Pflichtfeld** nur aktivieren, wenn wirklich jeder Lieferschein eine
+   maschinenlesbare Nummer enthält.
+4. Unter **Spezialregel** `Lieferscheinnummer (inklusive LI-Tabellenlayout)`
    auswählen und die Konfiguration speichern. eZEUS legt ein fehlendes
    Paperless-Feld beim Speichern an und übernimmt dessen ID.
-4. Für gemeinsame Rechnungs- und Lieferscheinverarbeitung die Titel-Vorlage
+5. Für gemeinsame Rechnungs- und Lieferscheinverarbeitung die Titel-Vorlage
    `{document_type}, {invoice_number}, {delivery_note_number}` verwenden. Leere
    Platzhalter und angrenzende Trennzeichen werden entfernt; daraus entstehen
-   beispielsweise `Rechnung, RE-2026-42` und `Lieferschein, LI-2026-17`.
-5. Die Titelüberschreibung nur aktivieren, wenn bestehende Paperless-Titel
+   beispielsweise `Eingangsrechnung, RE-2026-42` und
+   `Lieferschein, LI-2026-17`.
+6. Die Titelüberschreibung nur aktivieren, wenn bestehende Paperless-Titel
    bewusst ersetzt werden sollen. Bereits gefüllte benutzerdefinierte Felder
    werden weiterhin nicht überschrieben.
 
 Die Spezialregel erkennt explizite Lieferscheinfeldnamen, das verbreitete
-Tabellenlayout `LI-… Blatt …` und belegte OCR-Schreibvarianten. Mehrere
-verschiedene Kandidaten bleiben absichtlich ohne Rückschreibung.
+Tabellenlayout `LI-… Blatt …`, `Lieferschein-Nr.`, `Lieferungsnummer` und
+belegte OCR-Schreibvarianten. Explizite Bezeichnungen und bekannte
+Tabellenköpfe haben Vorrang vor schwächeren Kurzformen. Liefert die früheste
+passende Prioritätsstufe mehrere verschiedene Kandidaten, bleibt das Feld
+absichtlich leer; eZEUS rät keine Nummer.
 Rechnungsnummer, Rechnungsdatum und Rechnungsbetrag werden ausschließlich beim
 Dokumenttyp `Eingangsrechnung` ausgewertet; die Lieferscheinnummer ausschließlich
 beim Dokumenttyp `Lieferschein`. Pflichtfelder eines anderen Dokumenttyps lösen
-keine Warnung aus.
+keine Warnung aus. Deshalb kann die Rechnungsnummer für Eingangsrechnungen ein
+Pflichtfeld bleiben, ohne Lieferschein-Jobs zu blockieren.
 
 - **In eZEUS:** Dieses Feld wird für den Kunden verarbeitet. Aus Paperless neu
   geladene Felder sind zunächst ausgeschaltet.
@@ -323,7 +333,9 @@ Verwende mindestens:
 2. eine mehrseitige Rechnung;
 3. eine Gutschrift, falls der Kunde Gutschriften verarbeitet;
 4. eine Rechnung mit Baustellennummer;
-5. Dokumente von mehreren häufigen Lieferanten.
+5. mindestens zwei Lieferscheine mit unterschiedlichen Layouts, falls
+   Lieferscheine verarbeitet werden;
+6. Dokumente von mehreren häufigen Lieferanten.
 
 ### Durchführung
 
@@ -334,6 +346,9 @@ Verwende mindestens:
 5. In Paperless kontrollieren, ob die Werte wirklich richtig angekommen sind.
 6. Ergebnisse nicht nur auf Vorhandensein, sondern inhaltlich prüfen: Eine
    Kundennummer darf beispielsweise nicht als Rechnungsnummer erscheinen.
+7. Bei Rechnungen und Lieferscheinen zusätzlich prüfen, ob in Paperless der
+   richtige Dokumenttyp gesetzt ist und der Titel nur die dafür vorgesehene
+   Nummer enthält.
 
 Die Kundeninstanz ist abgenommen, wenn alle notwendigen Felder bei mehreren
 typischen Dokumenten richtig erkannt wurden und keine falschen Werte
@@ -455,6 +470,27 @@ Suche im Paperless-OCR-Text nach eindeutigen Begriffen wie `Gesamtbetrag`,
 `Erstattungsbetrag`. Steht der Betrag nur unbeschriftet in einer Tabelle, kann
 eZEUS ihn absichtlich nicht sicher zuordnen.
 
+### Lieferscheinnummer oder Lieferscheintitel fehlt
+
+Prüfe zuerst den Paperless-Dokumenttyp. Die Spezialregel wird nur beim
+Dokumenttyp `Lieferschein` ausgeführt. Danach kontrollieren:
+
+1. Das Feld `Lieferscheinnummer` ist **In eZEUS** und für **OCR** aktiviert.
+2. Unter **Spezialregel** ist
+   `Lieferscheinnummer (inklusive LI-Tabellenlayout)` ausgewählt.
+3. Die Paperless-ID zeigt auf ein Textfeld und dieses Feld ist noch leer.
+4. Im OCR-Text steht eine beschriftete oder unterstützte Nummer. Bei mehreren
+   widersprüchlichen Nummern schreibt eZEUS bewusst keinen Wert.
+5. Für den Titel ist die Vorlage
+   `{document_type}, {invoice_number}, {delivery_note_number}` gespeichert.
+6. Ein vorhandener manueller Titel verhindert die Änderung, solange die
+   Titelüberschreibung ausgeschaltet ist.
+
+Die neue Konfiguration verarbeitet bestehende Dokumente nicht automatisch.
+Für einen kontrollierten erneuten Lauf das konfigurierte One-shot-Tag zur
+manuellen Neuverarbeitung verwenden und anschließend Jobprotokoll sowie
+Paperless-Ergebnis prüfen.
+
 ### Baustellennummer fehlt
 
 Gut erkennbare Beispiele sind `# 26051`, `BV- 25095`, `BV-Nr. 25180` oder
@@ -480,6 +516,9 @@ ein Einmal-Tag, den der Workflow nach dem Webhook wieder entfernt.
 - normale Rechnung getestet
 - mehrseitige Rechnung getestet
 - Gutschrift getestet, falls verwendet
+- Lieferschein mit mindestens zwei typischen Layouts getestet, falls verwendet
+- Dokumenttypen `Eingangsrechnung` und `Lieferschein` korrekt gesetzt
+- Lieferscheinnummer und Titel enthalten nur die dokumenttypgerechte Nummer
 - Baustellennummer getestet, falls verwendet
 - keine Kundennummer als Rechnungsnummer übernommen
 - keine Wörter als Baustellennummer übernommen
