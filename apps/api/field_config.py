@@ -220,6 +220,7 @@ def field_configuration_page(instance_slug: str) -> str:
     ["textarea","Mehrzeiliger Text"]];
   const extractionProfiles=[
     ["","Keine Spezialregel"],
+    ["delivery_note_number","Lieferscheinnummer (inklusive LI-Tabellenlayout)"],
     ["vehicle_identification_number_field_e","Fahrzeug-ID (FIN/VIN) aus Feld E"],
     ["iban","IBAN"],
   ];

@@ -1,5 +1,7 @@
 import pytest
 
+from connectors.base.interface import ConnectorDocument
+from core.orchestration.orchestrator import Orchestrator
 from core.paperless.title_template import (
     MAX_TEMPLATE_LENGTH,
     MAX_TITLE_LENGTH,
@@ -13,6 +15,7 @@ from core.paperless.title_template import (
 def _ctx(**overrides: str) -> dict[str, str]:
     base = {
         "invoice_number": "",
+        "delivery_note_number": "",
         "correspondent": "",
         "document_type": "",
         "created_year": "",
@@ -39,6 +42,13 @@ def test_missing_middle_placeholder_collapses_separators() -> None:
     template = "{document_type}, {invoice_number}, {correspondent}"
     ctx = _ctx(document_type="Rechnung", correspondent="Müller GmbH")
     assert render_title(template, ctx) == "Rechnung, Müller GmbH"
+
+
+def test_delivery_note_title_uses_document_type_and_delivery_note_number() -> None:
+    template = "{document_type}, {invoice_number}, {delivery_note_number}"
+    ctx = _ctx(document_type="Lieferschein", delivery_note_number="LI-2026-0042")
+
+    assert render_title(template, ctx) == "Lieferschein, LI-2026-0042"
 
 
 def test_missing_edges_are_trimmed() -> None:
@@ -130,3 +140,22 @@ def test_values_are_literal_and_unicode_is_preserved() -> None:
 
 def test_non_string_values_are_rendered() -> None:
     assert render_title("{created_year}", {"created_year": 2026}) == "2026"
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_title_context_includes_delivery_note_number() -> None:
+    class Connector:
+        async def get_document_type_name(self, _document_type_id: str) -> str:
+            return "Lieferschein"
+
+    document = ConnectorDocument(external_id="1", document_type_id="7")
+    orchestrator = Orchestrator.__new__(Orchestrator)
+
+    context = await orchestrator._build_title_context(
+        Connector(),  # type: ignore[arg-type]
+        document,
+        {"delivery_note_number": "LI-2026-0042"},
+    )
+
+    assert context["document_type"] == "Lieferschein"
+    assert context["delivery_note_number"] == "LI-2026-0042"

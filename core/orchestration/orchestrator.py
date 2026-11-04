@@ -216,8 +216,33 @@ class Orchestrator:
 
             active_phase = self._start_phase(job, JobPhase.EXTRACT_FIELDS)
             candidates_by_field: dict[str, list[tuple[ExtractionCandidate, ExtractionResult]]] = {}
+            fields_outside_document_type: set[str] = set()
+            scoped_document_type_name = ""
+            if (
+                runtime_fields is not None
+                and runtime_fields.field_document_type_names
+                and remote.document_type_id
+                and hasattr(connector, "get_document_type_name")
+            ):
+                try:
+                    scoped_document_type_name = (
+                        await connector.get_document_type_name(remote.document_type_id) or ""
+                    )
+                except Exception:  # noqa: BLE001 -- scoped fields fail closed
+                    scoped_document_type_name = ""
             for field_key, field in config.fields.items():
                 persisted: list[tuple[ExtractionCandidate, ExtractionResult]] = []
+                allowed_document_types = (
+                    runtime_fields.field_document_type_names.get(field_key)
+                    if runtime_fields is not None
+                    else None
+                )
+                if allowed_document_types and scoped_document_type_name.casefold() not in {
+                    name.casefold() for name in allowed_document_types
+                }:
+                    fields_outside_document_type.add(field_key)
+                    candidates_by_field[field_key] = persisted
+                    continue
                 for provider_config in field.providers:
                     provider_data = provider_config.model_dump(exclude={"type"})
                     for candidate in await PROVIDERS[provider_config.type]().extract(
@@ -319,6 +344,32 @@ class Orchestrator:
                     for _, _, result in valid:
                         if result is not winner[2]:
                             result.reason = "Lower-priority invoice-total candidate"
+                elif valid and field.selection_strategy == "pattern_priority_unique":
+                    priorities = [
+                        int(str(result.metadata_json.get("pattern_index", 2**31)))
+                        for _, _, result in valid
+                    ]
+                    highest_priority = min(priorities)
+                    prioritized = [
+                        item
+                        for item in valid
+                        if int(str(item[2].metadata_json.get("pattern_index", 2**31)))
+                        == highest_priority
+                    ]
+                    prioritized_distinct = {str(item[1]) for item in prioritized}
+                    if len(prioritized_distinct) == 1:
+                        winner = max(prioritized, key=lambda item: item[0])
+                        winner[2].accepted = True
+                        output_value = field.value_mapping.get(str(winner[1]), winner[1])
+                        extracted_by_key[field_key] = output_value
+                        if field.target_field_id is not None:
+                            extracted_values[str(field.target_field_id)] = output_value
+                        for _, _, result in valid:
+                            if result is not winner[2]:
+                                result.reason = "Lower-priority validated candidate"
+                    else:
+                        for _, _, result in prioritized:
+                            result.reason = "Conflicting validated candidates at same priority"
                 elif valid and len(distinct) == 1:
                     winner = max(valid, key=lambda item: item[0])
                     winner[2].accepted = True
@@ -334,6 +385,7 @@ class Orchestrator:
                 field_key
                 for field_key, field in config.fields.items()
                 if field.required
+                and field_key not in fields_outside_document_type
                 and (field_key not in extracted_by_key or field.target_field_id is None)
             ]
             self._finish_phase(
@@ -506,6 +558,11 @@ class Orchestrator:
 
             title_written = False
             invoice_number = extracted_by_key.get("invoice_number")
+            title_values = dict(extracted_by_key)
+            if runtime_fields is not None:
+                for profile_key, field_key in runtime_fields.profile_field_keys.items():
+                    if field_key in extracted_by_key:
+                        title_values[profile_key] = extracted_by_key[field_key]
             title_template = (instance.title_template or "").strip() if instance is not None else ""
             title_enabled = runtime_fields.title_enabled if runtime_fields is not None else True
             new_title: str | None = None
@@ -527,7 +584,7 @@ class Orchestrator:
                 runtime_fields.title_rule_enabled if runtime_fields is not None else True
             )
             if title_enabled and title_rule_enabled and not new_title and title_template:
-                context = await self._build_title_context(connector, before_write, invoice_number)
+                context = await self._build_title_context(connector, before_write, title_values)
                 try:
                     new_title = render_title(title_template, context)
                 except Exception as exc:  # noqa: BLE001 -- custom fields must still run
@@ -660,11 +717,12 @@ class Orchestrator:
         self,
         connector: DocumentConnector,
         document: "ConnectorDocument",
-        invoice_number: object,
+        extracted_values: dict[str, object],
     ) -> dict[str, str]:
         created = document.created or ""
         context: dict[str, str] = {
-            "invoice_number": str(invoice_number) if invoice_number is not None else "",
+            "invoice_number": str(extracted_values.get("invoice_number") or ""),
+            "delivery_note_number": str(extracted_values.get("delivery_note_number") or ""),
             "correspondent": "",
             "document_type": "",
             "created_year": created[:4] if len(created) >= 4 else "",

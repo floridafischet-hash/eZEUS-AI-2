@@ -4,6 +4,13 @@ Alle wesentlichen Änderungen an eZEUS-AI-2 werden in dieser Datei dokumentiert.
 
 ## Unveröffentlicht
 
+- Optionales Lieferscheinnummer-Profil für explizite Beschriftungen,
+  `LI`-Tabellenlayouts und wiederkehrende OCR-Abweichungen ergänzt; der neue
+  Titelplatzhalter `{delivery_note_number}` ermöglicht Titel wie
+  `Lieferschein, 123456789`, ohne die Rechnungstitelvorlage zu ersetzen.
+  Rechnungsfelder und Lieferscheinnummer sind dabei wechselseitig auf die
+  Paperless-Dokumenttypen `Eingangsrechnung` und `Lieferschein` begrenzt.
+
 - Korrespondenten-Matching berücksichtigt den Absenderkontext vollständiger
   Namensfunde, trennt interne vier- bis sechsstellige Verwaltungsnummern vom
   Matchnamen und unterscheidet Unternehmen in rechtlichen Fußzeilen von dort

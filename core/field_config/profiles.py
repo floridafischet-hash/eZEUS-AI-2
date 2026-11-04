@@ -3,6 +3,7 @@ from typing import Final, Literal, NotRequired, TypedDict
 VEHICLE_IDENTIFICATION_NUMBER_FIELD_E: Final = "vehicle_identification_number_field_e"
 IBAN: Final = "iban"
 INVOICE_GROSS_AMOUNT: Final = "invoice_gross_amount"
+DELIVERY_NOTE_NUMBER: Final = "delivery_note_number"
 
 
 class ExtractionProfile(TypedDict):
@@ -17,13 +18,92 @@ class ExtractionProfile(TypedDict):
     patterns: list[str]
     validators: list[dict[str, object]]
     selection_strategy: NotRequired[
-        Literal["unique", "first", "highest", "pattern_priority_highest"]
+        Literal[
+            "unique",
+            "first",
+            "highest",
+            "pattern_priority_highest",
+            "pattern_priority_unique",
+        ]
     ]
+    document_type_names: NotRequired[frozenset[str]]
     negative_context_patterns: NotRequired[list[str]]
     negate_on_negative_context: NotRequired[bool]
 
 
 EXTRACTION_PROFILES: dict[str, ExtractionProfile] = {
+    DELIVERY_NOTE_NUMBER: {
+        "label": "Lieferscheinnummer (inklusive LI-Tabellenlayout)",
+        "field_types": frozenset({"text"}),
+        "patterns": [
+            # Frequent tabular layout: an LI marker identifies the delivery-note
+            # number and "Blatt" bounds the value on the right. The marker also
+            # occurs without whitespace (for example LI-123456789).
+            r"(?im)^[^\n]{0,180}(?<![A-Z0-9])LI[\s.:-]*"
+            r"(?!\d{1,2}[./-]\d{1,2}[./-]\d{2,4}(?:\s|$))"
+            r"(?=[A-Z0-9./_-]{3,100}[ \t]+Blatt\b)"
+            r"([A-Z0-9][A-Z0-9./_-]{2,99})[ \t]+Blatt\b[^\n]*$",
+            # Explicit labels on the same OCR line. "Lieferungsnummer" is a
+            # documented variant in the target corpus; address/order labels are
+            # intentionally excluded.
+            r"(?im)^.*?\b(?:Lieferschein(?:nummer|[\s.-]*(?:Nr|Nummer)\.?)?|"
+            r"Lieferscheinnr\.?|Lieferungsnummer)"
+            r"[ \t]*[:#.]?[ \t]*"
+            r"(?!\d{1,2}[./-]\d{1,2}[./-]\d{2,4}(?:\s|$))"
+            r"(?=[A-Z0-9./_-]*\d)"
+            r"([A-Z0-9][A-Z0-9./_-]{2,99})"
+            r"(?=[ \t]*(?:$|\b(?:Datum|vom|Blatt|Seite|Page)\b))",
+            # Weaker labels are evaluated only when none of the stronger
+            # patterns above produced a candidate. The profile is additionally
+            # restricted to the Paperless document type "Lieferschein".
+            r"(?im)^.*?\bLieferung[ \t]*[:#.]?[ \t]*"
+            r"(?!\d{1,2}[./-]\d{1,2}[./-]\d{2,4}(?:\s|$))"
+            r"(?=[A-Z0-9./_-]*\d)"
+            r"([A-Z0-9][A-Z0-9./_-]{2,99})(?=[ \t]|$)",
+            r"(?im)^(?:\s*LS|[^\n]{0,120}\b(?:Lieferschein|Lieferung|"
+            r"Lieferauftrag)\b[^\n]{0,80}(?<![A-Z0-9])LS)"
+            r"[\s.:-]*"
+            r"(?!\d{1,2}[./-]\d{1,2}[./-]\d{2,4}(?:\s|$))"
+            r"(?=[A-Z0-9./_-]*\d)"
+            r"([A-Z0-9][A-Z0-9./_-]{2,99})(?=[ \t]|$)",
+            r"(?im)^.*?\bBeleg(?:nummer|[\s.-]*Nr\.?)"
+            r"[ \t]*[:#.]?[ \t]*"
+            r"(?!\d{1,2}[./-]\d{1,2}[./-]\d{2,4}(?:\s|$))"
+            r"(?=[A-Z0-9./_-]*\d)"
+            r"([A-Z0-9][A-Z0-9./_-]{2,99})(?=[ \t]|$)",
+            # Exact labels can be separated from the value by one blank OCR
+            # line. Do not skip arbitrary content between label and value.
+            r"(?im)^\s*(?:Lieferscheinnummer|Lieferschein[\s.-]*(?:Nr|Nummer)\.?|"
+            r"Lieferscheinnr\.?|Lieferungsnummer)\s*[:#.]?\s*$"
+            r"\n(?:\s*\n)?\s*"
+            r"(?!\d{1,2}[./-]\d{1,2}[./-]\d{2,4}(?:\s|$))"
+            r"(?=[A-Z0-9./_-]*\d)"
+            r"([A-Z0-9][A-Z0-9./_-]{2,99})(?=\s|$)",
+            # Recurrent OCR distortions of "Lieferschein" observed in the
+            # delivery-note corpus. Enumerating them is safer than accepting an
+            # arbitrary Liefer* label such as Lieferauftrag or Lieferanschrift.
+            r"(?im)^.*?\b(?:Liefersche|Lieferschetin|Lieferschetlin|Lieferchein|"
+            r"Lieferschhein|Liefereschein|Lieferschelin|Liefercheinummer|"
+            r"Lieferscheinr\.)"
+            r"[ \t]*(?:Nr\.?|Nummer)?[ \t]*[:#.]?[ \t]*"
+            r"(?!\d{1,2}[./-]\d{1,2}[./-]\d{2,4}(?:\s|$))"
+            r"(?=[A-Z0-9./_-]*\d)"
+            r"([A-Z0-9][A-Z0-9./_-]{2,99})"
+            r"(?=[ \t]*(?:$|\b(?:Datum|vom|Blatt|Seite|Page)\b))",
+        ],
+        "validators": [
+            {"type": "not_empty"},
+            {
+                "type": "required_pattern",
+                "pattern": (
+                    r"(?i)(?!\d{1,2}[./-]\d{1,2}[./-]\d{2,4}$)"
+                    r"(?=[A-Z0-9./_-]*\d)[A-Z0-9][A-Z0-9./_-]{2,99}"
+                ),
+            },
+        ],
+        "selection_strategy": "pattern_priority_unique",
+        "document_type_names": frozenset({"Lieferschein"}),
+    },
     INVOICE_GROSS_AMOUNT: {
         "label": "Rechnungsbruttobetrag (priorisierte Summen und Gutschriften)",
         "field_types": frozenset({"money"}),
