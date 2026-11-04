@@ -13,6 +13,7 @@ from collections.abc import Mapping
 ALLOWED_PLACEHOLDERS: frozenset[str] = frozenset(
     {
         "invoice_number",
+        "delivery_note_number",
         "correspondent",
         "document_type",
         "created_year",

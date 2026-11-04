@@ -13,7 +13,10 @@ from connectors.base.interface import ConnectorCustomField
 from core.config.settings import get_settings
 from core.db.base import Base
 from core.db.session import get_db
-from core.field_config.service import FieldConfigurationService
+from core.field_config.service import (
+    STANDARD_FIELD_DOCUMENT_TYPE_NAMES,
+    FieldConfigurationService,
+)
 from core.models.admin_user import AdminUser
 from core.models.audit import AuditEntry
 from core.models.instance_field_config import InstanceFieldConfig
@@ -482,6 +485,7 @@ async def test_runtime_saves_iban_profile_and_builds_unique_validated_field(
         configured = runtime.template.fields[iban["field_key"]]
         assert configured.target_field_id == 106
         assert configured.selection_strategy == "unique"
+        assert runtime.field_document_type_names == STANDARD_FIELD_DOCUMENT_TYPE_NAMES
         assert [validator.type for validator in configured.validators] == ["iban_format"]
         candidates = await RegexExtractionProvider().extract(
             "IBAN: DE89 3704 0044 0532 0130 00 BIC: COBADEFFXXX",
@@ -537,6 +541,51 @@ async def test_runtime_saves_invoice_gross_amount_profile_without_changing_other
 
         other_provider = second_runtime.template.fields["invoice_amount"].providers[0]
         assert "negate_on_negative_context" not in other_provider.model_dump(exclude={"type"})
+
+
+@pytest.mark.asyncio
+async def test_delivery_note_profile_maps_imported_field_into_title_context(
+    field_config_client,
+) -> None:
+    client, session_factory, connector = field_config_client
+    connector.fields.append(ConnectorCustomField("106", "Lieferscheinnummer", "string"))
+    instance_data = create_instance(client, "Kunde Lieferschein", "liefer.example.test")
+    endpoint = f"/api/instances/{instance_data['slug']}/field-config"
+    fields = client.get(endpoint, headers=admin_headers()).json()["fields"]
+    delivery_note = next(field for field in fields if field["label"] == "Lieferscheinnummer")
+    delivery_note.update(
+        {
+            "enabled": True,
+            "required": False,
+            "ocr_enabled": True,
+            "extraction_profile": "delivery_note_number",
+        }
+    )
+
+    saved = client.put(
+        endpoint,
+        headers=admin_headers(),
+        json={
+            "fields": fields,
+            "title_template": "{document_type}, {invoice_number}, {delivery_note_number}",
+        },
+    )
+
+    assert saved.status_code == 200
+    with session_factory() as db:
+        instance = db.scalar(
+            select(PaperlessInstance).where(PaperlessInstance.slug == instance_data["slug"])
+        )
+        assert instance is not None
+        runtime = FieldConfigurationService(db).runtime_config(instance, connector.fields)
+        assert runtime.profile_field_keys == {"delivery_note_number": delivery_note["field_key"]}
+        configured = runtime.template.fields[delivery_note["field_key"]]
+        assert configured.target_field_id == 106
+        assert configured.selection_strategy == "pattern_priority_unique"
+        assert runtime.field_document_type_names == {
+            **STANDARD_FIELD_DOCUMENT_TYPE_NAMES,
+            delivery_note["field_key"]: frozenset({"Lieferschein"}),
+        }
 
 
 def test_ollama_disabled_degrades_to_regex_only(
@@ -774,4 +823,8 @@ def test_field_configuration_page_loads_and_labels_paperless_fields_automaticall
     assert 'row.append(control("Spezialregel",profile));' in response.text
     assert "vehicle_identification_number_field_e" in response.text
     assert '["iban","IBAN"]' in response.text
+    assert (
+        '["delivery_note_number","Lieferscheinnummer (inklusive LI-Tabellenlayout)"]'
+        in response.text
+    )
     assert "  load();" in response.text

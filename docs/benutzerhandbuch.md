@@ -253,6 +253,31 @@ Bei der gewünschten Instanz **Felder** auswählen.
 Die IBAN-Erkennung ist opt-in. Ohne ausgewählte Spezialregel bleibt das
 importierte Feld deaktiviert beziehungsweise verwendet keine IBAN-Regel.
 
+### Lieferscheinnummer und Lieferscheintitel aktivieren
+
+1. Ein Textfeld `Lieferscheinnummer` hinzufügen oder das gleichnamige
+   Paperless-Feld importieren.
+2. **In eZEUS** und **OCR** aktivieren, **Pflichtfeld** bei gemischten
+   Dokumenttypen ausgeschaltet lassen.
+3. Unter **Spezialregel** `Lieferscheinnummer (inklusive LI-Tabellenlayout)`
+   auswählen und die Konfiguration speichern. eZEUS legt ein fehlendes
+   Paperless-Feld beim Speichern an und übernimmt dessen ID.
+4. Für gemeinsame Rechnungs- und Lieferscheinverarbeitung die Titel-Vorlage
+   `{document_type}, {invoice_number}, {delivery_note_number}` verwenden. Leere
+   Platzhalter und angrenzende Trennzeichen werden entfernt; daraus entstehen
+   beispielsweise `Rechnung, RE-2026-42` und `Lieferschein, LI-2026-17`.
+5. Die Titelüberschreibung nur aktivieren, wenn bestehende Paperless-Titel
+   bewusst ersetzt werden sollen. Bereits gefüllte benutzerdefinierte Felder
+   werden weiterhin nicht überschrieben.
+
+Die Spezialregel erkennt explizite Lieferscheinfeldnamen, das verbreitete
+Tabellenlayout `LI-… Blatt …` und belegte OCR-Schreibvarianten. Mehrere
+verschiedene Kandidaten bleiben absichtlich ohne Rückschreibung.
+Rechnungsnummer, Rechnungsdatum und Rechnungsbetrag werden ausschließlich beim
+Dokumenttyp `Eingangsrechnung` ausgewertet; die Lieferscheinnummer ausschließlich
+beim Dokumenttyp `Lieferschein`. Pflichtfelder eines anderen Dokumenttyps lösen
+keine Warnung aus.
+
 - **In eZEUS:** Dieses Feld wird für den Kunden verarbeitet. Aus Paperless neu
   geladene Felder sind zunächst ausgeschaltet.
 - **Pflichtfeld:** Fehlt ein gültiger Wert, zeigt der Job eine Warnung. Das

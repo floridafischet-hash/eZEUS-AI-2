@@ -128,6 +128,12 @@ STANDARD_PATTERNS: dict[str, list[str]] = {
     ],
 }
 
+STANDARD_FIELD_DOCUMENT_TYPE_NAMES: dict[str, frozenset[str]] = {
+    "invoice_number": frozenset({"Eingangsrechnung"}),
+    "invoice_date": frozenset({"Eingangsrechnung"}),
+    "invoice_amount": frozenset({"Eingangsrechnung"}),
+}
+
 FIELD_ALIASES: dict[str, tuple[str, ...]] = {
     "invoice_number": ("rechnungsnummer",),
     "invoice_date": ("rechnungsdatum",),
@@ -173,6 +179,8 @@ FIELD_TYPE_BY_PAPERLESS_TYPE = {
 @dataclass(frozen=True)
 class RuntimeFieldConfiguration:
     template: TemplateConfig
+    profile_field_keys: dict[str, str]
+    field_document_type_names: dict[str, frozenset[str]]
     enabled_keys: frozenset[str]
     required_keys: frozenset[str]
     correspondent_enabled: bool
@@ -459,6 +467,8 @@ class FieldConfigurationService:
         }
         external_by_id = {int(field.external_id): field for field in paperless_fields}
         template_fields: dict[str, object] = {}
+        profile_field_keys: dict[str, str] = {}
+        field_document_type_names: dict[str, frozenset[str]] = {}
         enabled_keys: set[str] = set()
         required_keys: set[str] = set()
         correspondent_enabled = False
@@ -503,7 +513,14 @@ class FieldConfigurationService:
                         and option.get("id") is not None
                     }
             providers: list[dict[str, object]] = []
+            standard_document_types = STANDARD_FIELD_DOCUMENT_TYPE_NAMES.get(field.field_key)
+            if standard_document_types:
+                field_document_type_names[field.field_key] = standard_document_types
             profile = extraction_profile(field.extraction_profile)
+            if profile is not None and field.extraction_profile is not None:
+                profile_field_keys[field.extraction_profile] = field.field_key
+                if profile.get("document_type_names"):
+                    field_document_type_names[field.field_key] = profile["document_type_names"]
             if field.ocr_enabled:
                 patterns: list[str] | None
                 if profile is not None:
@@ -554,6 +571,8 @@ class FieldConfigurationService:
             }
         return RuntimeFieldConfiguration(
             template=TemplateConfig.model_validate({"fields": template_fields}),
+            profile_field_keys=profile_field_keys,
+            field_document_type_names=field_document_type_names,
             enabled_keys=frozenset(enabled_keys),
             required_keys=frozenset(required_keys),
             correspondent_enabled=correspondent_enabled,
