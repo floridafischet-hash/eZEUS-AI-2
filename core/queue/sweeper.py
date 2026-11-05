@@ -28,6 +28,25 @@ class SweepResult:
     failed: int = 0
 
 
+def _describe_stall(job: Job, runtime: Settings) -> str:
+    phase = job.phase.value if job.phase else "none"
+    message = (
+        f"Job stalled in {job.status.value} at phase {phase} "
+        f"(worker: {job.worker_id}, no update for at least "
+        f"{runtime.sweeper_stale_threshold_seconds} s)"
+    )
+    # Do not lose the cause recorded by the last attempt when a repeat stalls.
+    if job.error_type and job.error_type != "StalledJob":
+        message += f"; previous error: {job.error_type}: {job.error_message}"
+    elif (
+        job.error_type == "StalledJob"
+        and job.error_message
+        and "previous error: " in job.error_message
+    ):
+        message += "; previous error: " + job.error_message.split("previous error: ", 1)[1]
+    return message
+
+
 def sweep_stale_jobs(
     db: Session,
     *,
@@ -51,9 +70,11 @@ def sweep_stale_jobs(
     requeued = 0
     failed = 0
     for job in stale_jobs:
+        extra = {"job_id": str(job.id), "worker_id": job.worker_id}
+        stalled = _describe_stall(job, runtime)
         if job.retry_count < runtime.job_max_retries:
             job.error_type = "StalledJob"
-            job.error_message = f"Job stalled in {job.status.value} (worker: {job.worker_id})"
+            job.error_message = stalled
             job.started_at = None
             job.finished_at = None
             job.retry_count += 1
@@ -61,22 +82,19 @@ def sweep_stale_jobs(
             db.commit()
             publish_outbox_event(db, event_id=outbox.id)
             requeued += 1
-            logger.info(
-                "Stillstehenden Auftrag %s erneut eingeplant (vorher %s)", job.id, job.status.value
+            logger.warning(
+                "Stillstehenden Auftrag %s erneut eingeplant: %s", job.id, stalled, extra=extra
             )
         else:
+            stalled = f"{stalled}; gave up after {job.retry_count} retries"
             job.status = JobStatus.FAILED
             job.finished_at = datetime.now(UTC)
             job.error_type = "StalledJob"
-            job.error_message = (
-                f"Job stalled in {job.status.value} after {job.retry_count} retries "
-                f"(worker: {job.worker_id})"
-            )
+            job.error_message = stalled
             db.commit()
             failed += 1
-            logger.info(
-                "Stillstehenden Auftrag %s endgültig beendet: maximale Wiederholungen erreicht",
-                job.id,
+            logger.error(
+                "Stillstehenden Auftrag %s endgültig beendet: %s", job.id, stalled, extra=extra
             )
     return SweepResult(requeued=requeued, failed=failed)
 

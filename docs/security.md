@@ -82,5 +82,10 @@ eine installationsbezogene Security-Abnahme erforderlich.
 - Das Dashboard gibt keine Dokumentinhalte, OCR-Texte oder Secrets aus.
   Angezeigte Phasen-Metadaten sind auf technische Ablaufdaten begrenzt;
   Fehlertexte werden vor Speicherung und Ausgabe redigiert.
+- Container-Logs enthalten bei Fehlern redigierte Tracebacks. Fehlertexte können
+  zur Diagnose einen auf 300 Zeichen gekürzten, redigierten Auszug einer
+  Paperless- oder Ollama-Fehlerantwort enthalten. Lehnt Paperless einen Wert ab,
+  kann dieser Auszug den abgelehnten Feldwert wiedergeben. OCR-Text und
+  Modellantworten werden nicht geloggt.
 - Konkrete Server-Adressen, Benutzernamen und installationsspezifische Pfade
   gehören nicht in Repository-Dokumentationen.
