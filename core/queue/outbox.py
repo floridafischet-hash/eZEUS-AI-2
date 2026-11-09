@@ -146,6 +146,7 @@ def publish_outbox_event(
             "erneuter Versuch wurde geplant",
             event.id,
             event.last_error,
+            extra={"job_id": str(event.job_id)},
         )
         OUTBOX_EVENTS_TOTAL.labels(outcome="failed").inc()
         return DispatchResult(failed=1)

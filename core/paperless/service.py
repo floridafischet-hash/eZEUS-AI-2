@@ -77,7 +77,7 @@ def connector_for_document(db: Session, connector: str) -> PaperlessConnector:
         return PaperlessConnector()
     instance = get_enabled_instance(db, slug)
     if instance is None:
-        raise ValueError(f"Paperless instance is unavailable: {slug}")
+        raise ValueError(f"Paperless instance is unavailable (disabled or deleted): {slug}")
     return PaperlessConnector(
         base_url=instance.base_url,
         api_token=decrypt_credential(instance.api_token_encrypted),

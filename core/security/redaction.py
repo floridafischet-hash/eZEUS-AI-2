@@ -20,3 +20,9 @@ def redact_sensitive_text(value: object, *, limit: int = 4000) -> str:
     text = _URL_USERINFO.sub(r"\1[REDACTED]@", text)
     text = _URL_SECRET_QUERY.sub(r"\1[REDACTED]", text)
     return text[:limit]
+
+
+def response_excerpt(text: str, *, limit: int = 300) -> str:
+    """Return a short, redacted, single-line excerpt of an HTTP error response."""
+
+    return redact_sensitive_text(" ".join(text.split()), limit=limit)

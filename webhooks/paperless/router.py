@@ -10,6 +10,7 @@ from core.config.settings import get_settings
 from core.db.session import get_db
 from core.events.document_imported import DocumentImportedEvent
 from core.jobs.service import JobService
+from core.logging import log_context
 from core.models.enums import JobPriority
 from core.models.paperless_instance import PaperlessInstance
 from core.paperless.service import (
@@ -131,43 +132,59 @@ async def _verify_instance_trigger(
     workflows.  Newly provisioned eZEUS workflows always send the header.
     """
 
+    log_extra: dict[str, object] = {
+        "instance_slug": instance.slug,
+        "trigger": trigger,
+        "document_id": str(payload.document_id),
+    }
+
+    def rejected(status_code: int, detail: str) -> HTTPException:
+        logger.warning(
+            "Webhook %d: %s; Ereignis wird nicht angenommen",
+            status_code,
+            detail,
+            extra=log_extra,
+        )
+        return HTTPException(status_code=status_code, detail=detail)
+
     if trigger is None:
         return None
     if trigger == "document-added":
         if instance.automatic_trigger_mode != "document_added":
-            raise HTTPException(status_code=409, detail="Document-added trigger is disabled")
+            raise rejected(409, "Document-added trigger is disabled")
         return None
     if trigger not in _WORKFLOW_TRIGGERS:
-        raise HTTPException(status_code=400, detail="Unknown workflow trigger")
+        raise rejected(400, "Unknown workflow trigger")
 
     if trigger == "manual":
         if not instance.manual_reprocess_enabled:
-            raise HTTPException(status_code=409, detail="Manual reprocessing is disabled")
+            raise rejected(409, "Manual reprocessing is disabled")
         required_tag_names = (instance.manual_reprocess_tag_name,)
         forbidden_tag_names: tuple[str, ...] = ()
     elif trigger == "tag-added":
         if instance.automatic_trigger_mode != "tag_added":
-            raise HTTPException(status_code=409, detail="Tag trigger is disabled")
+            raise rejected(409, "Tag trigger is disabled")
         if not instance.automatic_trigger_tag_name:
-            raise HTTPException(status_code=409, detail="Tag trigger is not configured")
+            raise rejected(409, "Tag trigger is not configured")
         required_tag_names = (instance.automatic_trigger_tag_name,)
         forbidden_tag_names = ()
     else:
         if not instance.ocr_handoff_enabled:
-            raise HTTPException(status_code=409, detail="OCR handoff is disabled")
+            raise rejected(409, "OCR handoff is disabled")
         required_tag_names = (instance.ocr_complete_tag_name,)
         forbidden_tag_names = (instance.ocr_triggered_tag_name,)
 
     try:
-        async with connector_for_instance(instance) as connector:
-            document = await connector.get_document(payload.document_id)
-            required_tags = [await connector.find_tag(name) for name in required_tag_names]
-            forbidden_tags = [await connector.find_tag(name) for name in forbidden_tag_names]
+        with log_context(**log_extra):
+            async with connector_for_instance(instance) as connector:
+                document = await connector.get_document(payload.document_id)
+                required_tags = [await connector.find_tag(name) for name in required_tag_names]
+                forbidden_tags = [await connector.find_tag(name) for name in forbidden_tag_names]
     except (ConnectorError, CredentialEncryptionError) as exc:
         logger.error(
             "Webhook 503: verwalteter Workflow-Auslöser kann nicht geprüft werden; "
             "Ereignis wird vorübergehend abgelehnt",
-            extra={"instance_slug": instance.slug, "trigger": trigger},
+            extra=log_extra,
             exc_info=exc,
         )
         raise HTTPException(status_code=503, detail="Unable to verify workflow trigger") from exc
@@ -188,7 +205,14 @@ async def _verify_instance_trigger(
         logger.warning(
             "Webhook 409: Bedingung des verwalteten Workflow-Auslösers ist nicht erfüllt; "
             "Ereignis wird nicht angenommen",
-            extra={"instance_slug": instance.slug, "trigger": trigger},
+            extra={
+                **log_extra,
+                "required_tags": list(required_tag_names),
+                "required_tag_ids": sorted(required_ids),
+                "forbidden_tags": list(forbidden_tag_names),
+                "forbidden_tag_ids": sorted(forbidden_ids),
+                "document_tag_ids": sorted(document.tag_ids),
+            },
         )
         raise HTTPException(status_code=409, detail="Workflow trigger condition is not satisfied")
     return next(iter(required_ids)) if trigger in {"tag-added", "manual"} else None
@@ -208,7 +232,7 @@ async def _consume_tag_trigger(
         logger.warning(
             "Tag-Auslöser angenommen, aber Einmal-Tag konnte nicht entfernt werden; "
             "eine spätere Änderung kann erneut auslösen",
-            extra={"instance_slug": instance.slug},
+            extra={"instance_slug": instance.slug, "document_id": str(payload.document_id)},
             exc_info=exc,
         )
 

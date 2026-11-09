@@ -62,7 +62,11 @@ class RegexExtractionProvider(ExtractionProvider):
             except regex.error as exc:
                 raise ValueError(f"Invalid negative-context pattern: {exc}") from exc
             except TimeoutError as exc:
-                raise TimeoutError("Regex extraction hard time limit exceeded") from exc
+                raise TimeoutError(
+                    f"Regex extraction hard time limit exceeded at negative-context pattern "
+                    f"(pattern limit {pattern_timeout:.3f} s, total limit {hard_timeout} s, "
+                    f"{len(text)} characters of text)"
+                ) from exc
         candidates: list[ExtractionCandidate] = []
         seen: set[tuple[str, int]] = set()
         for pattern_index, pattern in enumerate(patterns):
@@ -72,7 +76,7 @@ class RegexExtractionProvider(ExtractionProvider):
             try:
                 compiled = regex.compile(str(pattern), flags=regex.MULTILINE)
             except regex.error as exc:
-                raise ValueError(f"Invalid extraction pattern: {exc}") from exc
+                raise ValueError(f"Invalid extraction pattern {pattern_index}: {exc}") from exc
             try:
                 for match in compiled.finditer(text, timeout=min(pattern_timeout, remaining)):
                     if monotonic() - started > hard_timeout:
@@ -107,5 +111,9 @@ class RegexExtractionProvider(ExtractionProvider):
                         )
                     )
             except TimeoutError as exc:
-                raise TimeoutError("Regex extraction hard time limit exceeded") from exc
+                raise TimeoutError(
+                    f"Regex extraction hard time limit exceeded at pattern {pattern_index} "
+                    f"(pattern limit {pattern_timeout:.3f} s, total limit {hard_timeout} s, "
+                    f"{len(text)} characters of text)"
+                ) from exc
         return candidates
