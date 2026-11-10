@@ -559,6 +559,24 @@ class PaperlessConnector(DocumentConnector):
             url = str(next_url) if next_url else ""
         return None
 
+    async def find_latest_document_with_tag(self, tag_id: str) -> str | None:
+        """Return the newest Paperless document carrying ``tag_id``."""
+
+        response = await self._request(
+            "GET",
+            "/api/documents/",
+            params={
+                "tags__id__all": _path_id(tag_id),
+                "ordering": "-modified",
+                "page_size": 1,
+            },
+        )
+        payload = response.json()
+        results = payload.get("results", []) if isinstance(payload, dict) else []
+        if not results or not isinstance(results[0], dict) or results[0].get("id") is None:
+            return None
+        return _path_id(results[0]["id"])
+
     async def _upsert_workflow(
         self,
         workflows: list[object],

@@ -149,6 +149,9 @@ def test_instance_admin_page_is_available() -> None:
     assert 'id="edit-ocr-pending-tag"' in response.text
     assert 'id="edit-ocr-triggered-tag"' in response.text
     assert 'id="edit-manual-reprocess-tag"' in response.text
+    assert 'id="test-manual-reprocess"' in response.text
+    assert "test-manual-trigger" in response.text
+    assert "provision-workflow" in response.text
     assert "Günther" in response.text
     assert "Bearbeiten" in response.text
     assert "Endgültig löschen" in response.text

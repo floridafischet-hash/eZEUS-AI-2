@@ -5,7 +5,7 @@ from typing import Annotated
 from urllib.parse import urlparse
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from fastapi.responses import HTMLResponse
 from pydantic import AnyHttpUrl, BaseModel, Field, field_validator
 from sqlalchemy import select
@@ -20,6 +20,7 @@ from core.db.session import get_db
 from core.field_config.service import FieldConfigurationService
 from core.models.audit import AuditEntry
 from core.models.paperless_instance import PaperlessInstance
+from core.paperless.service import connector_name
 from core.paperless.title_template import (
     InvalidTemplateError,
     validate_template,
@@ -31,6 +32,12 @@ from core.security.credentials import (
     encrypt_credential,
 )
 from core.security.webhook_lookup import webhook_secret_hmac
+from webhooks.paperless.router import (
+    _accept_event,
+    _consume_tag_trigger,
+    _verify_instance_trigger,
+)
+from webhooks.paperless.schemas import PaperlessWebhookPayload
 
 router = APIRouter(tags=["paperless-instances"])
 SLUG_PATTERN = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$")
@@ -500,6 +507,77 @@ async def test_instance(
 
 
 @router.post(
+    "/api/paperless-instances/{instance_id}/test-manual-trigger",
+    dependencies=[Depends(require_admin_secret)],
+)
+async def test_manual_trigger(
+    instance_id: UUID,
+    db: Annotated[Session, Depends(get_db)],
+) -> dict[str, object]:
+    instance = _active_instance(db, instance_id)
+    if instance is None:
+        raise HTTPException(status_code=404, detail="Paperless-Instanz nicht gefunden")
+    if not instance.enabled:
+        raise HTTPException(status_code=409, detail="Paperless-Instanz ist deaktiviert")
+    if not instance.manual_reprocess_enabled:
+        raise HTTPException(status_code=409, detail="Manuelle Neuverarbeitung ist deaktiviert")
+
+    try:
+        async with PaperlessConnector(
+            base_url=instance.base_url,
+            api_token=decrypt_credential(instance.api_token_encrypted),
+            verify_tls=instance.verify_tls,
+        ) as connector:
+            tag = await connector.find_tag(instance.manual_reprocess_tag_name)
+            if tag is None or tag.get("id") is None:
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Trigger-Tag „{instance.manual_reprocess_tag_name}“ fehlt in Paperless",
+                )
+            document_id = await connector.find_latest_document_with_tag(str(tag["id"]))
+    except (ConnectorError, CredentialEncryptionError) as exc:
+        raise HTTPException(
+            status_code=502, detail=f"Manueller Trigger konnte nicht geprüft werden: {exc}"
+        ) from exc
+
+    if document_id is None:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Kein Dokument mit Trigger-Tag „{instance.manual_reprocess_tag_name}“ gefunden. "
+                "Tag zuerst in Paperless an ein Dokument setzen."
+            ),
+        )
+
+    payload = PaperlessWebhookPayload(
+        document_id=document_id,
+        event_id=f"manual-test-{secrets.token_urlsafe(18)}",
+    )
+    consumed_tag_id = await _verify_instance_trigger(instance, payload, "manual")
+    result = _accept_event(
+        payload,
+        Response(status_code=status.HTTP_202_ACCEPTED),
+        db,
+        connector=connector_name(instance.slug),
+        source_prefix=str(instance.id),
+    )
+    await _consume_tag_trigger(instance, payload, consumed_tag_id)
+    if not result["created"]:
+        raise HTTPException(
+            status_code=409,
+            detail=(f"Dokument {document_id} hat bereits einen aktiven Job ({result['job_id']})."),
+        )
+    return {
+        **result,
+        "document_id": document_id,
+        "detail": (
+            f"Echter Trigger-Test erfolgreich: Job {result['job_id']} für "
+            f"Paperless-Dokument {document_id} wurde angelegt."
+        ),
+    }
+
+
+@router.post(
     "/api/paperless-instances/{instance_id}/provision-workflow",
     dependencies=[Depends(require_admin_secret)],
 )
@@ -650,7 +728,9 @@ def instance_admin_page() -> str:
         <input id="edit-manual-reprocess-tag" maxlength="128" placeholder="9">
         <p class="help-text">Frei wählbar, zum Beispiel <code>9</code>,
           <code>Günther</code> oder <code>erneut-verarbeiten</code>. Das Tag wird nach
-          Annahme automatisch entfernt und kann später erneut gesetzt werden.</p></div>
+          Annahme automatisch entfernt und kann später erneut gesetzt werden.</p>
+        <button id="test-manual-reprocess" type="button">Trigger wirklich testen</button>
+      </div>
     </div>
     <div id="edit-message" class="notice" role="status" hidden></div>
     <div class="form-actions dialog-actions">
@@ -866,9 +946,56 @@ def instance_admin_page() -> str:
         showEditMessage(body.detail||`Speichern fehlgeschlagen: HTTP ${response.status}`,true);
         return;
       }
+      const provision=await fetch(
+        `/api/paperless-instances/${editingInstance.id}/provision-workflow`,
+        {method:"POST",headers:headers(false)}
+      );
+      const provisionBody=await provision.json();
+      if(!provision.ok) {
+        const detail=provisionBody.detail||`HTTP ${provision.status}`;
+        showEditMessage(
+          `Einstellungen gespeichert, aber Workflow-Einrichtung fehlgeschlagen: ${detail}`,
+          true
+        );
+        return;
+      }
       closeEditDialog();
-      showMessage(`Instanz „${body.name}“ wurde aktualisiert.`);
+      showMessage(`Instanz „${body.name}“ und Paperless-Workflows wurden aktualisiert.`);
       await loadInstances();
+    } finally { window.ezeusUI?.setBusy(button,false); }
+  });
+  document.getElementById("test-manual-reprocess").addEventListener("click",async()=>{
+    if(!editingInstance) return;
+    const button=document.getElementById("test-manual-reprocess");
+    const tagName=document.getElementById("edit-manual-reprocess-tag").value.trim();
+    if(!document.getElementById("edit-manual-reprocess-enabled").checked||!tagName) {
+      showEditMessage("Manuelle Neuverarbeitung aktivieren und Trigger-Tag eingeben.",true);
+      return;
+    }
+    window.ezeusUI?.setBusy(button,true,"Test läuft …");
+    try {
+      const update=await fetch(`/api/paperless-instances/${editingInstance.id}`,{
+        method:"PATCH",headers:headers(true),body:JSON.stringify({
+          manual_reprocess_enabled:true,manual_reprocess_tag_name:tagName
+        })
+      });
+      const updateBody=await update.json();
+      if(!update.ok) throw new Error(updateBody.detail||`HTTP ${update.status}`);
+      const provision=await fetch(
+        `/api/paperless-instances/${editingInstance.id}/provision-workflow`,
+        {method:"POST",headers:headers(false)}
+      );
+      const provisionBody=await provision.json();
+      if(!provision.ok) throw new Error(provisionBody.detail||`HTTP ${provision.status}`);
+      const response=await fetch(
+        `/api/paperless-instances/${editingInstance.id}/test-manual-trigger`,
+        {method:"POST",headers:headers(false)}
+      );
+      const result=await response.json();
+      if(!response.ok) throw new Error(result.detail||`HTTP ${response.status}`);
+      showEditMessage(result.detail,false);
+    } catch(error) {
+      showEditMessage(`Trigger-Test fehlgeschlagen: ${error.message}`,true);
     } finally { window.ezeusUI?.setBusy(button,false); }
   });
   loadInstances();

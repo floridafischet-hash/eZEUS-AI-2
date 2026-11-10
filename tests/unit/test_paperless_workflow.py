@@ -9,6 +9,37 @@ from core.config.settings import Settings
 
 
 @pytest.mark.asyncio
+async def test_find_latest_document_with_tag_uses_exact_tag_filter(monkeypatch) -> None:
+    requests: list[httpx.Request] = []
+    monkeypatch.setattr("core.security.outbound.resolve_hosts", lambda _host: ["203.0.113.10"])
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200, json={"results": [{"id": 257}]}, request=request)
+
+    connector = PaperlessConnector(
+        base_url="https://paperless.example.test",
+        api_token="token",
+    )
+    connector._settings = Settings(outbound_block_private_networks=False)
+    monkeypatch.setattr(
+        connector,
+        "_client",
+        lambda: httpx.AsyncClient(
+            base_url=connector.base_url,
+            headers={"Authorization": "Token token"},
+            transport=httpx.MockTransport(handler),
+        ),
+    )
+
+    assert await connector.find_latest_document_with_tag("55") == "257"
+    request = requests[0]
+    assert request.url.params["tags__id__all"] == "55"
+    assert request.url.params["ordering"] == "-modified"
+    assert request.url.params["page_size"] == "1"
+
+
+@pytest.mark.asyncio
 async def test_optional_workflow_features_are_disabled_by_default(monkeypatch) -> None:
     requests: list[httpx.Request] = []
     monkeypatch.setattr("core.security.outbound.resolve_hosts", lambda _host: ["203.0.113.10"])
