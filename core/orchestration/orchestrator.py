@@ -13,6 +13,7 @@ from core.correspondents.matcher import (
     match_correspondent,
 )
 from core.field_config.service import FieldConfigurationService, RuntimeFieldConfiguration
+from core.logging import bind_log_context, describe_exception, log_context
 from core.metrics import JOBS_TOTAL, PHASE_DURATION_SECONDS
 from core.models.audit import AuditEntry
 from core.models.enums import JobPhase, JobStatus, PhaseStatus
@@ -73,6 +74,7 @@ class Orchestrator:
         )
         self.db.add(entry)
         self.db.commit()
+        bind_log_context(phase=phase.value)
         logger.info(
             "Verarbeitungsschritt gestartet: %s",
             phase.value,
@@ -99,7 +101,7 @@ class Orchestrator:
         extra = self._log_extra(job, entry.phase.value) if job else {"phase": entry.phase.value}
         if error:
             logger.warning(
-                "Verarbeitungsschritt fehlgeschlagen: %s; Ursache=%s; Auftrag wird beendet",
+                "Verarbeitungsschritt fehlgeschlagen: %s; Ursache=%s",
                 entry.phase.value,
                 error,
                 extra=extra,
@@ -107,11 +109,41 @@ class Orchestrator:
         else:
             logger.info("Verarbeitungsschritt abgeschlossen: %s", entry.phase.value, extra=extra)
 
+    def _note_problem(
+        self,
+        problems: list[dict[str, object]],
+        step: str,
+        message: str,
+        exc: Exception,
+        **fields: object,
+    ) -> None:
+        """Log a failure the job continues past, and keep it for the phase record."""
+
+        description = redact_sensitive_text(describe_exception(exc), limit=500)
+        error_type = type(exc).__name__
+        logger.warning(
+            "%s; Ursache: %s: %s",
+            message,
+            error_type,
+            description,
+            exc_info=exc,
+            extra={"step": step, "error_type": error_type, **fields},
+        )
+        problems.append({"step": step, "error_type": error_type, "error": description, **fields})
+
     async def process(self, job_id: UUID) -> None:
         job = self.db.get(Job, job_id)
         if job is None:
             raise ValueError(f"Unknown job: {job_id}")
-        connector = self.connector or connector_for_document(self.db, job.document.connector)
+        with log_context(
+            job_id=str(job.id),
+            instance_slug=instance_slug_from_connector(job.document.connector),
+            document_id=job.document.external_document_id,
+        ):
+            await self._process(job)
+
+    async def _process(self, job: Job) -> None:
+        connector: DocumentConnector | None = None
         job.status = JobStatus.RUNNING
         job.started_at = datetime.now(UTC)
         job.error_type = None
@@ -120,7 +152,10 @@ class Orchestrator:
         logger.info("Dokumentenauftrag gestartet", extra=self._log_extra(job))
 
         active_phase: JobPhaseEntry | None = None
+        current_field: str | None = None
+        current_provider: str | None = None
         try:
+            connector = self.connector or connector_for_document(self.db, job.document.connector)
             active_phase = self._start_phase(job, JobPhase.LOAD_DOCUMENT)
             remote = await connector.get_document(job.document.external_document_id)
             validate_paperless_document(mime_type=remote.mime_type, content=remote.content)
@@ -204,6 +239,11 @@ class Orchestrator:
                     job.status = JobStatus.COMPLETED_WITH_WARNINGS
                     job.finished_at = datetime.now(UTC)
                     self.db.commit()
+                    logger.warning(
+                        "Keine Vorlage für Dokumenttyp %s gefunden; "
+                        "Auftrag endet ohne Feldverarbeitung",
+                        document.document_type_external_id,
+                    )
                     slug = instance_slug_from_connector(job.document.connector) or ""
                     JOBS_TOTAL.labels(status=job.status.value, instance_slug=slug).inc()
                     return
@@ -218,6 +258,8 @@ class Orchestrator:
             candidates_by_field: dict[str, list[tuple[ExtractionCandidate, ExtractionResult]]] = {}
             fields_outside_document_type: set[str] = set()
             scoped_document_type_name = ""
+            document_type_lookup_failed = False
+            extraction_problems: list[dict[str, object]] = []
             if (
                 runtime_fields is not None
                 and runtime_fields.field_document_type_names
@@ -228,9 +270,24 @@ class Orchestrator:
                     scoped_document_type_name = (
                         await connector.get_document_type_name(remote.document_type_id) or ""
                     )
-                except Exception:  # noqa: BLE001 -- scoped fields fail closed
+                except Exception as exc:  # noqa: BLE001 -- scoped fields fail closed
                     scoped_document_type_name = ""
+                    self._note_problem(
+                        extraction_problems,
+                        "document_type_lookup",
+                        "Dokumenttyp konnte nicht geladen werden",
+                        exc,
+                        document_type_id=remote.document_type_id,
+                    )
+                if not scoped_document_type_name:
+                    document_type_lookup_failed = True
+                    logger.warning(
+                        "Name des Dokumenttyps %s unbekannt; Felder mit Dokumenttyp-Beschränkung "
+                        "werden für dieses Dokument übersprungen",
+                        remote.document_type_id,
+                    )
             for field_key, field in config.fields.items():
+                current_field = field_key
                 persisted: list[tuple[ExtractionCandidate, ExtractionResult]] = []
                 allowed_document_types = (
                     runtime_fields.field_document_type_names.get(field_key)
@@ -244,6 +301,7 @@ class Orchestrator:
                     candidates_by_field[field_key] = persisted
                     continue
                 for provider_config in field.providers:
+                    current_provider = provider_config.type
                     provider_data = provider_config.model_dump(exclude={"type"})
                     for candidate in await PROVIDERS[provider_config.type]().extract(
                         extraction_text, provider_data
@@ -267,21 +325,30 @@ class Orchestrator:
                         self.db.add(result)
                         persisted.append((candidate, result))
                 candidates_by_field[field_key] = persisted
+            current_field = None
+            current_provider = None
             self.db.commit()
-            self._finish_phase(
-                active_phase,
-                metadata={
-                    "fields_configured": len(config.fields),
-                    "candidates_found": sum(len(items) for items in candidates_by_field.values()),
-                    "text_source": extraction_source,
-                    "text_characters": len(extraction_text),
-                },
-            )
+            extraction_metadata: dict[str, object] = {
+                "fields_configured": len(config.fields),
+                "candidates_found": sum(len(items) for items in candidates_by_field.values()),
+                "text_source": extraction_source,
+                "text_characters": len(extraction_text),
+            }
+            if fields_outside_document_type:
+                extraction_metadata["fields_outside_document_type"] = sorted(
+                    fields_outside_document_type
+                )
+            if document_type_lookup_failed:
+                extraction_metadata["document_type_lookup_failed"] = True
+            if extraction_problems:
+                extraction_metadata["problems"] = extraction_problems
+            self._finish_phase(active_phase, metadata=extraction_metadata)
 
             active_phase = self._start_phase(job, JobPhase.VALIDATE_RESULTS)
             extracted_values: dict[str, object] = {}
             extracted_by_key: dict[str, object] = {}
             for field_key, field in config.fields.items():
+                current_field = field_key
                 valid: list[tuple[float, object, ExtractionResult]] = []
                 validators = [item.model_dump() for item in field.validators]
                 for candidate, result in candidates_by_field[field_key]:
@@ -380,6 +447,7 @@ class Orchestrator:
                 elif len(distinct) > 1:
                     for _, _, result in valid:
                         result.reason = "Conflicting validated candidates"
+            current_field = None
             self.db.commit()
             missing_fields = [
                 field_key
@@ -388,6 +456,14 @@ class Orchestrator:
                 and field_key not in fields_outside_document_type
                 and (field_key not in extracted_by_key or field.target_field_id is None)
             ]
+            if missing_fields:
+                logger.warning(
+                    "Pflichtfelder ohne übernehmbaren Wert: %s",
+                    ", ".join(
+                        f"{field_key} (Kandidaten={len(candidates_by_field[field_key])})"
+                        for field_key in missing_fields
+                    ),
+                )
             self._finish_phase(
                 active_phase,
                 metadata={
@@ -404,6 +480,7 @@ class Orchestrator:
             )
 
             active_phase = self._start_phase(job, JobPhase.WRITE_METADATA)
+            write_problems: list[dict[str, object]] = []
             correspondent_written = False
             correspondent_match = None
             correspondent_enabled = (
@@ -413,13 +490,12 @@ class Orchestrator:
                 try:
                     correspondents = await connector.list_correspondents()
                 except Exception as exc:  # noqa: BLE001 -- continue with remaining metadata
-                    logger.warning(
+                    self._note_problem(
+                        write_problems,
+                        "correspondent_list",
                         "Korrespondentenliste konnte nicht geladen werden; "
-                        "Zuordnung wird übersprungen",
-                        extra={
-                            "instance": instance.slug if instance is not None else None,
-                            "error_type": type(exc).__name__,
-                        },
+                        "Zuordnung läuft ohne Liste weiter",
+                        exc,
                     )
                     correspondents = []
                 rule_enabled = (
@@ -431,13 +507,12 @@ class Orchestrator:
                     try:
                         correspondent_match = match_correspondent(extraction_text, correspondents)
                     except Exception as exc:  # noqa: BLE001 -- use fallback and continue
-                        logger.warning(
+                        self._note_problem(
+                            write_problems,
+                            "correspondent_match",
                             "Korrespondent konnte nicht zugeordnet werden; "
                             "Ersatzverfahren wird geprüft",
-                            extra={
-                                "instance": instance.slug if instance is not None else None,
-                                "error_type": type(exc).__name__,
-                            },
+                            exc,
                         )
                 ai_enabled = (
                     runtime_fields.correspondent_ai_enabled if runtime_fields is not None else False
@@ -457,13 +532,12 @@ class Orchestrator:
                             )
                         )
                     except Exception as exc:
-                        logger.warning(
+                        self._note_problem(
+                            write_problems,
+                            "correspondent_ai",
                             "KI-Korrespondentenvorschlag fehlgeschlagen; "
                             "regelbasierter Ersatz wird verwendet",
-                            extra={
-                                "instance": instance.slug if instance is not None else None,
-                                "error_type": type(exc).__name__,
-                            },
+                            exc,
                         )
                         selected_correspondent = None
                     if selected_correspondent is not None:
@@ -483,13 +557,12 @@ class Orchestrator:
                                 correspondents,
                             )
                         except Exception as exc:  # noqa: BLE001 -- title and fields must still run
-                            logger.warning(
-                                "Regelbasierte Korrespondentenzuordnung fehlgeschlagen; "
+                            self._note_problem(
+                                write_problems,
+                                "correspondent_fallback",
+                                "Ersatz-Korrespondent konnte nicht angelegt werden; "
                                 "Feld bleibt unverändert",
-                                extra={
-                                    "instance": instance.slug if instance is not None else None,
-                                    "error_type": type(exc).__name__,
-                                },
+                                exc,
                             )
                     if fallback is not None:
                         correspondent_match = CorrespondentMatch(
@@ -506,13 +579,13 @@ class Orchestrator:
                             correspondent_match.correspondent_id,
                         )
                     except Exception as exc:  # noqa: BLE001 -- title and fields must still run
-                        logger.warning(
+                        self._note_problem(
+                            write_problems,
+                            "correspondent_write",
                             "Korrespondent konnte nicht geschrieben werden; "
                             "übrige Metadaten werden fortgesetzt",
-                            extra={
-                                "instance": instance.slug if instance is not None else None,
-                                "error_type": type(exc).__name__,
-                            },
+                            exc,
+                            correspondent_id=correspondent_match.correspondent_id,
                         )
                         if correspondent_match.source != "default_fallback":
                             try:
@@ -536,15 +609,12 @@ class Orchestrator:
                                     line_number=-1,
                                 )
                             except Exception as fallback_exc:  # noqa: BLE001
-                                logger.warning(
+                                self._note_problem(
+                                    write_problems,
+                                    "correspondent_fallback",
                                     "Ersatz-Korrespondent konnte nicht geschrieben werden; "
                                     "Feld bleibt unverändert",
-                                    extra={
-                                        "instance": (
-                                            instance.slug if instance is not None else None
-                                        ),
-                                        "error_type": type(fallback_exc).__name__,
-                                    },
+                                    fallback_exc,
                                 )
                     if correspondent_written:
                         self._audit(
@@ -573,12 +643,11 @@ class Orchestrator:
                         runtime_fields.title_instructions,
                     )
                 except Exception as exc:
-                    logger.warning(
+                    self._note_problem(
+                        write_problems,
+                        "title_ai",
                         "KI-Titelerzeugung fehlgeschlagen; Titelregel wird als Ersatz geprüft",
-                        extra={
-                            "instance": instance.slug if instance is not None else None,
-                            "error_type": type(exc).__name__,
-                        },
+                        exc,
                     )
             title_rule_enabled = (
                 runtime_fields.title_rule_enabled if runtime_fields is not None else True
@@ -588,12 +657,12 @@ class Orchestrator:
                 try:
                     new_title = render_title(title_template, context)
                 except Exception as exc:  # noqa: BLE001 -- custom fields must still run
-                    logger.warning(
+                    self._note_problem(
+                        write_problems,
+                        "title_template",
                         "Titelvorlage ist ungültig; Rechnungsnummer wird ersatzweise verwendet",
-                        extra={
-                            "instance": instance.slug if instance is not None else None,
-                            "placeholder": getattr(exc, "name", None),
-                        },
+                        exc,
+                        placeholder=getattr(exc, "name", None),
                     )
                     new_title = str(invoice_number) if invoice_number is not None else None
             elif (
@@ -607,13 +676,12 @@ class Orchestrator:
                 try:
                     title_written = await connector.write_title(before_write, new_title)
                 except Exception as exc:  # noqa: BLE001 -- custom fields must still run
-                    logger.warning(
+                    self._note_problem(
+                        write_problems,
+                        "title_write",
                         "Dokumenttitel konnte nicht geschrieben werden; "
                         "benutzerdefinierte Felder laufen weiter",
-                        extra={
-                            "instance": instance.slug if instance is not None else None,
-                            "error_type": type(exc).__name__,
-                        },
+                        exc,
                     )
                 if title_written:
                     self._audit(
@@ -632,14 +700,13 @@ class Orchestrator:
                         {field_id: value},
                     )
                 except Exception as exc:  # noqa: BLE001 -- try every remaining field
-                    logger.warning(
-                        "Benutzerdefiniertes Feld konnte nicht geschrieben werden; "
+                    self._note_problem(
+                        write_problems,
+                        "custom_field_write",
+                        f"Benutzerdefiniertes Feld {field_id} konnte nicht geschrieben werden; "
                         "weitere Felder laufen weiter",
-                        extra={
-                            "instance": instance.slug if instance is not None else None,
-                            "field_id": field_id,
-                            "error_type": type(exc).__name__,
-                        },
+                        exc,
+                        field_id=field_id,
                     )
                     continue
                 for written_field_id, written_value in field_changed.items():
@@ -661,24 +728,24 @@ class Orchestrator:
             ):
                 missing_fields.append("correspondent")
             all_fields_extracted = not missing_fields
-            self._finish_phase(
-                active_phase,
-                metadata={
-                    "fields_written": len(changed),
-                    "title_written": title_written,
-                    "correspondent_written": correspondent_written,
-                    "correspondent_match": (
-                        {
-                            "id": correspondent_match.correspondent_id,
-                            "name": correspondent_match.name,
-                            "score": round(correspondent_match.score, 4),
-                            "source": correspondent_match.source,
-                        }
-                        if correspondent_match is not None
-                        else None
-                    ),
-                },
-            )
+            write_metadata: dict[str, object] = {
+                "fields_written": len(changed),
+                "title_written": title_written,
+                "correspondent_written": correspondent_written,
+                "correspondent_match": (
+                    {
+                        "id": correspondent_match.correspondent_id,
+                        "name": correspondent_match.name,
+                        "score": round(correspondent_match.score, 4),
+                        "source": correspondent_match.source,
+                    }
+                    if correspondent_match is not None
+                    else None
+                ),
+            }
+            if write_problems:
+                write_metadata["problems"] = write_problems
+            self._finish_phase(active_phase, metadata=write_metadata)
 
             active_phase = self._start_phase(job, JobPhase.CLEANUP)
             self._finish_phase(active_phase)
@@ -690,28 +757,66 @@ class Orchestrator:
             self._finish_phase(active_phase)
             slug = instance_slug_from_connector(job.document.connector) or ""
             JOBS_TOTAL.labels(status=job.status.value, instance_slug=slug).inc()
-            logger.info(
-                "Dokumentenauftrag abgeschlossen: %s", job.status.value, extra=self._log_extra(job)
-            )
+            if write_problems:
+                logger.warning(
+                    "Dokumentenauftrag mit Status %s abgeschlossen, aber %d Metadaten-Schritte "
+                    "sind fehlgeschlagen: %s",
+                    job.status.value,
+                    len(write_problems),
+                    ", ".join(str(problem["step"]) for problem in write_problems),
+                    extra=self._log_extra(job),
+                )
+            else:
+                logger.info(
+                    "Dokumentenauftrag abgeschlossen: %s",
+                    job.status.value,
+                    extra=self._log_extra(job),
+                )
         except Exception as exc:
-            if active_phase and active_phase.status == PhaseStatus.RUNNING:
-                self._finish_phase(active_phase, error=type(exc).__name__)
-            job.status = JobStatus.FAILED
-            job.error_type = type(exc).__name__
-            job.error_message = redact_sensitive_text(exc)
-            job.finished_at = datetime.now(UTC)
-            self.db.commit()
-            slug = instance_slug_from_connector(job.document.connector) or ""
-            JOBS_TOTAL.labels(status=JobStatus.FAILED.value, instance_slug=slug).inc()
+            if current_field is not None:
+                location = f"field={current_field}"
+                if current_provider is not None:
+                    location += f", provider={current_provider}"
+                exc.add_note(location)
+            error_type = type(exc).__name__
+            error_message = redact_sensitive_text(describe_exception(exc))
+            retryable = bool(getattr(exc, "retryable", False))
+            # Logged first: recording the failure below can fail too, for example
+            # when the database is the cause.
             logger.error(
-                "Dokumentenauftrag fehlgeschlagen: %s; Verarbeitung wurde beendet",
-                type(exc).__name__,
+                "Verarbeitungsversuch fehlgeschlagen: %s: %s; %s",
+                error_type,
+                error_message,
+                (
+                    "Worker prüft die automatische Wiederholung"
+                    if retryable
+                    else "keine automatische Wiederholung"
+                ),
                 exc_info=exc,
-                extra=self._log_extra(job),
+                extra={"error_type": error_type, "retryable": retryable},
             )
+            try:
+                if not self.db.is_active:
+                    self.db.rollback()
+                if active_phase and active_phase.status == PhaseStatus.RUNNING:
+                    self._finish_phase(active_phase, error=error_type)
+                job.status = JobStatus.FAILED
+                job.error_type = error_type
+                job.error_message = error_message
+                job.finished_at = datetime.now(UTC)
+                self.db.commit()
+                slug = instance_slug_from_connector(job.document.connector) or ""
+                JOBS_TOTAL.labels(status=JobStatus.FAILED.value, instance_slug=slug).inc()
+            except Exception as record_exc:
+                logger.error(
+                    "Fehlerstatus konnte nicht gespeichert werden; Auftrag bleibt bis zur "
+                    "Stillstandsprüfung im bisherigen Status",
+                    exc_info=record_exc,
+                )
             raise
         finally:
-            await connector.close()
+            if connector is not None:
+                await connector.close()
 
     async def _build_title_context(
         self,
@@ -734,13 +839,21 @@ class Orchestrator:
         if document.correspondent_id and hasattr(connector, "get_correspondent_name"):
             try:
                 name = await connector.get_correspondent_name(document.correspondent_id)
-            except Exception:  # noqa: BLE001 -- best-effort enrichment
+            except Exception as exc:  # noqa: BLE001 -- best-effort enrichment
+                logger.warning(
+                    "Korrespondentenname für Titel nicht verfügbar; Platzhalter bleibt leer",
+                    exc_info=exc,
+                )
                 name = None
             context["correspondent"] = name or ""
         if document.document_type_id and hasattr(connector, "get_document_type_name"):
             try:
                 name = await connector.get_document_type_name(document.document_type_id)
-            except Exception:  # noqa: BLE001 -- best-effort enrichment
+            except Exception as exc:  # noqa: BLE001 -- best-effort enrichment
+                logger.warning(
+                    "Dokumenttyp für Titel nicht verfügbar; Platzhalter bleibt leer",
+                    exc_info=exc,
+                )
                 name = None
             context["document_type"] = name or ""
         return context

@@ -4,6 +4,15 @@ Alle wesentlichen Änderungen an eZEUS-AI-2 werden in dieser Datei dokumentiert.
 
 ## Unveröffentlicht
 
+- Fehlerpfade der Dokumentverarbeitung besser diagnostizierbar gemacht: Logs
+  enthalten alle strukturierten Zusatzfelder, redigierte Tracebacks sowie
+  Auftrags-, Dokument- und Schrittbezug auch für Connector-Meldungen.
+  Fehlertexte nennen Anfrage, Feld und Anbieter sowie die redigierte Antwort
+  von Paperless oder Ollama. Fehlgeschlagene Metadaten-Schritte erscheinen im
+  Log, in den Schrittdaten und als Dashboard-Warnung. Fehler beim Aufbau der
+  Paperless-Verbindung beenden den Auftrag jetzt als `FAILED`, statt ihn ohne
+  Meldung in `RUNNING` zu belassen.
+
 - Optionales Lieferscheinnummer-Profil für explizite Beschriftungen,
   `LI`-Tabellenlayouts und wiederkehrende OCR-Abweichungen ergänzt; der neue
   Titelplatzhalter `{delivery_note_number}` ermöglicht Titel wie

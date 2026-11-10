@@ -9,6 +9,7 @@ from connectors.base.interface import ConnectorCorrespondent
 from core.config.settings import get_settings
 from core.paperless.title_template import MAX_TITLE_LENGTH
 from core.security.outbound import stream_capped, validate_outbound_url
+from plugins.llm.diagnostics import add_ollama_request_note, parse_ollama_content
 
 
 class OllamaMetadataProvider:
@@ -76,13 +77,18 @@ class OllamaMetadataProvider:
             )
             response.raise_for_status()
             body = response.json()
+        except Exception as exc:
+            add_ollama_request_note(
+                exc, url=request_url, model=self.model, timeout_seconds=self.timeout_seconds
+            )
+            raise
         finally:
             if owns_client:
                 await client.aclose()
         message = body.get("message")
         if not isinstance(message, dict) or not isinstance(message.get("content"), str):
             raise ValueError("Ollama response does not contain JSON content")
-        result = json.loads(message["content"])
+        result = parse_ollama_content(message["content"], body, model=self.model)
         if not isinstance(result, dict):
             raise ValueError("Ollama response is not a JSON object")
         return result

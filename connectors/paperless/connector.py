@@ -22,12 +22,14 @@ from connectors.base.interface import (
     DocumentConnector,
 )
 from core.config.settings import get_settings
+from core.logging import describe_exception
 from core.security.outbound import (
     DisallowedOutboundHost,
     DownloadTooLargeError,
     stream_capped,
     validate_outbound_url,
 )
+from core.security.redaction import response_excerpt
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +48,34 @@ def _path_id(value: object) -> str:
     if not _PATH_ID_PATTERN.fullmatch(text):
         raise ValidationError("Invalid Paperless object id")
     return text
+
+
+def _transport_error(exc: Exception) -> str:
+    return f"{type(exc).__name__}: {describe_exception(exc)}"
+
+
+def _json_body(response: httpx.Response) -> dict[str, Any]:
+    """Decode a Paperless JSON object, naming the request when it is something else.
+
+    A reverse proxy or login page can answer with HTTP 200 and HTML, for which the
+    decoder alone only reports "Expecting value: line 1 column 1".
+    """
+
+    def origin() -> str:
+        return (
+            f"HTTP {response.status_code} from {response.request.method} {response.request.url}, "
+            f"content type {response.headers.get('content-type', 'unknown')}"
+        )
+
+    try:
+        data = response.json()
+    except ValueError as exc:
+        logger.error("Paperless-Antwort ist kein gültiges JSON: %s", origin())
+        raise ValidationError(f"Paperless response is not valid JSON: {origin()}") from exc
+    if not isinstance(data, dict):
+        logger.error("Paperless-Antwort ist kein JSON-Objekt: %s", origin())
+        raise ValidationError(f"Paperless response is not a JSON object: {origin()}")
+    return data
 
 
 class PaperlessConnector(DocumentConnector):
@@ -120,7 +150,9 @@ class PaperlessConnector(DocumentConnector):
                 request_url,
                 exc_info=exc,
             )
-            raise TimeoutError(str(exc)) from exc
+            raise TimeoutError(
+                f"Paperless request timed out: {method} {request_url} ({_transport_error(exc)})"
+            ) from exc
         except DownloadTooLargeError as exc:
             logger.error(
                 "Paperless-Antwort überschreitet die Größenbegrenzung: %s %s; "
@@ -137,59 +169,52 @@ class PaperlessConnector(DocumentConnector):
                 request_url,
                 exc_info=exc,
             )
-            raise ConnectionError(str(exc)) from exc
+            raise ConnectionError(
+                f"Paperless connection failed: {method} {request_url} ({_transport_error(exc)})"
+            ) from exc
         del body
         request_url = str(response.request.url)
-        if response.status_code == 401:
+        status_code = response.status_code
+        origin = f"HTTP {status_code} from {method} {request_url}"
+        if status_code == 401:
+            logger.warning("Paperless-Anmeldung abgelehnt: %s; Zugriff beendet", origin)
+            raise AuthenticationError(f"Paperless authentication failed: {origin}")
+        if status_code == 403:
+            logger.warning("Paperless-Berechtigung fehlt: %s; Zugriff beendet", origin)
+            raise AuthorizationError(f"Paperless authorization failed: {origin}")
+        if status_code == 404:
+            logger.warning("Paperless-Ressource fehlt: %s; Schritt abgebrochen", origin)
+            raise NotFoundError(f"Paperless resource not found: {origin}")
+        if status_code == 409:
+            detail = f"{origin}: {response_excerpt(response.text)}"
             logger.warning(
-                "Paperless-Anmeldung abgelehnt: HTTP 401 von %s; Zugriff beendet", request_url
+                "Paperless meldet einen Zustandskonflikt: %s; Änderung nicht übernommen", detail
             )
-            raise AuthenticationError(
-                f"Paperless authentication failed: HTTP 401 from {request_url}"
-            )
-        if response.status_code == 403:
+            raise ConflictError(f"Paperless reported a conflict: {detail}")
+        if status_code == 429:
+            retry_after = response.headers.get("retry-after", "not specified")
+            detail = f"{origin}, Retry-After: {retry_after}"
             logger.warning(
-                "Paperless-Berechtigung fehlt: HTTP 403 von %s; Zugriff beendet", request_url
+                "Paperless-Anfragelimit erreicht: %s; Auftrag wird später wiederholt", detail
             )
-            raise AuthorizationError(f"Paperless authorization failed: HTTP 403 from {request_url}")
-        if response.status_code == 404:
+            raise RateLimitError(f"Paperless rate limit exceeded: {detail}")
+        if status_code in {400, 422}:
+            detail = f"{origin}: {response_excerpt(response.text)}"
             logger.warning(
-                "Paperless-Ressource fehlt: HTTP 404 von %s; Schritt abgebrochen", request_url
+                "Paperless hat die Anfrage abgelehnt: %s; Eingaben werden verworfen", detail
             )
-            raise NotFoundError(f"Paperless resource not found: HTTP 404 from {request_url}")
-        if response.status_code == 409:
-            logger.warning(
-                "Paperless meldet einen Zustandskonflikt: %s; Änderung nicht übernommen",
-                request_url,
-            )
-            raise ConflictError("Paperless reported a conflict")
-        if response.status_code == 429:
-            logger.warning(
-                "Paperless-Anfragelimit erreicht: %s; Auftrag wird später wiederholt", request_url
-            )
-            raise RateLimitError("Paperless rate limit exceeded")
-        if response.status_code in {400, 422}:
-            logger.warning(
-                "Paperless hat die Anfrage abgelehnt: HTTP %d von %s; Eingaben werden verworfen",
-                response.status_code,
-                request_url,
-            )
-            raise ValidationError(
-                f"Paperless rejected the request: HTTP {response.status_code} from {request_url}"
-            )
-        if response.status_code >= 500:
-            logger.error(
-                "Paperless-Serverfehler: HTTP %d von %s; Verarbeitung wird unterbrochen",
-                response.status_code,
-                request_url,
-            )
-            raise ConnectionError(f"Paperless server error: HTTP {response.status_code}")
+            raise ValidationError(f"Paperless rejected the request: {detail}")
+        if status_code >= 500:
+            detail = f"{origin}: {response_excerpt(response.text)}"
+            logger.error("Paperless-Serverfehler: %s; Verarbeitung wird unterbrochen", detail)
+            raise ConnectionError(f"Paperless server error: {detail}")
         try:
             response.raise_for_status()
         except httpx.HTTPStatusError as exc:
-            raise ValidationError(
-                f"Unexpected Paperless response: HTTP {response.status_code}"
-            ) from exc
+            location = response.headers.get("location")
+            detail = f"{origin}, redirect to {location}" if location else origin
+            logger.error("Unerwartete Paperless-Antwort: %s; Anfrage abgebrochen", detail)
+            raise ValidationError(f"Unexpected Paperless response: {detail}") from exc
         return response
 
     async def health_check(self) -> bool:
@@ -618,7 +643,7 @@ class PaperlessConnector(DocumentConnector):
 
     async def get_document(self, external_document_id: str) -> ConnectorDocument:
         response = await self._request("GET", f"/api/documents/{_path_id(external_document_id)}/")
-        data = response.json()
+        data = _json_body(response)
         fields = {str(item["field"]): item.get("value") for item in data.get("custom_fields", [])}
         return ConnectorDocument(
             external_id=str(data["id"]),
@@ -642,9 +667,14 @@ class PaperlessConnector(DocumentConnector):
             response = await self._request(
                 "GET", f"/api/document_types/{_path_id(document_type_id)}/"
             )
-        except Exception:  # noqa: BLE001 -- name lookup is best-effort
+        except Exception as exc:  # noqa: BLE001 -- name lookup is best-effort
+            logger.warning(
+                "%s konnte nicht gelesen werden; Name bleibt leer",
+                f"Dokumenttyp {document_type_id}",
+                exc_info=exc,
+            )
             return None
-        payload = response.json()
+        payload = _json_body(response)
         name = payload.get("name")
         return str(name) if name else None
 
@@ -653,9 +683,14 @@ class PaperlessConnector(DocumentConnector):
             response = await self._request(
                 "GET", f"/api/correspondents/{_path_id(correspondent_id)}/"
             )
-        except Exception:  # noqa: BLE001 -- name lookup is best-effort
+        except Exception as exc:  # noqa: BLE001 -- name lookup is best-effort
+            logger.warning(
+                "%s konnte nicht gelesen werden; Name bleibt leer",
+                f"Korrespondent {correspondent_id}",
+                exc_info=exc,
+            )
             return None
-        payload = response.json()
+        payload = _json_body(response)
         name = payload.get("name")
         return str(name) if name else None
 
@@ -664,7 +699,7 @@ class PaperlessConnector(DocumentConnector):
         url = "/api/custom_fields/?page_size=100"
         while url:
             response = await self._request("GET", url)
-            data = response.json()
+            data = _json_body(response)
             fields.extend(
                 ConnectorCustomField(
                     external_id=str(item["id"]),
@@ -755,7 +790,7 @@ class PaperlessConnector(DocumentConnector):
         url = "/api/correspondents/?page_size=100"
         while url:
             response = await self._request("GET", url)
-            data = response.json()
+            data = _json_body(response)
             correspondents.extend(
                 ConnectorCorrespondent(
                     external_id=str(item["id"]),
@@ -808,7 +843,7 @@ class PaperlessConnector(DocumentConnector):
             if existing is None:
                 raise
             return existing
-        item = response.json()
+        item = _json_body(response)
         return ConnectorCorrespondent(
             external_id=str(item["id"]),
             name=str(item["name"]),

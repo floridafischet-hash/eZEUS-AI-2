@@ -127,6 +127,7 @@ def explain_error(
     *,
     document_id: str | None = None,
     field: str | None = None,
+    retries_ended: bool = False,
 ) -> dict[str, str]:
     """Create a redacted, user-facing explanation without persisting new data."""
     kind = error_type or "UnbekannterFehler"
@@ -142,11 +143,12 @@ def explain_error(
         "RetryableEmptyTextError",
         "StalledJob",
     }
-    retry_text = (
-        "eZEUS wiederholt den Vorgang automatisch."
-        if retryable
-        else "eZEUS wiederholt diesen Fehler nicht automatisch."
-    )
+    if retries_ended:
+        retry_text = "Der Auftrag ist beendet; eZEUS wiederholt ihn nicht mehr automatisch."
+    elif retryable:
+        retry_text = "eZEUS wiederholt den Vorgang automatisch."
+    else:
+        retry_text = "eZEUS wiederholt diesen Fehler nicht automatisch."
 
     if kind in {"AuthenticationError", "AuthorizationError"}:
         reason = "Die Anmeldung oder Berechtigung an Paperless wurde abgelehnt."
@@ -263,6 +265,12 @@ def derive_step_warnings(phase_name: str, metadata: dict[str, object]) -> list[d
                 "Paperless hat noch keinen verwertbaren OCR-Text geliefert.",
                 "OCR in Paperless abschließen lassen und den Auftrag erneut starten.",
             )
+        if metadata.get("document_type_lookup_failed"):
+            add(
+                "Name des Dokumenttyps konnte nicht ermittelt werden.",
+                "Felder mit Dokumenttyp-Beschränkung wurden für dieses Dokument übersprungen.",
+                "Paperless-Erreichbarkeit prüfen und das Dokument neu verarbeiten.",
+            )
     if phase_name == "VALIDATE_RESULTS":
         missing = metadata.get("missing_fields") or []
         if isinstance(missing, list) and missing:
@@ -285,7 +293,19 @@ def derive_step_warnings(phase_name: str, metadata: dict[str, object]) -> list[d
             or bool(metadata.get("title_written"))
             or bool(metadata.get("correspondent_written"))
         )
-        if not wrote_any and metadata:
+        problems = metadata.get("problems") or []
+        if isinstance(problems, list) and problems:
+            add(
+                "Metadaten-Schritte fehlgeschlagen: "
+                + ", ".join(
+                    f"{item.get('step')} ({item.get('error_type')})"
+                    for item in problems
+                    if isinstance(item, dict)
+                ),
+                "; ".join(str(item.get("error")) for item in problems if isinstance(item, dict)),
+                "Fehlermeldung prüfen, Ursache beheben und das Dokument neu verarbeiten.",
+            )
+        elif not wrote_any and metadata:
             add(
                 "Keine Metadaten in Paperless geschrieben (keine übernehmbaren Werte).",
                 "Es gab keinen validierten freien Zielwert oder vorhandene Werte wurden geschützt.",
@@ -1151,6 +1171,7 @@ def processing_logs(
                     document_id=document.external_document_id,
                     field=str(step_metadata.get("field") or step_metadata.get("field_id") or "")
                     or None,
+                    retries_ended=job.status == JobStatus.FAILED,
                 )
                 if error
                 else None
@@ -1194,6 +1215,7 @@ def processing_logs(
                 job.error_message,
                 error_phase,
                 document_id=document.external_document_id,
+                retries_ended=job.status == JobStatus.FAILED,
             )
             if job.error_type or job.error_message
             else None
