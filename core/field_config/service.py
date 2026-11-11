@@ -15,6 +15,7 @@ from core.field_config.schemas import FieldConfigurationInput
 from core.models.audit import AuditEntry
 from core.models.instance_field_config import InstanceFieldConfig
 from core.models.paperless_instance import PaperlessInstance
+from core.paperless.title_template import ALLOWED_PLACEHOLDERS, BUILTIN_PLACEHOLDERS
 from core.templates.automatic import FIELD_DEFINITIONS
 from core.templates.schema import TemplateConfig
 
@@ -263,6 +264,36 @@ class FieldConfigurationService:
             )
         )
 
+    def title_placeholder_catalog(self, instance: PaperlessInstance) -> list[dict[str, str]]:
+        """Return every title placeholder available for one instance."""
+
+        catalog = [
+            {"name": name, "label": label, "source": "Dokumentmetadaten"}
+            for name, label in BUILTIN_PLACEHOLDERS.items()
+        ]
+        known = set(BUILTIN_PLACEHOLDERS)
+        for field in self.ensure_defaults(instance):
+            if not field.enabled or field.field_key in {"title", "correspondent"}:
+                continue
+            if field.field_key not in known:
+                catalog.append(
+                    {"name": field.field_key, "label": field.label, "source": "eZEUS-Feld"}
+                )
+                known.add(field.field_key)
+            if field.extraction_profile and field.extraction_profile not in known:
+                catalog.append(
+                    {
+                        "name": field.extraction_profile,
+                        "label": field.label,
+                        "source": "Extraktionsprofil",
+                    }
+                )
+                known.add(field.extraction_profile)
+        return catalog
+
+    def title_placeholder_names(self, instance: PaperlessInstance) -> frozenset[str]:
+        return frozenset(item["name"] for item in self.title_placeholder_catalog(instance))
+
     @staticmethod
     def serialize(field: InstanceFieldConfig) -> dict[str, object]:
         return {
@@ -294,6 +325,8 @@ class FieldConfigurationService:
         seen: set[str] = set()
         for payload in payloads:
             key = payload.field_key or f"custom_{uuid4().hex[:12]}"
+            if key in ALLOWED_PLACEHOLDERS and key not in {"title", "correspondent"}:
+                raise ValueError(f"Field key is reserved for document metadata: {key}")
             if key in seen:
                 raise ValueError(f"Duplicate field key: {key}")
             seen.add(key)

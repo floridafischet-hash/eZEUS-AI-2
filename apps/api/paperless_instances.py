@@ -135,7 +135,7 @@ def _validate_active_workflow_tags(instance: PaperlessInstance) -> None:
         )
 
 
-def _serialize(instance: PaperlessInstance) -> dict[str, object]:
+def _serialize(instance: PaperlessInstance, db: Session) -> dict[str, object]:
     webhook_path = f"/webhooks/paperless/{instance.slug}"
     public_base_url = get_settings().public_webhook_base_url.rstrip("/")
     return {
@@ -154,6 +154,7 @@ def _serialize(instance: PaperlessInstance) -> dict[str, object]:
         "webhook_path": webhook_path,
         "webhook_url": f"{public_base_url}{webhook_path}" if public_base_url else None,
         "title_template": instance.title_template or "",
+        "title_placeholders": FieldConfigurationService(db).title_placeholder_catalog(instance),
         "ocr_handoff_enabled": instance.ocr_handoff_enabled,
         "ocr_request_tag_name": instance.ocr_request_tag_name or "",
         "ocr_complete_tag_name": instance.ocr_complete_tag_name,
@@ -213,7 +214,7 @@ def list_instances(db: Annotated[Session, Depends(get_db)]) -> dict[str, object]
         .where(PaperlessInstance.deleted_at.is_(None))
         .order_by(PaperlessInstance.name)
     ).all()
-    return {"instances": [_serialize(item) for item in instances]}
+    return {"instances": [_serialize(item, db) for item in instances]}
 
 
 @router.post(
@@ -246,7 +247,7 @@ async def create_instance(
         raise HTTPException(status_code=409, detail="Kennung ist bereits vergeben") from exc
     db.refresh(instance)
     FieldConfigurationService(db).ensure_defaults(instance)
-    result = _serialize(instance)
+    result = _serialize(instance, db)
     if get_settings().public_webhook_base_url:
         try:
             result["workflow"] = await _provision_workflow(instance)
@@ -319,7 +320,10 @@ def update_instance(
         template = str(raw_template).strip() if raw_template is not None else ""
         if template:
             try:
-                validate_template(template)
+                validate_template(
+                    template,
+                    FieldConfigurationService(db).title_placeholder_names(instance),
+                )
             except InvalidTemplateError as exc:
                 raise HTTPException(status_code=422, detail=str(exc)) from exc
             instance.title_template = template
@@ -388,7 +392,7 @@ def update_instance(
     )
     db.commit()
     db.refresh(instance)
-    return _serialize(instance)
+    return _serialize(instance, db)
 
 
 @router.delete(
@@ -689,10 +693,8 @@ def instance_admin_page() -> str:
           placeholder="{document_type}, {invoice_number}, {correspondent}">
         <p class="help-text">Legt fest, wie eZEUS den Dokumenttitel nach der Analyse
           zusammensetzt. Leer lassen für das Standardverhalten (nur Rechnungsnummer).
-          Erlaubte Platzhalter: <code>{document_type}</code>, <code>{invoice_number}</code>,
-          <code>{correspondent}</code>, <code>{created_year}</code>, <code>{created_month}</code>,
-          <code>{created_day}</code>, <code>{original_filename}</code>, <code>{title}</code>.
-          Leere Platzhalter werden aus dem Ergebnis entfernt.</p></div>
+          Leere Platzhalter werden aus dem Ergebnis entfernt.</p>
+        <p id="edit-title-placeholder-list" class="help-text"></p></div>
       <div class="full">
         <label class="toggle-label" for="edit-ocr-handoff-enabled">
           <input id="edit-ocr-handoff-enabled" type="checkbox">
@@ -772,6 +774,9 @@ def instance_admin_page() -> str:
     document.getElementById("edit-webhook-secret").value="";
     document.getElementById("edit-verify-tls").checked=item.verify_tls;
     document.getElementById("edit-title-template").value=item.title_template||"";
+    document.getElementById("edit-title-placeholder-list").textContent=
+      "Verfügbare Platzhalter: "+(item.title_placeholders||[])
+        .map(entry=>`{${entry.name}} – ${entry.label}`).join(" · ");
     document.getElementById("edit-ocr-handoff-enabled").checked=item.ocr_handoff_enabled;
     document.getElementById("edit-ocr-request-tag").value=item.ocr_request_tag_name||"";
     document.getElementById("edit-ocr-complete-tag").value=

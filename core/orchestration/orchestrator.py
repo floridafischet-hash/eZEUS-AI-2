@@ -630,9 +630,15 @@ class Orchestrator:
             invoice_number = extracted_by_key.get("invoice_number")
             title_values = dict(extracted_by_key)
             if runtime_fields is not None:
+                for field_key, field in runtime_fields.template.fields.items():
+                    target_id = field.target_field_id
+                    if field_key not in title_values and target_id is not None:
+                        existing_value = before_write.custom_fields.get(str(target_id))
+                        if existing_value is not None:
+                            title_values[field_key] = existing_value
+                    title_values.setdefault(field_key, "")
                 for profile_key, field_key in runtime_fields.profile_field_keys.items():
-                    if field_key in extracted_by_key:
-                        title_values[profile_key] = extracted_by_key[field_key]
+                    title_values[profile_key] = title_values.get(field_key, "")
             title_template = (instance.title_template or "").strip() if instance is not None else ""
             title_enabled = runtime_fields.title_enabled if runtime_fields is not None else True
             new_title: str | None = None
@@ -825,17 +831,30 @@ class Orchestrator:
         extracted_values: dict[str, object],
     ) -> dict[str, str]:
         created = document.created or ""
-        context: dict[str, str] = {
-            "invoice_number": str(extracted_values.get("invoice_number") or ""),
-            "delivery_note_number": str(extracted_values.get("delivery_note_number") or ""),
-            "correspondent": "",
-            "document_type": "",
-            "created_year": created[:4] if len(created) >= 4 else "",
-            "created_month": created[5:7] if len(created) >= 7 else "",
-            "created_day": created[8:10] if len(created) >= 10 else "",
-            "original_filename": document.filename or "",
-            "title": document.title or "",
+        filename = document.filename or ""
+        filename_stem, separator, extension = filename.rpartition(".")
+        context = {
+            key: str(value) if value is not None else "" for key, value in extracted_values.items()
         }
+        context.update(
+            {
+                "document_id": document.external_id,
+                "title": document.title or "",
+                "original_filename": filename,
+                "filename_stem": filename_stem if separator else filename,
+                "file_extension": extension if separator else "",
+                "mime_type": document.mime_type or "",
+                "created_date": created[:10] if len(created) >= 10 else created,
+                "correspondent": "",
+                "correspondent_id": document.correspondent_id or "",
+                "document_type": "",
+                "document_type_id": document.document_type_id or "",
+                "created_year": created[:4] if len(created) >= 4 else "",
+                "created_month": created[5:7] if len(created) >= 7 else "",
+                "created_day": created[8:10] if len(created) >= 10 else "",
+                "tag_ids": ", ".join(sorted(document.tag_ids, key=lambda value: int(value))),
+            }
+        )
         if document.correspondent_id and hasattr(connector, "get_correspondent_name"):
             try:
                 name = await connector.get_correspondent_name(document.correspondent_id)
