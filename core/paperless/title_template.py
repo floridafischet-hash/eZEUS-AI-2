@@ -8,21 +8,26 @@ attribute access, indexing and stray braces are deliberately unsupported.
 from __future__ import annotations
 
 import re
-from collections.abc import Mapping
+from collections.abc import Collection, Iterable, Mapping
 
-ALLOWED_PLACEHOLDERS: frozenset[str] = frozenset(
-    {
-        "invoice_number",
-        "delivery_note_number",
-        "correspondent",
-        "document_type",
-        "created_year",
-        "created_month",
-        "created_day",
-        "original_filename",
-        "title",
-    }
-)
+BUILTIN_PLACEHOLDERS: dict[str, str] = {
+    "document_id": "Paperless-Dokument-ID",
+    "title": "Bisheriger Dokumenttitel",
+    "original_filename": "Ursprünglicher Dateiname",
+    "filename_stem": "Dateiname ohne Erweiterung",
+    "file_extension": "Dateierweiterung",
+    "mime_type": "MIME-Typ",
+    "created_date": "Dokumentdatum (JJJJ-MM-TT)",
+    "created_year": "Jahr des Dokumentdatums",
+    "created_month": "Monat des Dokumentdatums",
+    "created_day": "Tag des Dokumentdatums",
+    "correspondent": "Korrespondent",
+    "correspondent_id": "Paperless-Korrespondenten-ID",
+    "document_type": "Dokumenttyp",
+    "document_type_id": "Paperless-Dokumenttyp-ID",
+    "tag_ids": "Paperless-Tag-IDs, kommagetrennt",
+}
+ALLOWED_PLACEHOLDERS: frozenset[str] = frozenset(BUILTIN_PLACEHOLDERS)
 
 _PLACEHOLDER_PATTERN = re.compile(r"\{([a-zA-Z_][a-zA-Z0-9_]*)\}")
 _ADJACENT_SEPARATORS = re.compile(r"([,;/\-])(?:\s*[,;/\-])+")
@@ -39,23 +44,31 @@ class InvalidTemplateError(ValueError):
 class UnknownPlaceholderError(InvalidTemplateError):
     """Raised when a template references a placeholder outside the whitelist."""
 
-    def __init__(self, name: str) -> None:
+    def __init__(self, name: str, allowed: Collection[str] = ALLOWED_PLACEHOLDERS) -> None:
         super().__init__(
-            f"Unbekannter Platzhalter '{{{name}}}'. "
-            f"Erlaubt sind: {', '.join(sorted(ALLOWED_PLACEHOLDERS))}"
+            f"Unbekannter Platzhalter '{{{name}}}'. Erlaubt sind: {', '.join(sorted(allowed))}"
         )
         self.name = name
 
 
-def validate_template(template: str) -> None:
+def placeholder_names(extra: Iterable[str] = ()) -> frozenset[str]:
+    """Return built-in and explicitly configured placeholder names."""
+
+    return ALLOWED_PLACEHOLDERS.union(extra)
+
+
+def validate_template(
+    template: str,
+    allowed: Collection[str] = ALLOWED_PLACEHOLDERS,
+) -> None:
     """Validate length, braces and the placeholder whitelist."""
 
     if len(template) > MAX_TEMPLATE_LENGTH:
         raise InvalidTemplateError(f"Vorlage ist zu lang (maximal {MAX_TEMPLATE_LENGTH} Zeichen)")
     for match in _PLACEHOLDER_PATTERN.finditer(template):
         name = match.group(1)
-        if name not in ALLOWED_PLACEHOLDERS:
-            raise UnknownPlaceholderError(name)
+        if name not in allowed:
+            raise UnknownPlaceholderError(name, allowed)
     remainder = _PLACEHOLDER_PATTERN.sub("", template)
     if "{" in remainder or "}" in remainder:
         raise InvalidTemplateError(
@@ -68,7 +81,7 @@ def validate_template(template: str) -> None:
 def render_title(template: str, context: Mapping[str, object]) -> str:
     """Render *template* with *context*, tolerating missing placeholders."""
 
-    validate_template(template)
+    validate_template(template, placeholder_names(context))
 
     def substitute(match: re.Match[str]) -> str:
         value = context.get(match.group(1))

@@ -4,7 +4,11 @@ from typing import Literal, cast
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from core.field_config.profiles import EXTRACTION_PROFILES, extraction_profile
-from core.paperless.title_template import InvalidTemplateError, validate_template
+from core.paperless.title_template import (
+    ALLOWED_PLACEHOLDERS,
+    InvalidTemplateError,
+    validate_template,
+)
 
 FieldType = Literal["text", "number", "money", "date", "boolean", "select", "textarea"]
 FIELD_KEY_PATTERN = re.compile(r"^[a-z][a-z0-9_]{1,63}$")
@@ -76,14 +80,10 @@ class FieldConfigurationSave(BaseModel):
 
     @field_validator("title_template")
     @classmethod
-    def validate_title_template(cls, value: str | None) -> str | None:
+    def normalize_title_template(cls, value: str | None) -> str | None:
         normalized = value.strip() if value is not None else None
         if not normalized:
             return None
-        try:
-            validate_template(normalized)
-        except InvalidTemplateError as exc:
-            raise ValueError(str(exc)) from exc
         return normalized
 
     @model_validator(mode="after")
@@ -91,4 +91,19 @@ class FieldConfigurationSave(BaseModel):
         keys = [field.field_key for field in self.fields if field.field_key is not None]
         if len(keys) != len(set(keys)):
             raise ValueError("field keys must be unique")
+        if self.title_template:
+            dynamic_names = {
+                name
+                for field in self.fields
+                if field.enabled
+                for name in (field.field_key, field.extraction_profile)
+                if name is not None
+            }
+            try:
+                validate_template(
+                    self.title_template,
+                    ALLOWED_PLACEHOLDERS.union(dynamic_names),
+                )
+            except InvalidTemplateError as exc:
+                raise ValueError(str(exc)) from exc
         return self

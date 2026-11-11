@@ -59,6 +59,7 @@ async def get_field_configuration(
         "instance": {"id": str(instance.id), "slug": instance.slug, "name": instance.name},
         "metadata": _instance_metadata(instance),
         "fields": [service.serialize(field) for field in fields],
+        "title_placeholders": service.title_placeholder_catalog(instance),
     }
 
 
@@ -120,6 +121,7 @@ async def save_field_configuration(
         "instance": {"id": str(instance.id), "slug": instance.slug, "name": instance.name},
         "metadata": _instance_metadata(instance),
         "fields": [service.serialize(field) for field in fields],
+        "title_placeholders": service.title_placeholder_catalog(instance),
     }
 
 
@@ -214,6 +216,7 @@ def field_configuration_page(instance_slug: str) -> str:
   const previewRoot=document.getElementById("preview-content");
   const message=document.getElementById("message");
   let fields=[]; let initiallyEnabled=new Set(); let editedFields=[];
+  let builtinTitlePlaceholders=[];
   let metadata={title_template:"",allow_title_overwrite:false};
   const types=[["text","Text"],["number","Zahl"],["money","Geldbetrag"],
     ["date","Datum"],["boolean","Ja/Nein"],["select","Auswahlfeld"],
@@ -255,6 +258,19 @@ def field_configuration_page(instance_slug: str) -> str:
     input.setAttribute("aria-label",`${label}: ${field.label}`);
     input.addEventListener("change",()=>{field[key]=input.checked; markEdited(field);
       if(key==="enabled") render();}); return input;
+  }
+  function availableTitlePlaceholders() {
+    const placeholders=[...builtinTitlePlaceholders];
+    const known=new Set(placeholders.map(item=>item.name));
+    fields.filter(field=>field.enabled&&!['title','correspondent'].includes(field.field_key))
+      .forEach(field=>{
+        [[field.field_key,field.label,"eZEUS-Feld"],
+          [field.extraction_profile,field.label,"Extraktionsprofil"]]
+          .forEach(([name,label,source])=>{
+            if(name&&!known.has(name)) { placeholders.push({name,label,source}); known.add(name); }
+          });
+      });
+    return placeholders;
   }
   function render() {
     fieldsRoot.replaceChildren(); fieldsRoot.className="field-list";
@@ -328,8 +344,8 @@ def field_configuration_page(instance_slug: str) -> str:
         template.addEventListener("input",()=>{metadata.title_template=template.value;});
         const templateControl=control("Titel-Vorlage",template);
         const help=document.createElement("p"); help.className="help-text";
-        help.textContent="Platzhalter: {document_type}, {invoice_number}, {correspondent}, "+
-          "{created_year}, {created_month}, {created_day}, {original_filename}, {title}.";
+        help.textContent="Verfügbare Platzhalter: "+availableTitlePlaceholders()
+          .map(item=>`{${item.name}} – ${item.label}`).join(" · ");
         templateControl.append(help); details.append(templateControl);
         const overwrite=document.createElement("input"); overwrite.type="checkbox";
         overwrite.checked=metadata.allow_title_overwrite;
@@ -377,6 +393,8 @@ def field_configuration_page(instance_slug: str) -> str:
         {headers:authHeaders(false)}); const body=await response.json();
       if(!response.ok) throw new Error(body.detail||`HTTP ${response.status}`);
       fields=body.fields; metadata=body.metadata||metadata;
+      builtinTitlePlaceholders=(body.title_placeholders||[])
+        .filter(item=>item.source==="Dokumentmetadaten");
       editedFields=[]; initiallyEnabled=new Set(fields.filter(field=>field.enabled)
         .map(field=>field.field_key));
       document.getElementById("instance-name").textContent=body.instance.name;

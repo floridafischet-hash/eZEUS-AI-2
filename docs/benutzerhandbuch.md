@@ -253,6 +253,24 @@ Bei der gewünschten Instanz **Felder** auswählen.
 Die IBAN-Erkennung ist opt-in. Ohne ausgewählte Spezialregel bleibt das
 importierte Feld deaktiviert beziehungsweise verwendet keine IBAN-Regel.
 
+### Vollständige Liste der Titelplatzhalter
+
+Die Liste wird je Instanz direkt in der Feldkonfiguration angezeigt. Folgende
+Dokumentmetadaten sind immer verfügbar:
+
+```text
+{document_id} {title} {original_filename} {filename_stem} {file_extension}
+{mime_type} {created_date} {created_year} {created_month} {created_day}
+{correspondent} {correspondent_id} {document_type} {document_type_id} {tag_ids}
+```
+
+Jedes aktivierte eZEUS- oder importierte Paperless-Feld kommt automatisch mit
+seinem in der Oberfläche angezeigten Feldschlüssel hinzu. So können etwa
+`{invoice_number}`, `{invoice_date}`, `{invoice_amount}`, `{customer_number}`
+und kundenspezifische Felder in derselben Vorlage verwendet werden. Wird ein
+Feld deaktiviert, ist sein Platzhalter nicht mehr zulässig. Leere Werte und
+dadurch überflüssige Trennzeichen entfernt eZEUS automatisch.
+
 ### Lieferscheinnummer und Lieferscheintitel aktivieren
 
 1. In Paperless prüfen, dass die Dokumenttypen exakt `Eingangsrechnung` und

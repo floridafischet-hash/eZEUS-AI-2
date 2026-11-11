@@ -491,6 +491,21 @@ Eingangsrechnung, RE-2026-4711
 Lieferschein, LI-483920
 ```
 
+Die Feldkonfiguration zeigt pro Instanz den vollständigen Platzhalterkatalog.
+Fest verfügbar sind:
+
+```text
+{document_id} {title} {original_filename} {filename_stem} {file_extension}
+{mime_type} {created_date} {created_year} {created_month} {created_day}
+{correspondent} {correspondent_id} {document_type} {document_type_id} {tag_ids}
+```
+
+Zusätzlich wird jedes aktivierte eZEUS-Feld automatisch unter seinem stabilen
+`field_key` angeboten, beispielsweise `{invoice_number}`, `{invoice_amount}`
+oder `{customer_number}`. Importierte Paperless-Felder erscheinen ebenso
+automatisch. Deaktivierte Felder sind nicht als Titelplatzhalter zulässig.
+Vorhandene Feldwerte werden für den Titel verwendet, ohne sie zu überschreiben.
+
 Das Lieferscheinprofil arbeitet in Prioritätsstufen. Explizite Beschriftungen
 und bekannte Tabellenköpfe werden vor schwächeren Kurzformen ausgewertet. Ein
 Wert wird nur übernommen, wenn die früheste passende Prioritätsstufe genau

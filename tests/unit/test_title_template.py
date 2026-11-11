@@ -3,6 +3,7 @@ import pytest
 from connectors.base.interface import ConnectorDocument
 from core.orchestration.orchestrator import Orchestrator
 from core.paperless.title_template import (
+    ALLOWED_PLACEHOLDERS,
     MAX_TEMPLATE_LENGTH,
     MAX_TITLE_LENGTH,
     InvalidTemplateError,
@@ -36,6 +37,38 @@ def test_all_placeholders_present() -> None:
         correspondent="Müller GmbH",
     )
     assert render_title(template, ctx) == "Rechnung, RE-2026-00123, Müller GmbH"
+
+
+def test_complete_builtin_placeholder_list_is_available() -> None:
+    assert {
+        "document_id",
+        "title",
+        "original_filename",
+        "filename_stem",
+        "file_extension",
+        "mime_type",
+        "created_date",
+        "created_year",
+        "created_month",
+        "created_day",
+        "correspondent",
+        "correspondent_id",
+        "document_type",
+        "document_type_id",
+        "tag_ids",
+    } == ALLOWED_PLACEHOLDERS
+
+
+def test_configured_field_is_accepted_from_runtime_context() -> None:
+    assert render_title("{cost_center} - {title}", {"cost_center": "4711"}) == "4711"
+
+
+def test_empty_configured_field_collapses_separators() -> None:
+    context = {"document_type": "Rechnung", "cost_center": "", "invoice_number": "RE-42"}
+    assert (
+        render_title("{document_type} - {cost_center} - {invoice_number}", context)
+        == "Rechnung - RE-42"
+    )
 
 
 def test_missing_middle_placeholder_collapses_separators() -> None:
@@ -159,3 +192,41 @@ async def test_orchestrator_title_context_includes_delivery_note_number() -> Non
 
     assert context["document_type"] == "Lieferschein"
     assert context["delivery_note_number"] == "LI-2026-0042"
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_title_context_contains_all_document_metadata() -> None:
+    document = ConnectorDocument(
+        external_id="42",
+        title="Alter Titel",
+        filename="rechnung.final.pdf",
+        mime_type="application/pdf",
+        document_type_id="7",
+        correspondent_id="8",
+        tag_ids=frozenset({"10", "2"}),
+        created="2026-11-11T12:34:56+00:00",
+    )
+    orchestrator = Orchestrator.__new__(Orchestrator)
+
+    context = await orchestrator._build_title_context(  # type: ignore[arg-type]
+        object(), document, {"cost_center": "4711"}
+    )
+
+    assert context == {
+        "cost_center": "4711",
+        "document_id": "42",
+        "title": "Alter Titel",
+        "original_filename": "rechnung.final.pdf",
+        "filename_stem": "rechnung.final",
+        "file_extension": "pdf",
+        "mime_type": "application/pdf",
+        "created_date": "2026-11-11",
+        "created_year": "2026",
+        "created_month": "11",
+        "created_day": "11",
+        "correspondent": "",
+        "correspondent_id": "8",
+        "document_type": "",
+        "document_type_id": "7",
+        "tag_ids": "2, 10",
+    }

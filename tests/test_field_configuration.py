@@ -211,6 +211,10 @@ def test_title_and_correspondent_are_configured_per_instance(
     second = create_instance(client, "Kunde B", "kunde-b.example.test")
     first_endpoint = f"/api/instances/{first['slug']}/field-config"
     first_config = client.get(first_endpoint, headers=admin_headers()).json()
+    placeholder_names = {item["name"] for item in first_config["title_placeholders"]}
+    assert {"created_date", "filename_stem", "invoice_number", "invoice_amount"} <= (
+        placeholder_names
+    )
     special_keys = {field["field_key"] for field in first_config["fields"][:2]}
     assert special_keys == {"title", "correspondent"}
 
@@ -259,6 +263,51 @@ def test_title_and_correspondent_are_configured_per_instance(
         assert instance is not None
         assert instance.title_template == "{invoice_number} – {correspondent}"
         assert instance.allow_title_overwrite is True
+
+
+def test_enabled_imported_field_becomes_instance_title_placeholder(
+    field_config_client,
+) -> None:
+    client, _, _ = field_config_client
+    instance = create_instance(client, "Kunde A", "kunde-a.example.test")
+    endpoint = f"/api/instances/{instance['slug']}/field-config"
+    configuration = client.get(endpoint, headers=admin_headers()).json()
+    project = next(field for field in configuration["fields"] if field["external_field_id"] == "77")
+    assert project["field_key"] not in {
+        item["name"] for item in configuration["title_placeholders"]
+    }
+    project["enabled"] = True
+
+    saved = client.put(
+        endpoint,
+        headers=admin_headers(),
+        json={
+            "fields": configuration["fields"],
+            "title_template": f"{{created_date}} - {{{project['field_key']}}}",
+        },
+    )
+
+    assert saved.status_code == 200
+    assert project["field_key"] in {item["name"] for item in saved.json()["title_placeholders"]}
+
+
+def test_disabled_field_cannot_be_used_as_title_placeholder(field_config_client) -> None:
+    client, _, _ = field_config_client
+    instance = create_instance(client, "Kunde A", "kunde-a.example.test")
+    endpoint = f"/api/instances/{instance['slug']}/field-config"
+    configuration = client.get(endpoint, headers=admin_headers()).json()
+    project = next(field for field in configuration["fields"] if field["external_field_id"] == "77")
+
+    response = client.put(
+        endpoint,
+        headers=admin_headers(),
+        json={
+            "fields": configuration["fields"],
+            "title_template": f"{{{project['field_key']}}}",
+        },
+    )
+
+    assert response.status_code == 422
 
 
 def test_configuration_is_saved_reloaded_and_isolated_with_audit(
