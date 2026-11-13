@@ -1,6 +1,7 @@
 from fastapi.testclient import TestClient
 
 from apps.api.main import app
+from core.paperless.title_template import BUILTIN_PLACEHOLDERS
 
 
 def test_help_page_contains_beginner_guide() -> None:
@@ -26,11 +27,13 @@ def test_help_page_contains_beginner_guide() -> None:
     assert "Supportdaten sicher sammeln" in response.text
     assert "Begriffe kurz erklärt" in response.text
     assert "Nie API-Token, Passwörter, Webhook-Secrets" in response.text
-    assert "Titel-Vorlage: verfügbare Variablen" in response.text
+    assert "Verfügbare Variablen für Titel-Vorlagen" in response.text
+    assert 'href="#titel-variablen"' in response.text
     assert "Deutsche Bedeutung" in response.text
-    assert "Erstell- beziehungsweise Anlagedatum des Dokuments" in response.text
-    assert "Von eZEUS erkannte Rechnungsnummer" in response.text
-    assert "Ursprünglicher Dateiname des Dokuments" in response.text
+    assert "aktivierte eZEUS-Feld" in response.text
+    for name, label in BUILTIN_PLACEHOLDERS.items():
+        assert f"{{{name}}}" in response.text
+        assert label in response.text
     assert "Paperless-Webhook einrichten" in response.text
     assert "X-EZEUS-Webhook-Secret" in response.text
     assert "document_id" in response.text

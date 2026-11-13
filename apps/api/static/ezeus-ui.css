@@ -173,7 +173,7 @@ h3 { margin: 0; color: var(--color-text-strong); font-size: 0.95rem; }
   border: 1px solid var(--color-border); border-radius: var(--radius-lg);
   box-shadow: var(--shadow-panel);
 }
-.panel { padding: clamp(var(--space-5), 2vw, var(--space-8)); }
+.panel { min-width: 0; padding: clamp(var(--space-5), 2vw, var(--space-8)); }
 .panel + .panel, .content-stack > * + * { margin-top: var(--space-6); }
 .metric-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-4); }
 .metric-card { position: relative; min-height: 138px; padding: var(--space-6); overflow: hidden; }
@@ -282,7 +282,7 @@ details > summary {
 .status-badge.warning { color: var(--color-warning); background: var(--color-warning-soft); border-color: rgba(229, 166, 59, 0.22); }
 .source-badge { color: var(--color-brand); background: var(--color-brand-soft); border-color: rgba(229, 57, 53, 0.26); }
 
-.table-wrap { width: 100%; overflow-x: auto; border: 1px solid var(--color-border); border-radius: var(--radius-md); }
+.table-wrap { width: 100%; min-width: 0; max-width: 100%; overflow-x: auto; border: 1px solid var(--color-border); border-radius: var(--radius-md); }
 table { width: 100%; border-collapse: collapse; min-width: 760px; }
 th, td { padding: 0.8rem 0.9rem; border-bottom: 1px solid var(--color-border); text-align: left; vertical-align: top; }
 th { color: var(--color-text-muted); background: #101010; font-size: 0.69rem; letter-spacing: 0.07em; text-transform: uppercase; }
@@ -449,6 +449,7 @@ tbody tr:hover { background: rgba(255, 255, 255, 0.018); }
   .navigation-open .sidebar-backdrop { display: block; }
   .account-copy, .topbar-logo { display: none; }
   .main-content { padding: var(--space-6) var(--space-5) var(--space-10); }
+  .help-card-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .grid.two, .form-grid { grid-template-columns: 1fr; }
   .form-grid .full { grid-column: auto; }
   .log-toolbar { grid-template-columns: 1fr 110px; }
@@ -466,6 +467,7 @@ tbody tr:hover { background: rgba(255, 255, 255, 0.018); }
   .main-content { padding-inline: var(--space-4); }
   .page-heading { margin-bottom: var(--space-6); }
   .metric-grid, .preview-grid { grid-template-columns: 1fr; }
+  .help-card-grid { grid-template-columns: 1fr; }
   .panel { padding: var(--space-4); border-radius: var(--radius-md); }
   .instance-card, .user-card { grid-template-columns: 1fr; }
   .instance-actions, .user-actions { justify-content: flex-start; }
