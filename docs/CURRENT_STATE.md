@@ -86,6 +86,7 @@ Für Rechnungsnummern werden unter anderem folgende Bezeichnungen erkannt:
 
 - `Rechnungsnummer`
 - `Rechnung-Nr.`
+- `Re - Nr.`
 - `Rechnung Nr.`
 - `Rechnungs-Nr.`
 - `Rechnung <Kennung>`, wenn die Kennung mindestens eine Ziffer enthält
@@ -95,25 +96,40 @@ Für Brutto-Rechnungsbeträge werden folgende Bezeichnungen erkannt:
 
 - `Brutto-Rechnungsbetrag`
 - `Bruttobetrag`
+- `Bruttosumme`
 - `Gesamtbetrag`
 - `Gesamtbetrag brutto`
 - `Gesamtsumme`
 - `Endsumme brutto`
 - `Rechnungswert (brutto)`
-- `Zahlbetrag`
 - `Endbetrag`
-- `Zu zahlen`
-- `Brutto`, wenn direkt anschließend ein Geldbetrag steht
 - `Total` in eindeutig bezeichneten Kassenbeleg-Summenzeilen
 - `Summe` zusammen mit einem Fälligkeitsdatum
 
 Das Eurozeichen oder `EUR` darf vor oder hinter dem Betrag stehen.
 Dezimalpunkt und Dezimalkomma sowie deutsche und englische
 Tausendertrennzeichen werden unterstützt.
-`Netto-Rechnungsbetrag` wird ausdrücklich nicht als Bruttobetrag übernommen.
+`Netto-Rechnungsbetrag`, `Übertrag`, Skontobeträge und bloße Zahlungsbeträge
+werden ausdrücklich nicht als Bruttobetrag übernommen.
+
+Paperless-Text in HTML-Tabellen und mit einfachen Markdown-Hervorhebungen wird
+vor der Regelauswertung normalisiert. Tabellenzellen einer Zeile bleiben
+zusammen, während Tabellenzeilen getrennt bleiben.
 
 Die Erkennung ist absichtlich konservativ. Noch nicht hinterlegte
 Bezeichnungen führen zu einem fehlenden Feld und nicht zu einem geratenen Wert.
+
+## FF-Validierung vom 21. Oktober 2026
+
+Der überarbeitete Regex-Stand wurde lesend gegen 130 vorhandene FF-Dokumente
+ausgewertet. Für 123 Dokumente wurden sowohl Rechnungsnummer- als auch
+Rechnungsbetragskandidaten gefunden. Die fachlich relevanten Musterfälle mit
+HTML-Tabellen, Markdown, `Re - Nr.`, `Rechnungssumme`, `Bruttosumme`,
+`Endbetrag` und `Gesamt:` wurden anschließend auf der FF-Instanz bestätigt.
+Die übrigen Dokumente waren überwiegend keine Rechnungen oder enthielten kein
+unterstütztes eindeutiges Rechnungsformat. Diese Auswertung ist keine
+allgemeine Klassifikation von Dokumenttypen; Nicht-Rechnungen müssen bereits
+durch den Paperless-Workflow passend eingegrenzt werden.
 
 ## Read-only-Regelaudit der Instanz Timo
 
@@ -192,8 +208,8 @@ wurden vollständig geschrieben oder als bereits korrekt vorhanden erkannt.
 
 ## Mehrseitige Rechnungen
 
-Die automatische Extraktion sammelt alle eindeutig als Brutto-, Gesamt-,
-End- oder Zahlbetrag bezeichneten Summen aus dem vollständigen Dokumenttext
+Die automatische Extraktion sammelt alle eindeutig als Brutto-, Gesamt- oder
+Endbetrag bezeichneten Summen aus dem vollständigen Dokumenttext
 und damit aus allen Seiten. Nach Validierung und Normalisierung wird der
 höchste dieser Summenkandidaten als Rechnungsbetrag übernommen.
 
@@ -202,17 +218,11 @@ automatisch zu Gesamtsummen. Alle gefundenen Gesamtsummenkandidaten bleiben im
 Extraktionsprotokoll erhalten; niedrigere Kandidaten werden mit einem
 nachvollziehbaren Ablehnungsgrund markiert.
 
-Für das Zielfeld `Rechnungsnummer` gilt folgende verbindliche Priorität:
-
-1. Eine ausdrücklich bezeichnete Rechnungsnummer, beispielsweise
-   `Rechnungsnummer` oder `Rechnung-Nr.`
-2. Falls keine Rechnungsnummer erkannt wird, eine ausdrücklich bezeichnete
-   BV- oder Baustellennummer
-
-Eine BV- oder Baustellennummer wird nur akzeptiert, wenn sie genau fünfstellig
-ist und mit `24`, `25` oder `26` beginnt. `Kundennummer` und `Kunden-Nr.` sind
-als Ersatzwerte vollständig ausgeschlossen. Fehlen Rechnungsnummer und gültige
-BV-/Baustellennummer, bleibt das Zielfeld leer und der Job meldet eine Warnung.
+Für das Zielfeld `Rechnungsnummer` werden ausschließlich ausdrücklich
+bezeichnete Rechnungs-, Beleg- oder Bonnummern und bekannte Rechnungskopf-
+Tabellenlayouts verwendet. `Kundennummer`, `Kunden-Nr.`, BV- und
+Baustellennummern sind als Ersatzwerte vollständig ausgeschlossen. Fehlt eine
+Rechnungsnummer, bleibt das Zielfeld leer und der Job meldet eine Warnung.
 
 Der zusammengefallene OCR-Spaltenaufbau
 `Datum: Rechnungsnr.: Kunden-Nr.:` wird gesondert ausgewertet. Dabei wird der
@@ -221,7 +231,7 @@ Dokument `3555` dient als produktiv bestätigter Referenzfall:
 
 - Rechnungsnummer: `5799588`
 - Kundennummer: `2011452`, nicht übernommen
-- BV-/Baustellennummer: `25164`, nur Ersatzkandidat
+- BV-/Baustellennummer: `25164`, nicht als Rechnungsnummer übernommen
 - Rechnungsbetrag: `531,93`
 
 ## Qualitätssicherung

@@ -28,6 +28,31 @@ def help_page() -> str:
     <div class="notice warning"><strong>Wichtig:</strong> Ein erfolgreicher Verbindungstest prüft nur die technische Verbindung. Die Instanz ist erst einsatzbereit, wenn Rechnungsnummer, Betrag und weitere benötigte Felder bei echten Testdokumenten richtig erkannt wurden.</div>
   </section>
 
+  <section class="panel help-quick-panel" aria-labelledby="help-quick-title">
+    <div class="section-heading"><div>
+      <h2 id="help-quick-title">Direkthilfe nach Aufgabe</h2>
+      <p class="section-copy">Schnelleinstieg für die häufigsten Arbeitssituationen – ohne die gesamte Anleitung durchsuchen zu müssen.</p>
+    </div></div>
+    <div class="help-card-grid">
+      <a class="help-card" href="#paperless-instanz-anlegen">
+        <strong>Neue Instanz anbinden</strong>
+        <span>Paperless-Adresse, Token, Workflow und Verbindungstest sauber einrichten.</span>
+      </a>
+      <a class="help-card" href="#dokumentfelder-festlegen">
+        <strong>Felder konfigurieren</strong>
+        <span>OCR, KI, Pflichtfelder, Spezialregeln und Paperless-Zielfelder prüfen.</span>
+      </a>
+      <a class="help-card" href="#kundeninstanz-abnehmen">
+        <strong>Kundeninstanz abnehmen</strong>
+        <span>Mit typischen Testdokumenten sicherstellen, dass echte Ergebnisse stimmen.</span>
+      </a>
+      <a class="help-card" href="#haeufige-probleme">
+        <strong>Fehler beheben</strong>
+        <span>Verbindungs-, Webhook-, Feld- und Erkennungsprobleme gezielt eingrenzen.</span>
+      </a>
+    </div>
+  </section>
+
   <section class="panel">
     <div class="section-heading"><div><h2>So funktioniert eZEUS</h2></div></div>
     <ol>
@@ -58,7 +83,7 @@ def help_page() -> str:
     <p><strong>Wichtig:</strong> Die Bereiche „Alternative API-Anmeldung“ werden im normalen Betrieb nicht benötigt und können geschlossen bleiben.</p>
   </section>
 
-  <section class="panel">
+  <section class="panel" id="paperless-instanz-anlegen">
     <div class="section-heading"><div><h2>2. Paperless-Instanz anlegen</h2></div></div>
     <ol>
       <li>In Paperless einen API-Token erstellen. Je nach Paperless-Version befindet sich diese Funktion im Benutzerprofil oder in der Administration unter API-Token.</li>
@@ -163,7 +188,7 @@ def help_page() -> str:
     <p>Bereits vorhandene Dokumente lösen <strong>Dokument hinzugefügt</strong> nicht nachträglich aus.</p>
   </section>
 
-  <section class="panel">
+  <section class="panel" id="dokumentfelder-festlegen">
     <div class="section-heading"><div><h2>5. Dokumentfelder festlegen</h2></div></div>
     <p>Bei der gewünschten Instanz auf <strong>Felder</strong> klicken. Dort wird festgelegt, welche Informationen eZEUS aus Dokumenten übernimmt.</p>
     <ul>
@@ -176,6 +201,25 @@ def help_page() -> str:
       <li><strong>Extraktionshinweise:</strong> gelten nur für die KI und verändern keine feste Regex-Regel.</li>
       <li><strong>Spezialregel:</strong> aktiviert eine fachliche Erkennung nur für dieses Feld und diese Kundeninstanz.</li>
     </ul>
+    <h3>Titel-Vorlage: verfügbare Variablen</h3>
+    <p>In <strong>Instanzen → Bearbeiten → Titel-Vorlage</strong> kann der Paperless-Titel aus festen Variablen zusammengesetzt werden. Die Variablen werden mit geschweiften Klammern geschrieben.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Variable</th><th>Deutsche Bedeutung</th><th>Beispiel</th></tr></thead>
+        <tbody>
+          <tr><td><code>{created_date}</code></td><td>Erstell- beziehungsweise Anlagedatum des Dokuments</td><td><code>2026-11-13</code></td></tr>
+          <tr><td><code>{created_year}</code></td><td>Jahr aus dem Erstellungsdatum</td><td><code>2026</code></td></tr>
+          <tr><td><code>{created_month}</code></td><td>Monat aus dem Erstellungsdatum</td><td><code>11</code></td></tr>
+          <tr><td><code>{created_day}</code></td><td>Tag aus dem Erstellungsdatum</td><td><code>13</code></td></tr>
+          <tr><td><code>{document_type}</code></td><td>Dokumenttyp aus Paperless</td><td><code>Rechnung</code></td></tr>
+          <tr><td><code>{invoice_number}</code></td><td>Von eZEUS erkannte Rechnungsnummer</td><td><code>RE-2026-00123</code></td></tr>
+          <tr><td><code>{correspondent}</code></td><td>Korrespondent aus Paperless</td><td><code>Müller GmbH</code></td></tr>
+          <tr><td><code>{original_filename}</code></td><td>Ursprünglicher Dateiname des Dokuments</td><td><code>scan-001.pdf</code></td></tr>
+          <tr><td><code>{title}</code></td><td>Bisheriger Paperless-Titel</td><td><code>Eingangsrechnung</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>Beispiel: <code>{created_date} - {document_type} - {invoice_number} - {correspondent}</code>. Leere Variablen werden aus dem fertigen Titel entfernt; unbekannte Variablen werden nicht akzeptiert.</p>
     <h3>IBAN des Rechnungsstellers aktivieren</h3>
     <ol>
       <li>In Paperless ein Textfeld <code>IBAN</code> anlegen und die Feldseite in eZEUS neu laden.</li>
@@ -187,7 +231,7 @@ def help_page() -> str:
     <div class="notice"><strong>Schreibreihenfolge:</strong> Unabhängig von dieser Anzeige verarbeitet eZEUS zuerst den Korrespondenten, danach den Titel und anschließend jedes benutzerdefinierte Feld einzeln. Ein Fehler bei einem Wert stoppt die folgenden Versuche nicht.</div>
   </section>
 
-  <section class="panel">
+  <section class="panel" id="kundeninstanz-abnehmen">
     <div class="section-heading"><div><h2>6. Kundeninstanz abnehmen</h2></div></div>
     <p>Vor der Freigabe mindestens eine normale Rechnung, eine mehrseitige Rechnung, eine Gutschrift und – falls verwendet – ein Dokument mit Baustellennummer testen. Zusätzlich Dokumente der wichtigsten Lieferanten verwenden.</p>
     <ol>
@@ -222,6 +266,37 @@ def help_page() -> str:
   </section>
 
   <section class="panel">
+    <div class="section-heading"><div>
+      <h2>Supportdaten sicher sammeln</h2>
+      <p class="section-copy">Wenn etwas nicht funktioniert, helfen diese Angaben bei der Diagnose – ohne Geheimnisse weiterzugeben.</p>
+    </div></div>
+    <ul class="check-list">
+      <li>Name der betroffenen Instanz und Zeitpunkt des Tests notieren.</li>
+      <li>Dokument-ID, Dateiname, Job-Status und Fehlerklasse aus der Übersicht übernehmen.</li>
+      <li>Bei Feldproblemen den relevanten OCR-Ausschnitt ohne personenbezogene oder vertrauliche Inhalte bereitstellen.</li>
+      <li>Bei Webhook-Problemen prüfen, ob Paperless den richtigen Auslöser, die richtige Webhook-URL und den Header <code>X-EZEUS-Webhook-Secret</code> verwendet.</li>
+      <li>Nie API-Token, Passwörter, Webhook-Secrets oder vollständige vertrauliche Dokumente versenden.</li>
+    </ul>
+    <div class="notice info"><strong>Faustregel:</strong> Für Support reichen technische Metadaten und ein kurzer, anonymisierter Ausschnitt. Geheimnisse bleiben in Paperless und eZEUS.</div>
+  </section>
+
+  <section class="panel">
+    <div class="section-heading"><div><h2>Begriffe kurz erklärt</h2></div></div>
+    <dl class="glossary-list">
+      <dt>Instanz</dt>
+      <dd>Eine angebundene Paperless-Umgebung mit eigener Adresse, eigenem Token, eigenen Feldern und eigenen Workflow-Einstellungen.</dd>
+      <dt>Workflow</dt>
+      <dd>Die Paperless-Regel, die eZEUS informiert, wenn ein Dokument verarbeitet werden soll.</dd>
+      <dt>Webhook</dt>
+      <dd>Der technische Aufruf von Paperless an eZEUS. Er enthält mindestens die Dokument-ID und das passende Secret.</dd>
+      <dt>OCR</dt>
+      <dd>Der Text, den Paperless aus dem Dokument gelesen hat. Feste eZEUS-Regeln arbeiten auf diesem Text.</dd>
+      <dt>Pflichtfeld</dt>
+      <dd>Ein Feld, dessen fehlender Wert eine Warnung erzeugt. Es erzwingt keinen Treffer und überschreibt keine bereits gefüllten Paperless-Felder.</dd>
+    </dl>
+  </section>
+
+  <section class="panel" id="haeufige-probleme">
     <div class="section-heading"><div><h2>Häufige Probleme</h2></div></div>
     <dl>
       <dt><strong>Der Anmeldedialog erscheint immer wieder</strong></dt>

@@ -323,6 +323,31 @@ Pflichtfeld bleiben, ohne Lieferschein-Jobs zu blockieren.
 - **Extraktionshinweise:** Anweisung ausschließlich für die KI-Auslesung. Sie
   verändert keine feste Regex-Regel.
 
+### Titel-Vorlage: verfügbare Variablen
+
+Unter **Instanzen → Bearbeiten → Titel-Vorlage** kann der Paperless-Titel aus
+festen Variablen zusammengesetzt werden. Die Variablen werden mit geschweiften
+Klammern geschrieben.
+
+| Variable | Deutsche Bedeutung | Beispiel |
+| --- | --- | --- |
+| `{created_date}` | Erstell- beziehungsweise Anlagedatum des Dokuments | `2026-11-13` |
+| `{created_year}` | Jahr aus dem Erstellungsdatum | `2026` |
+| `{created_month}` | Monat aus dem Erstellungsdatum | `11` |
+| `{created_day}` | Tag aus dem Erstellungsdatum | `13` |
+| `{document_type}` | Dokumenttyp aus Paperless | `Rechnung` |
+| `{invoice_number}` | Von eZEUS erkannte Rechnungsnummer | `RE-2026-00123` |
+| `{correspondent}` | Korrespondent aus Paperless | `Müller GmbH` |
+| `{original_filename}` | Ursprünglicher Dateiname des Dokuments | `scan-001.pdf` |
+| `{title}` | Bisheriger Paperless-Titel | `Eingangsrechnung` |
+
+Beispiel:
+
+`{created_date} - {document_type} - {invoice_number} - {correspondent}`
+
+Leere Variablen werden aus dem fertigen Titel entfernt. Unbekannte Variablen
+werden nicht akzeptiert.
+
 Die Reihenfolge lässt sich mit den Pfeilen ändern. Die Vorschau zeigt das erwartete Formular. Änderungen werden erst mit **Konfiguration speichern** übernommen.
 
 ### Empfohlene Einstellungen für Rechnungen
@@ -484,9 +509,12 @@ Dann funktioniert der Workflow bereits. Prüfe in dieser Reihenfolge:
 ### Rechnungsbetrag fehlt
 
 Suche im Paperless-OCR-Text nach eindeutigen Begriffen wie `Gesamtbetrag`,
-`Rechnungssumme`, `Zahlbetrag`, `Brutto-Rechnungsbetrag` oder
-`Erstattungsbetrag`. Steht der Betrag nur unbeschriftet in einer Tabelle, kann
-eZEUS ihn absichtlich nicht sicher zuordnen.
+`Rechnungssumme`, `Bruttosumme`, `Brutto-Rechnungsbetrag`, `Endbetrag` oder
+`Erstattungsbetrag`. HTML-Tabellen und einfache Markdown-Hervorhebungen werden
+vorher normalisiert. Steht der Betrag nur unbeschriftet in einer Tabelle, kann
+eZEUS ihn absichtlich nicht sicher zuordnen. `Übertrag`, Skontobeträge,
+`Zahlbetrag` und `Zu zahlen` gelten ohne eindeutige Brutto-/Gesamtbezeichnung
+nicht als sicherer Rechnungsbetrag.
 
 ### Lieferscheinnummer oder Lieferscheintitel fehlt
 
@@ -512,8 +540,11 @@ Paperless-Ergebnis prüfen.
 ### Baustellennummer fehlt
 
 Gut erkennbare Beispiele sind `# 26051`, `BV- 25095`, `BV-Nr. 25180` oder
-`Baustellennummer: 26070`. Bezeichnungen wie `BV Buck` enthalten keine
-numerische Baustellennummer und werden bewusst nicht übernommen.
+`Baustellennummer: 26070`. Auch fünfstellige Projektnummern im gültigen Bereich
+nach `Bestell-Nr.` werden unterstützt. Bezeichnungen wie `BV Buck` enthalten
+keine numerische Baustellennummer und werden bewusst nicht übernommen. Eine
+Baustellennummer wird nicht als Ersatz für eine fehlende Rechnungsnummer
+verwendet.
 
 ### Ein Dokument wird mehrfach verarbeitet
 
@@ -539,5 +570,7 @@ ein Einmal-Tag, den der Workflow nach dem Webhook wieder entfernt.
 - Lieferscheinnummer und Titel enthalten nur die dokumenttypgerechte Nummer
 - Baustellennummer getestet, falls verwendet
 - keine Kundennummer als Rechnungsnummer übernommen
+- keine BV-/Baustellennummer als Rechnungsnummer übernommen
+- keine Übertrags- oder Skontosumme als Rechnungsbetrag übernommen
 - keine Wörter als Baustellennummer übernommen
 - Warnungen im Jobprotokoll verstanden

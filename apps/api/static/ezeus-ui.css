@@ -247,6 +247,31 @@ details > summary {
 .notice.warning { color: var(--color-warning); background: var(--color-warning-soft); border-color: rgba(229, 166, 59, 0.24); }
 .notice.info { color: var(--color-info); background: var(--color-info-soft); border-color: rgba(103, 169, 255, 0.24); }
 
+.help-card-grid {
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-4);
+}
+.help-card {
+  display: grid; align-content: start; gap: var(--space-2); min-height: 118px;
+  padding: var(--space-5); border: 1px solid var(--color-border);
+  border-radius: var(--radius-md); background: var(--color-input);
+  color: var(--color-text); text-decoration: none;
+  transition: background var(--transition-fast), border-color var(--transition-fast), transform var(--transition-fast);
+}
+.help-card:hover {
+  background: var(--color-surface-hover); border-color: rgba(229, 57, 53, 0.36);
+  transform: translateY(-1px);
+}
+.help-card strong { color: var(--color-text-strong); }
+.help-card span { color: var(--color-text-muted); font-size: 0.82rem; }
+.check-list { padding-left: 1.25rem; }
+.check-list li + li { margin-top: var(--space-2); }
+.glossary-list {
+  display: grid; grid-template-columns: minmax(140px, 0.35fr) minmax(0, 1fr);
+  gap: var(--space-3) var(--space-5); margin: 0;
+}
+.glossary-list dt { color: var(--color-text-strong); font-weight: 800; }
+.glossary-list dd { margin: 0; color: var(--color-text); }
+
 .status-badge, .source-badge {
   display: inline-flex; align-items: center; gap: var(--space-2); min-height: 26px;
   padding: 0.2rem 0.55rem; border: 1px solid var(--color-border);

@@ -15,6 +15,7 @@ dependencies = [
   "redis>=5.2,<6",
   "PyJWT>=2.14,<3",
   "httpx>=0.28,<1",
+  "certifi>=2026.10.19,<2027",
   "cryptography>=50.0.0,<51",
   "regex>=2026.7.19,<2027",
   "prometheus-client>=0.21,<1",
