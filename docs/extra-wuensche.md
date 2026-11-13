@@ -8,6 +8,15 @@ der Erfassung, neueste oben.
 
 ## 2026-09-07 · Rechnungsbetrag-Extraktion („Rechnungsbetrag wird nicht ausgelesen / geschrieben")
 
+**Status 2026-10-21: Regex-/Normalisierungsanteil umgesetzt und auf der
+FF-Instanz fachlich bestätigt.** HTML-Tabellen und Markdown werden vor der
+Extraktion normalisiert. Zusätzliche Rechnungskopf- und Bruttosummenformate
+werden erkannt; Übertrag, Skonto und unspezifische Zahlungsbeträge werden als
+Rechnungsbetrag ausgeschlossen. BV-/Baustellennummern sind kein Ersatz mehr
+für Rechnungsnummern. Die folgenden Abschnitte bleiben als historische
+Problemanalyse erhalten; die dort abgebildeten damaligen Muster sind nicht der
+aktuelle Quellstand.
+
 ### Auslöser
 
 Produktive Instanz `https://212.227.20.171:18794/` (eZEUS-AI-2) zeigt viele
@@ -20,7 +29,7 @@ Beispiel-Layout, das reihenweise fehlschlägt:
 `2026-09-04 team baucenter raisa GmbH & Co. KG Rechnung RG3301234656 …pdf`
 → `missing_fields: [construction_site_number, invoice_number, invoice_amount]`.
 
-### Bestehende Regex-Konfiguration (alle Instanzen)
+### Historische Regex-Konfiguration (Stand der Erfassung)
 
 Zentral definiert in `core/templates/automatic.py`, `FIELD_DEFINITIONS`
 → `rechnungsbetrag` → `patterns`. Wird via `config_from_custom_fields()` für

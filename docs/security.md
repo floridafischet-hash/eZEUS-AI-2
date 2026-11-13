@@ -54,9 +54,13 @@ sofern die Instanz nicht explizit `allow_title_overwrite` aktiviert.
   Celery-Zustellungen werden idempotent verworfen.
 - Fehlermeldungen werden vor Persistierung und Anzeige strukturiert von
   Authorization-Headern, Tokens, Passwörtern und URL-Zugangsdaten bereinigt.
-- Das eZEUS-Anwendungsimage läuft ohne Root, ohne Linux-Capabilities, mit
-  `readOnlyRootFilesystem`, Seccomp und CPU-/Speicherlimits. Build-Werkzeuge
-  werden aus dem finalen Image entfernt.
+- Das eZEUS-Anwendungsimage läuft als UID 10001 ohne Root; Build-Werkzeuge
+  werden aus dem finalen Image entfernt. Das Helm-Deployment ergänzt
+  `readOnlyRootFilesystem`, Seccomp `RuntimeDefault`, deaktivierte
+  Privilegienausweitung, entfernte Linux-Capabilities und Ressourcenlimits.
+  Docker Compose bindet die API ausschließlich an Loopback und setzt
+  CPU-/Speicherlimits, verwendet derzeit aber kein schreibgeschütztes
+  Root-Dateisystem und kein explizites `cap_drop`.
 - CI prüft Hash-Lockfiles, Bandit, `pip-audit`, Gitleaks, Trivy (High/Critical),
   CycloneDX-SBOM mit 30-tägiger Artefaktaufbewahrung, Helm und
   Kubernetes-Manifeste sowie einen realen
@@ -89,3 +93,8 @@ eine installationsbezogene Security-Abnahme erforderlich.
   Modellantworten werden nicht geloggt.
 - Konkrete Server-Adressen, Benutzernamen und installationsspezifische Pfade
   gehören nicht in Repository-Dokumentationen.
+
+## Letzte verifizierte Prüfung
+
+Der reproduzierbare Sicherheitscheck vom 21. Oktober 2026 ist in
+[`security-audit-2026-10-21.md`](security-audit-2026-10-21.md) dokumentiert.

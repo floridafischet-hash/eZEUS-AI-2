@@ -19,6 +19,7 @@ def _ctx(**overrides: str) -> dict[str, str]:
         "delivery_note_number": "",
         "correspondent": "",
         "document_type": "",
+        "created_date": "",
         "created_year": "",
         "created_month": "",
         "created_day": "",
@@ -94,6 +95,29 @@ def test_slash_separator_collapses() -> None:
     template = "{created_year}/{document_type}/{invoice_number}"
     ctx = _ctx(created_year="2026", invoice_number="RE-123")
     assert render_title(template, ctx) == "2026/RE-123"
+
+
+def test_created_date_placeholder_renders_complete_date() -> None:
+    assert (
+        render_title(
+            "{created_date} - {document_type}",
+            _ctx(created_date="2026-11-11", document_type="Rechnung"),
+        )
+        == "2026-11-11 - Rechnung"
+    )
+
+
+@pytest.mark.asyncio
+async def test_title_context_exposes_complete_created_date() -> None:
+    orchestrator = object.__new__(Orchestrator)
+    document = ConnectorDocument(
+        external_id="1",
+        created="2026-11-11T14:30:00+00:00",
+    )
+
+    context = await orchestrator._build_title_context(object(), document, {})
+
+    assert context["created_date"] == "2026-11-11"
 
 
 def test_dashes_in_values_are_preserved() -> None:
