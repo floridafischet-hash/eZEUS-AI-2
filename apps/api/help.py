@@ -1,11 +1,43 @@
 # ruff: noqa: E501
 
+from html import escape
+
 from fastapi import APIRouter
 from fastapi.responses import HTMLResponse
 
 from apps.api.ui import page_shell
+from core.paperless.title_template import BUILTIN_PLACEHOLDERS
 
 router = APIRouter(tags=["help"])
+
+_TITLE_PLACEHOLDER_EXAMPLES: dict[str, str] = {
+    "document_id": "4711",
+    "title": "Eingangsrechnung",
+    "original_filename": "scan-001.pdf",
+    "filename_stem": "scan-001",
+    "file_extension": "pdf",
+    "mime_type": "application/pdf",
+    "created_date": "2026-11-13",
+    "created_year": "2026",
+    "created_month": "11",
+    "created_day": "13",
+    "correspondent": "Müller GmbH",
+    "correspondent_id": "42",
+    "document_type": "Rechnung",
+    "document_type_id": "7",
+    "tag_ids": "3, 8, 15",
+}
+
+
+def _title_placeholder_rows() -> str:
+    return "\n".join(
+        "<tr>"
+        f"<td><code>{escape(f'{{{name}}}')}</code></td>"
+        f"<td>{escape(label)}</td>"
+        f"<td><code>{escape(_TITLE_PLACEHOLDER_EXAMPLES[name])}</code></td>"
+        "</tr>"
+        for name, label in BUILTIN_PLACEHOLDERS.items()
+    )
 
 
 @router.get("/help", response_class=HTMLResponse, include_in_schema=False)
@@ -42,6 +74,10 @@ def help_page() -> str:
         <strong>Felder konfigurieren</strong>
         <span>OCR, KI, Pflichtfelder, Spezialregeln und Paperless-Zielfelder prüfen.</span>
       </a>
+      <a class="help-card" href="#titel-variablen">
+        <strong>Titel-Variablen nachschlagen</strong>
+        <span>Alle festen Platzhalter mit Bedeutung und Beispielwert auf einen Blick.</span>
+      </a>
       <a class="help-card" href="#kundeninstanz-abnehmen">
         <strong>Kundeninstanz abnehmen</strong>
         <span>Mit typischen Testdokumenten sicherstellen, dass echte Ergebnisse stimmen.</span>
@@ -51,6 +87,23 @@ def help_page() -> str:
         <span>Verbindungs-, Webhook-, Feld- und Erkennungsprobleme gezielt eingrenzen.</span>
       </a>
     </div>
+  </section>
+
+  <section class="panel" id="titel-variablen" aria-labelledby="titel-variablen-title">
+    <div class="section-heading"><div>
+      <h2 id="titel-variablen-title">Verfügbare Variablen für Titel-Vorlagen</h2>
+      <p class="section-copy">Diese festen Platzhalter können unter <strong>Instanzen → Bearbeiten → Titel-Vorlage</strong> verwendet werden.</p>
+    </div></div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Variable</th><th>Deutsche Bedeutung</th><th>Beispiel</th></tr></thead>
+        <tbody>
+          <!-- title-placeholder-rows -->
+        </tbody>
+      </table>
+    </div>
+    <p>Zusätzlich steht jedes <strong>aktivierte eZEUS-Feld</strong> unter seinem technischen Feldschlüssel zur Verfügung, zum Beispiel <code>{invoice_number}</code>, <code>{invoice_amount}</code> oder <code>{delivery_note_number}</code>. Welche zusätzlichen Variablen verfügbar sind, hängt deshalb von der Feldkonfiguration der jeweiligen Instanz ab.</p>
+    <p>Beispiel: <code>{created_date} - {document_type} - {invoice_number} - {correspondent}</code>. Leere Variablen werden aus dem fertigen Titel entfernt; unbekannte Variablen werden nicht akzeptiert.</p>
   </section>
 
   <section class="panel">
@@ -201,25 +254,6 @@ def help_page() -> str:
       <li><strong>Extraktionshinweise:</strong> gelten nur für die KI und verändern keine feste Regex-Regel.</li>
       <li><strong>Spezialregel:</strong> aktiviert eine fachliche Erkennung nur für dieses Feld und diese Kundeninstanz.</li>
     </ul>
-    <h3>Titel-Vorlage: verfügbare Variablen</h3>
-    <p>In <strong>Instanzen → Bearbeiten → Titel-Vorlage</strong> kann der Paperless-Titel aus festen Variablen zusammengesetzt werden. Die Variablen werden mit geschweiften Klammern geschrieben.</p>
-    <div class="table-wrap">
-      <table>
-        <thead><tr><th>Variable</th><th>Deutsche Bedeutung</th><th>Beispiel</th></tr></thead>
-        <tbody>
-          <tr><td><code>{created_date}</code></td><td>Erstell- beziehungsweise Anlagedatum des Dokuments</td><td><code>2026-11-13</code></td></tr>
-          <tr><td><code>{created_year}</code></td><td>Jahr aus dem Erstellungsdatum</td><td><code>2026</code></td></tr>
-          <tr><td><code>{created_month}</code></td><td>Monat aus dem Erstellungsdatum</td><td><code>11</code></td></tr>
-          <tr><td><code>{created_day}</code></td><td>Tag aus dem Erstellungsdatum</td><td><code>13</code></td></tr>
-          <tr><td><code>{document_type}</code></td><td>Dokumenttyp aus Paperless</td><td><code>Rechnung</code></td></tr>
-          <tr><td><code>{invoice_number}</code></td><td>Von eZEUS erkannte Rechnungsnummer</td><td><code>RE-2026-00123</code></td></tr>
-          <tr><td><code>{correspondent}</code></td><td>Korrespondent aus Paperless</td><td><code>Müller GmbH</code></td></tr>
-          <tr><td><code>{original_filename}</code></td><td>Ursprünglicher Dateiname des Dokuments</td><td><code>scan-001.pdf</code></td></tr>
-          <tr><td><code>{title}</code></td><td>Bisheriger Paperless-Titel</td><td><code>Eingangsrechnung</code></td></tr>
-        </tbody>
-      </table>
-    </div>
-    <p>Beispiel: <code>{created_date} - {document_type} - {invoice_number} - {correspondent}</code>. Leere Variablen werden aus dem fertigen Titel entfernt; unbekannte Variablen werden nicht akzeptiert.</p>
     <h3>IBAN des Rechnungsstellers aktivieren</h3>
     <ol>
       <li>In Paperless ein Textfeld <code>IBAN</code> anlegen und die Feldseite in eZEUS neu laden.</li>
@@ -325,6 +359,7 @@ def help_page() -> str:
   </section>
 </div>
 """
+    content = content.replace("<!-- title-placeholder-rows -->", _title_placeholder_rows())
     return page_shell(
         title="Benutzerhandbuch",
         description="Schritt-für-Schritt-Anleitung für die tägliche Bedienung – ohne technische Vorkenntnisse.",
